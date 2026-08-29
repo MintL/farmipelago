@@ -12,7 +12,7 @@
     body { touch-action: none; user-select: none; }
     canvas { display: block; width: 100%; height: 100%; }
 
-    #hud { position: fixed; inset: 0; pointer-events: none; }
+    #hud { position: fixed; inset: 0; pointer-events: none; --jump-size: 92px; }
     #status {
       position: absolute;
       top: max(12px, env(safe-area-inset-top));
@@ -73,7 +73,7 @@
       position: absolute;
       right: max(24px, env(safe-area-inset-right));
       bottom: max(34px, env(safe-area-inset-bottom));
-      width: 92px; height: 92px;
+      width: var(--jump-size); height: var(--jump-size);
       border: 0; border-radius: 50%;
       background: rgba(255,247,220,.88);
       color: #6b3f22;
@@ -82,7 +82,29 @@
       letter-spacing: .06em;
       box-shadow: 0 8px 20px rgba(0,0,0,.18), inset 0 -5px 0 rgba(115,71,39,.14);
     }
+    #jump svg { display: block; width: 38px; height: 38px; margin: auto; fill: currentColor; }
     #jump:active { transform: translateY(2px) scale(.97); }
+
+    #toolToggle {
+      pointer-events: auto;
+      position: absolute;
+      right: max(24px, env(safe-area-inset-right));
+      bottom: calc(max(34px, env(safe-area-inset-bottom)) + var(--jump-size) + 10px);
+      width: 42px; height: 42px;
+      padding: 0;
+      border: 0; border-radius: 50%;
+      display: grid; place-items: center;
+      background: rgba(226,245,208,.92);
+      color: #315d32;
+      box-shadow: 0 5px 14px rgba(0,0,0,.16), inset 0 -3px 0 rgba(45,93,48,.13);
+    }
+    #toolToggle svg { width: 23px; height: 23px; fill: currentColor; }
+    #toolToggle.off {
+      background: rgba(235,235,228,.88);
+      color: #6d7169;
+      box-shadow: 0 5px 14px rgba(0,0,0,.12), inset 0 -3px 0 rgba(60,63,57,.10);
+    }
+    #toolToggle:active { transform: translateY(1px) scale(.97); }
 
     #toast {
       position: absolute;
@@ -98,8 +120,8 @@
     #toast.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
 
     @media (min-width: 700px) {
+      #hud { --jump-size: 104px; }
       #stickBase { width: 150px; height: 150px; }
-      #jump { width: 104px; height: 104px; }
     }
   </style>
 </head>
@@ -108,7 +130,16 @@
     <div id="status">0 tiles ploughed</div>
     <button id="regen" aria-label="Generate a new farm">↻</button>
     <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
-    <button id="jump">JUMP</button>
+    <button id="toolToggle" class="off" type="button" aria-label="Turn plough on" aria-pressed="false" title="Turn plough on">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M21.7 19.3 12.6 10.2c.9-2.3.4-5-1.4-6.8-1.8-1.8-4.5-2.3-6.8-1.4l3.9 3.9L6 8.2 2.1 4.3c-.9 2.3-.4 5 1.4 6.8 1.8 1.8 4.5 2.3 6.8 1.4l9.1 9.1c.6.6 1.5.6 2.1 0l.2-.2c.6-.6.6-1.5 0-2.1Z" />
+      </svg>
+    </button>
+    <button id="jump" aria-label="Jump" title="Jump">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3 4.5 10.5l1.4 1.4L11 6.8V21h2V6.8l5.1 5.1 1.4-1.4L12 3Z" />
+      </svg>
+    </button>
     <div id="toast"></div>
   </div>
 

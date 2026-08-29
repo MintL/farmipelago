@@ -4,6 +4,9 @@ export function createTractor(scene) {
   const root = new THREE.Group();
   const visual = new THREE.Group();
   const wheels = [];
+  let wasGrounded = false;
+  let lastVerticalSpeed = 0;
+  let landingSquash = 0;
   root.add(visual);
   scene.add(root);
 
@@ -16,12 +19,14 @@ export function createTractor(scene) {
   const addWheel = (x, y, z, radius, width, front) => {
     const holder = new THREE.Group();
     holder.position.set(x, y, z);
+    const roller = new THREE.Group();
+    holder.add(roller);
     const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, width, 8), mats.tire);
-    tire.rotation.z = Math.PI / 2; tire.castShadow = true; holder.add(tire);
+    tire.rotation.z = Math.PI / 2; tire.castShadow = true; roller.add(tire);
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * .42, radius * .42, width + .012, 8), mats.hub);
-    hub.rotation.z = Math.PI / 2; hub.castShadow = true; holder.add(hub);
+    hub.rotation.z = Math.PI / 2; hub.castShadow = true; roller.add(hub);
     visual.add(holder);
-    wheels.push({ holder, tire, hub, front, spin: 0 });
+    wheels.push({ holder, roller, tire, hub, front, spin: 0, phase: Math.random() * Math.PI * 2 });
   };
   addWheel(-.48, .29, -.39, .28, .2, true); addWheel(.48, .29, -.39, .28, .2, true);
   addWheel(-.5, .31, .42, .34, .22, false); addWheel(.5, .31, .42, .34, .22, false);
@@ -41,15 +46,29 @@ export function createTractor(scene) {
     sync(state, heading, steer, driveAmount, dt, elapsed) {
       root.position.set(state.x, state.y, state.z);
       root.rotation.y = heading;
+      if (state.grounded && !wasGrounded && lastVerticalSpeed < -1.4) {
+        landingSquash = Math.min(.15, .055 + Math.abs(lastVerticalSpeed) * .008);
+      }
+      landingSquash *= Math.exp(-11 * dt);
+      wasGrounded = state.grounded;
+      lastVerticalSpeed = state.verticalSpeed;
+
       const wheelSpin = state.speed * dt / .28;
+      const speedFactor = Math.min(1, state.speed / 5.5);
       wheels.forEach(wheel => {
         wheel.spin += wheelSpin;
         wheel.tire.rotation.x = wheel.spin;
         wheel.hub.rotation.x = wheel.spin;
         if (wheel.front) wheel.holder.rotation.y = steer * .38;
+        const wobble = Math.sin(elapsed * (10 + speedFactor * 18) + wheel.phase) * (.008 + speedFactor * .04);
+        wheel.roller.rotation.z = wobble;
+        wheel.roller.position.y = Math.abs(wobble) * .09;
       });
       const engineBob = state.grounded ? Math.sin(elapsed * (9 + Math.min(1, state.speed / 4) * 6)) * .018 * Math.min(1, state.speed / 4) : 0;
+      const airStretch = state.grounded ? 0 : .055;
+      const squash = landingSquash - airStretch;
       visual.position.y = engineBob;
+      visual.scale.set(1 + squash * .65, 1 - squash, 1 + squash * .65);
       visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .07;
       visual.rotation.x = state.grounded ? -driveAmount * .018 : THREE.MathUtils.clamp(-state.verticalSpeed * .028, -.16, .16);
     },

@@ -91,10 +91,12 @@ function applyPlough(state) {
 
 function update(dt) {
   elapsed += dt;
+  farm?.animate(elapsed);
   const input = ui.driveInput();
   const rawDrive = Math.hypot(input.x, input.y);
   const driveAmount = THREE.MathUtils.clamp((rawDrive - .08) / .92, 0, 1);
   const before = physics.tractorState();
+  let driveDirection = { x: -Math.sin(heading), z: -Math.cos(heading) };
   let steer = 0;
 
   if (driveAmount > 0) {
@@ -107,9 +109,12 @@ function update(dt) {
     const maxTurn = (before.grounded ? 2.75 : 1.65) * dt;
     heading += THREE.MathUtils.clamp(turnDelta, -maxTurn, maxTurn);
     steer = THREE.MathUtils.clamp(turnDelta * 1.35, -1, 1);
+    // Movement follows the stick immediately; the tractor body catches up at
+    // its turning rate, so it can keep travelling through a wide turn.
+    driveDirection = { x: desiredX, z: desiredZ };
   }
 
-  physics.drive(dt, { x: -Math.sin(heading), z: -Math.cos(heading) }, driveAmount, ui.consumeJump());
+  physics.drive(dt, driveDirection, driveAmount, ui.consumeJump());
   physics.step(dt);
   const state = physics.tractorState();
   if (state.y < -12) {

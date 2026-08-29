@@ -6,18 +6,18 @@ A phone-first Three.js prototype for a playful farming/driving game on generated
 
 - portrait-first UI
 - smooth high-angle follow camera that keeps the tractor framed
-- generated archipelago with dramatic lobed islands, oversized hero islands, and stepped height levels
+- generated archipelago with larger lobed islands, stepped height levels, and bridges across wide gaps
 - varied rectangular edge plateaus, kept clear as usable farm plots
 - chunky grass / dirt / stone terrain with deep, pointed undersides
-- finer-scale animated tractor
+- finer-scale animated tractor with wobbly rolling wheels and squash-and-stretch jumps
 - visible three-blade plough that changes grass tiles into ploughed soil
-- small trees, large trees and voxel stones
+- small trees, large trees that sway in the wind, and voxel stones
 - camera-relative virtual stick: point where the tractor should drive on screen
 - jump button; no ramps required
 - falling and automatic tractor rescue
 - regenerate button for a new procedural farm
 - keyboard fallback: WASD/arrows + Space
-- Rapier kinematic capsule controller with autostep, ground snapping, wall-contact jumping, and fixed 60 Hz simulation
+- Rapier kinematic capsule controller with ground snapping, wall-contact jumping, and fixed 60 Hz simulation
 - seamless terrain collision meshes with solid plateau walls and lower island layers
 
 ## Code layout

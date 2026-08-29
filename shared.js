@@ -2,10 +2,11 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.m
 
 export { THREE };
 
-export const TILE = 1.18;
-export const GRASS_TOP = 0.14;
-export const SOIL_DEPTH = 0.90;
-export const LAYER_DEPTH = 1.00;
+export const TILE = 1;
+export const LEVEL_HEIGHT = 1;
+export const GRASS_TOP = 0.1;
+export const SOIL_DEPTH = LEVEL_HEIGHT - GRASS_TOP;
+export const LAYER_DEPTH = LEVEL_HEIGHT;
 
 export const mats = {
   grass: new THREE.MeshStandardMaterial({ color: 0x71b65a, roughness: 0.95 }),
@@ -24,6 +25,8 @@ export const mats = {
   hub: new THREE.MeshStandardMaterial({ color: 0xd7c7a0, roughness: 0.7 }),
   red: new THREE.MeshStandardMaterial({ color: 0xb64d35, roughness: 0.85 }),
   metal: new THREE.MeshStandardMaterial({ color: 0xb7b6aa, roughness: 0.7 }),
+  bridge: new THREE.MeshStandardMaterial({ color: 0x9a6438, roughness: 0.88 }),
+  bridgeDark: new THREE.MeshStandardMaterial({ color: 0x694127, roughness: 0.92 }),
 };
 
 export function box(width, height, depth, material, cast = true, receive = true) {

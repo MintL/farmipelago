@@ -28,7 +28,6 @@ class FarmPhysics {
     this.tractorBody = null;
     this.tractorCollider = null;
     this.characterController = this.world.createCharacterController(0.03);
-    this.characterController.enableAutostep(1.04, 0.16, false);
     this.characterController.enableSnapToGround(0.28);
     this.characterController.setMaxSlopeClimbAngle(Math.PI * 0.28);
     this.characterController.setMinSlopeSlideAngle(Math.PI * 0.34);
@@ -45,7 +44,7 @@ class FarmPhysics {
     this.touchingWall = false;
   }
 
-  rebuildStaticColliders(terrain, obstacles, lowerBlocks = []) {
+  rebuildStaticColliders(terrain, obstacles, lowerBlocks = [], bridgeBlocks = []) {
     for (const collider of this.staticColliders) this.world.removeCollider(collider, true);
     this.staticColliders = [];
 
@@ -54,6 +53,17 @@ class FarmPhysics {
 
     const undersideMesh = buildBlockMesh(lowerBlocks);
     this.addStaticMesh(undersideMesh.vertices, undersideMesh.indices, 0.82);
+
+    for (const bridge of bridgeBlocks) {
+      const collider = this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(bridge.width * .5, bridge.height * .5, bridge.depth * .5)
+          .setTranslation(bridge.x, bridge.y, bridge.z)
+          .setRotation({ x: 0, y: Math.sin(bridge.yaw * .5), z: 0, w: Math.cos(bridge.yaw * .5) })
+          .setFriction(0.9)
+          .setRestitution(0)
+      );
+      this.staticColliders.push(collider);
+    }
 
     for (const obstacle of obstacles) {
       const collider = this.world.createCollider(

@@ -11,6 +11,12 @@ export const LAYER_DEPTH = LEVEL_HEIGHT;
 export const mats = {
   grass: new THREE.MeshStandardMaterial({ color: 0x71b65a, roughness: 0.95 }),
   grassHigh: new THREE.MeshStandardMaterial({ color: 0x83c968, roughness: 0.95 }),
+  tallGrass: new THREE.MeshStandardMaterial({
+    color: 0x159447,
+    emissive: 0x082d14,
+    emissiveIntensity: .45,
+    roughness: 1,
+  }),
   soil: new THREE.MeshStandardMaterial({ color: 0x8f5b3c, roughness: 1 }),
   ploughed: new THREE.MeshStandardMaterial({ color: 0x6f412d, roughness: 1 }),
   stone: new THREE.MeshStandardMaterial({ color: 0x777c78, roughness: 1 }),

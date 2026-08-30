@@ -4,8 +4,8 @@ import { GRASS_TOP, LAYER_DEPTH, SOIL_DEPTH, TILE, gridKey } from './shared.js';
 const FIXED_TIMESTEP = 1 / 60;
 const MAX_FRAME_TIME = 0.1;
 const GRAVITY = -18;
-const GROUND_SPEED = 6.4;
-const AIR_SPEED = 4.1;
+const GROUND_SPEED = 5.8;
+const AIR_SPEED = 3.7;
 const GROUND_ACCELERATION = 36;
 const AIR_ACCELERATION = 11;
 const JUMP_SPEED = 10.5;
@@ -66,6 +66,16 @@ class FarmPhysics {
     }
 
     for (const obstacle of obstacles) {
+      if (obstacle.shape === 'box') {
+        const collider = this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(obstacle.width * .5, obstacle.height * .5, obstacle.depth * .5)
+            .setTranslation(obstacle.x, obstacle.y + obstacle.height * .5, obstacle.z)
+            .setFriction(0.9)
+            .setRestitution(0)
+        );
+        this.staticColliders.push(collider);
+        continue;
+      }
       const collider = this.world.createCollider(
         RAPIER.ColliderDesc.cylinder(obstacle.height * 0.5, obstacle.radius)
           .setTranslation(obstacle.x, obstacle.y + obstacle.height * 0.5, obstacle.z)

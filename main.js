@@ -91,7 +91,6 @@ function applyPlough(state) {
 
 function update(dt) {
   elapsed += dt;
-  farm?.animate(elapsed);
   const input = ui.driveInput();
   const rawDrive = Math.hypot(input.x, input.y);
   const driveAmount = THREE.MathUtils.clamp((rawDrive - .08) / .92, 0, 1);
@@ -125,6 +124,8 @@ function update(dt) {
   applyPlough(state);
   tractor.sync(state, heading, steer, driveAmount, dt, elapsed);
   updateCamera(state, dt);
+  farm?.animate(elapsed);
+  farm?.updateOcclusion(camera.position, state, dt);
 }
 
 function animate(now) {

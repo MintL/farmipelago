@@ -5,6 +5,7 @@ const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 3;
 const BRIDGE_WIDTH = TILE * 1.25;
 const BRIDGE_THICKNESS = 0.18;
+const STARTER_ISLAND_ID = 0;
 
 export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff) >>> 0) {
   const random = seededRandom(seed);
@@ -14,7 +15,10 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const lowerBlocks = [];
   const bridgeBlocks = [];
   const trees = [];
+  const tallGrass = new THREE.Group();
+  tallGrass.name = 'tall-grass';
   scene.add(group);
+  group.add(tallGrass);
 
   const addTile = (gx, gz, topY, islandId, radial, baseY = topY) => {
     const x = gx * TILE;
@@ -27,7 +31,23 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const top = box(TILE, GRASS_TOP, TILE, topY > baseY + 0.01 ? mats.grassHigh : mats.grass);
     top.position.set(x, topY - GRASS_TOP * 0.5, z);
     group.add(top);
-    terrain.set(gridKey(gx, gz), { gx, gz, x, z, topY, baseY, islandId, radial, topMesh: top, ploughed: false });
+    terrain.set(gridKey(gx, gz), {
+      gx, gz, x, z, topY, baseY, islandId, radial, topMesh: top, tallGrass: null, ploughed: false,
+    });
+  };
+
+  const addTallGrass = tile => {
+    const tuft = new THREE.Group();
+    tuft.position.set(tile.x, tile.topY, tile.z);
+    for (let index = 0; index < 5; index++) {
+      const height = .45 + random() * .3;
+      const blade = box(.055, height, .075, mats.tallGrass, false, false);
+      blade.position.set((random() - .5) * .62, height * .5, (random() - .5) * .62);
+      blade.rotation.set((random() - .5) * .16, random() * Math.PI, (random() - .5) * .16);
+      tuft.add(blade);
+    }
+    tallGrass.add(tuft);
+    tile.tallGrass = tuft;
   };
 
   const addLowerLayers = (cells, topY, radius) => {
@@ -59,8 +79,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const tree = new THREE.Group();
     const sway = new THREE.Group();
     tree.add(sway);
-    const voxel = large ? 0.22 : 0.17;
-    const trunkHeight = large ? 1.75 : 1.08;
+    const voxel = large ? 0.30 : 0.23;
+    const trunkHeight = large ? 2.6 : 1.6;
     const trunk = box(voxel * 1.25, trunkHeight, voxel * 1.25, mats.trunk);
     trunk.position.y = trunkHeight * 0.5;
     sway.add(trunk);
@@ -77,8 +97,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     tree.position.set(x, y, z);
     tree.rotation.y = random() * Math.PI * 2;
     group.add(tree);
-    trees.push({ sway, phase: random() * Math.PI * 2, strength: large ? .052 : .065 });
-    obstacles.push({ x, y, z, radius: large ? 0.47 : 0.32, height: trunkHeight });
+    trees.push({
+      sway,
+      phase: random() * Math.PI * 2,
+      strength: large ? .052 : .065,
+    });
+    obstacles.push({ x, y, z, radius: large ? .6 : .42, height: trunkHeight });
   };
 
   const addStone = (x, y, z, scale) => {
@@ -91,6 +115,47 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
     stone.position.set(x, y + voxel * .45, z);
     group.add(stone);
+  };
+
+  const addBarn = (x, y, z) => {
+    const barn = new THREE.Group();
+    const width = 2.25;
+    const wallHeight = 1.55;
+    const depth = 2.05;
+    const roofHeight = 0.68;
+    const roofPitch = Math.atan2(roofHeight, width * .5);
+    barn.name = 'barn';
+    barn.position.set(x, y, z);
+    barn.rotation.y = Math.PI;
+    group.add(barn);
+
+    const walls = box(width, wallHeight, depth, mats.red);
+    walls.position.y = wallHeight * .5;
+    barn.add(walls);
+
+    const door = box(.72, 1.05, .06, mats.bridgeDark);
+    door.position.set(0, .525, -depth * .5 - .035);
+    barn.add(door);
+    const loft = box(.48, .32, .065, mats.bridgeDark);
+    loft.position.set(0, 1.28, -depth * .5 - .04);
+    barn.add(loft);
+
+    for (const side of [-1, 1]) {
+      const roof = box(width * .61, .16, depth + .18, mats.bridgeDark);
+      roof.position.set(side * width * .255, wallHeight + roofHeight * .46, 0);
+      roof.rotation.z = -side * roofPitch;
+      barn.add(roof);
+    }
+
+    obstacles.push({
+      shape: 'box',
+      x,
+      y,
+      z,
+      width,
+      height: wallHeight + roofHeight * .7,
+      depth,
+    });
   };
 
   const backbone = [
@@ -107,12 +172,16 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const cells = createOrganicCells(island.cx, island.cz, island.r, seed + id * 911);
     const type = PLATEAU_TYPES[id % PLATEAU_TYPES.length];
     const angle = random() * Math.PI * 2;
-    cells.forEach(cell => addTile(cell.gx, cell.gz, island.h + plateauHeight(cell, island, type, angle), id, cell.dist / island.r, island.h));
+    const tileHeight = cell => id === STARTER_ISLAND_ID
+      ? 0
+      : plateauHeight(cell, island, type, angle);
+    cells.forEach(cell => addTile(cell.gx, cell.gz, island.h + tileHeight(cell), id, cell.dist / island.r, island.h));
     addLowerLayers(cells, island.h, island.r);
 
     for (const cell of cells.filter(candidate => candidate.dist > 1.1 && candidate.dist < island.r - .15)) {
-      if (id === 0 && Math.hypot(cell.dx, cell.dz) < 1.35) continue;
-      if (plateauHeight(cell, island, type, angle) > 0) continue;
+      const starterField = id === STARTER_ISLAND_ID && Math.abs(cell.dx) <= 3 && Math.abs(cell.dz) <= 3;
+      if (starterField) continue;
+      if (tileHeight(cell) > 0) continue;
       const x = cell.gx * TILE + (random() - .5) * .18;
       const z = cell.gz * TILE + (random() - .5) * .18;
       const y = terrain.get(gridKey(cell.gx, cell.gz))?.topY ?? island.h;
@@ -120,8 +189,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       if (roll < .055) addTree(x, y, z, true);
       else if (roll < .13) addTree(x, y, z, false);
       else if (roll < .23) addStone(x, y, z, .8 + random() * .5);
+      else if (roll < .56) addTallGrass(terrain.get(gridKey(cell.gx, cell.gz)));
     }
   });
+
+  const barnSite = findBarnSite(terrain, islands[STARTER_ISLAND_ID]);
+  if (barnSite) addBarn(barnSite.x, barnSite.topY, barnSite.z);
 
   for (let index = 0; index < backbone.length - 1; index++) {
     addBridgeBetween(islands[index], islands[index + 1], terrain, group, bridgeBlocks);
@@ -134,6 +207,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   });
   addBridgeBetween(branchAnchor, branchIsland, terrain, group, bridgeBlocks);
 
+  const occlusion = createOcclusionSystem(group);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const start = terrain.get(gridKey(backbone[0].cx, backbone[0].cz)) || terrain.values().next().value;
   return {
@@ -147,14 +221,82 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         tree.sway.rotation.x = Math.cos(elapsed * .9 + tree.phase * .73) * tree.strength * .62 + gust * .012;
       }
     },
+    updateOcclusion(cameraPosition, tractorState, delta) {
+      occlusion.update(cameraPosition, tractorState, delta);
+    },
     ploughAt(x, z) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
       if (!tile || tile.ploughed) return false;
       tile.ploughed = true;
       tile.topMesh.material = mats.ploughed;
+      if (tile.tallGrass) tile.tallGrass.visible = false;
       return true;
     },
   };
+}
+
+function createOcclusionSystem(group) {
+  const ray = new THREE.Ray();
+  const sightline = new THREE.Vector3();
+  const hitPoint = new THREE.Vector3();
+  const entries = group.children
+    .filter(child => child.isGroup && child.name !== 'tall-grass')
+    .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1 }));
+
+  return {
+    update(cameraPosition, tractorState, delta) {
+      if (!cameraPosition || !tractorState) return;
+      sightline.set(tractorState.x, tractorState.y + .75, tractorState.z).sub(cameraPosition);
+      const sightlineLength = sightline.length();
+      if (sightlineLength < .001) return;
+      ray.set(cameraPosition, sightline.multiplyScalar(1 / sightlineLength));
+      const fadeAmount = 1 - Math.exp(-12 * Math.min(.1, delta));
+
+      for (const entry of entries) {
+        entry.bounds.setFromObject(entry.object);
+        const hit = ray.intersectBox(entry.bounds, hitPoint);
+        const targetOpacity = hit && hit.distanceTo(cameraPosition) < sightlineLength - .2 ? .18 : 1;
+        entry.opacity = THREE.MathUtils.lerp(entry.opacity, targetOpacity, fadeAmount);
+        entry.materials.forEach(material => { material.opacity = entry.opacity; });
+      }
+    },
+  };
+}
+
+function cloneTransparentMaterials(object) {
+  const materialClones = new Map();
+  object.traverse(child => {
+    if (!child.isMesh) return;
+    const cloneMaterial = material => {
+      if (!materialClones.has(material)) {
+        const clone = material.clone();
+        clone.transparent = true;
+        clone.depthWrite = false;
+        materialClones.set(material, clone);
+      }
+      return materialClones.get(material);
+    };
+    child.material = Array.isArray(child.material)
+      ? child.material.map(cloneMaterial)
+      : cloneMaterial(child.material);
+  });
+  return [...materialClones.values()];
+}
+
+function findBarnSite(terrain, island) {
+  const candidates = [];
+  for (const tile of terrain.values()) {
+    if (tile.islandId !== STARTER_ISLAND_ID) continue;
+    const hasPad = [-1, 0, 1].every(dx => [-1, 0, 1].every(dz => {
+      const neighbor = terrain.get(gridKey(tile.gx + dx, tile.gz + dz));
+      return neighbor?.islandId === STARTER_ISLAND_ID && Math.abs(neighbor.topY - tile.topY) < .01;
+    }));
+    if (!hasPad) continue;
+    const score = Math.hypot(tile.gx - (island.cx - 2), tile.gz - (island.cz + 2));
+    candidates.push({ ...tile, score });
+  }
+  candidates.sort((first, second) => first.score - second.score);
+  return candidates[0];
 }
 
 function addBridgeBetween(fromIsland, toIsland, terrain, group, bridgeBlocks) {

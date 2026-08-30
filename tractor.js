@@ -47,9 +47,9 @@ export function createTractor(scene) {
       root.position.set(state.x, state.y, state.z);
       root.rotation.y = heading;
       if (state.grounded && !wasGrounded && lastVerticalSpeed < -1.4) {
-        landingSquash = Math.min(.15, .055 + Math.abs(lastVerticalSpeed) * .008);
+        landingSquash = Math.min(.30, .12 + Math.abs(lastVerticalSpeed) * .018);
       }
-      landingSquash *= Math.exp(-11 * dt);
+      landingSquash *= Math.exp(-7 * dt);
       wasGrounded = state.grounded;
       lastVerticalSpeed = state.verticalSpeed;
 
@@ -60,17 +60,17 @@ export function createTractor(scene) {
         wheel.tire.rotation.x = wheel.spin;
         wheel.hub.rotation.x = wheel.spin;
         if (wheel.front) wheel.holder.rotation.y = steer * .38;
-        const wobble = Math.sin(elapsed * (10 + speedFactor * 18) + wheel.phase) * (.008 + speedFactor * .04);
+        const wobble = Math.sin(elapsed * (8 + speedFactor * 15) + wheel.phase) * (.018 + speedFactor * .14);
         wheel.roller.rotation.z = wobble;
-        wheel.roller.position.y = Math.abs(wobble) * .09;
+        wheel.roller.position.y = Math.abs(wobble) * .18;
       });
-      const engineBob = state.grounded ? Math.sin(elapsed * (9 + Math.min(1, state.speed / 4) * 6)) * .018 * Math.min(1, state.speed / 4) : 0;
-      const airStretch = state.grounded ? 0 : .055;
+      const engineBob = state.grounded ? Math.sin(elapsed * (8 + Math.min(1, state.speed / 4) * 5)) * .04 * Math.min(1, state.speed / 4) : 0;
+      const airStretch = state.grounded ? 0 : .14;
       const squash = landingSquash - airStretch;
       visual.position.y = engineBob;
-      visual.scale.set(1 + squash * .65, 1 - squash, 1 + squash * .65);
-      visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .07;
-      visual.rotation.x = state.grounded ? -driveAmount * .018 : THREE.MathUtils.clamp(-state.verticalSpeed * .028, -.16, .16);
+      visual.scale.set(1 + squash * .9, 1 - squash, 1 + squash * .9);
+      visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .13;
+      visual.rotation.x = state.grounded ? -driveAmount * .04 : THREE.MathUtils.clamp(-state.verticalSpeed * .045, -.28, .28);
     },
   };
 }

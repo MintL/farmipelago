@@ -6,14 +6,15 @@ A phone-first Three.js prototype for a playful farming/driving game on generated
 
 - portrait-first UI
 - smooth high-angle follow camera that keeps the tractor framed
-- generated archipelago with a level starter farmyard, barn, larger lobed islands, stepped height levels, and bridges across wide gaps
+- generated archipelago with a level starter farmyard, walk-in 3×3 barn, larger lobed islands, stepped height levels, and bridges across wide gaps
 - generated props that fade when they block the camera's view of the tractor
-- varied rectangular edge plateaus, kept clear as usable farm plots
-- chunky grass / dirt / stone terrain with deep, pointed undersides
-- visual-only tall-grass tufts that the tractor can drive through and plough clear
-- finer-scale animated tractor with wobbly rolling wheels and squash-and-stretch jumps
-- visible three-blade plough that changes grass tiles into ploughed soil
-- small trees, large trees that sway in the wind, and voxel stones
+- one broad raised plot and one broad base level on each non-starter island, both kept clear as usable farm plots
+- small procedural lakes that feed animated rivers and waterfalls spilling below the islands
+- softly lit, gently fogged miniature terrain with muted grass / dirt / stone layers and deep, pointed undersides
+- sparse, clustered visual-only grass tufts that the tractor can drive through and plough clear
+- red-and-gold hero tractor with a glazed cab, treaded wheels, lamps, beacon, and squash-and-stretch jumps
+- visible four-share plough that changes grass tiles into ploughed soil
+- two larger toy-like tree silhouettes—forked orchard and umbrella—that sway in the wind, plus voxel stones
 - camera-relative virtual stick: point where the tractor should drive on screen
 - jump button; no ramps required
 - falling and automatic tractor rescue

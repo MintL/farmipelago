@@ -67,9 +67,11 @@ class FarmPhysics {
 
     for (const obstacle of obstacles) {
       if (obstacle.shape === 'box') {
+        const yaw = obstacle.yaw || 0;
         const collider = this.world.createCollider(
           RAPIER.ColliderDesc.cuboid(obstacle.width * .5, obstacle.height * .5, obstacle.depth * .5)
             .setTranslation(obstacle.x, obstacle.y + obstacle.height * .5, obstacle.z)
+            .setRotation({ x: 0, y: Math.sin(yaw * .5), z: 0, w: Math.cos(yaw * .5) })
             .setFriction(0.9)
             .setRestitution(0)
         );

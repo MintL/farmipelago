@@ -11,12 +11,12 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 1.03;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xb9def1);
-scene.fog = new THREE.Fog(0xb9def1, 48, 105);
+scene.background = new THREE.Color(0xc7dce0);
+scene.fog = new THREE.Fog(0xc7dce0, 34, 92);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, .1, 200);
 const cameraOffset = new THREE.Vector3(12, 20, 28);
 const cameraForward = new THREE.Vector2(-cameraOffset.x, -cameraOffset.z).normalize();
@@ -25,17 +25,17 @@ const cameraTarget = new THREE.Vector3();
 camera.position.copy(cameraOffset);
 camera.lookAt(cameraTarget);
 
-scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x587054, 1.35));
-const sun = new THREE.DirectionalLight(0xffefc7, 3);
+scene.add(new THREE.HemisphereLight(0xf3f6f1, 0x728277, 1.8));
+const sun = new THREE.DirectionalLight(0xffefd0, 2.15);
 sun.position.set(-16, 26, 18);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -34; sun.shadow.camera.right = 34;
 sun.shadow.camera.top = 38; sun.shadow.camera.bottom = -38;
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
-sun.shadow.bias = -.0002; sun.shadow.normalBias = .035;
+sun.shadow.bias = -.0002; sun.shadow.normalBias = .045; sun.shadow.radius = 3;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xa8cfff, .55);
+const fill = new THREE.DirectionalLight(0xbcd5ed, .8);
 fill.position.set(22, 14, -26);
 scene.add(fill);
 
@@ -81,8 +81,8 @@ resetTractor();
 function applyPlough(state) {
   if (!ui.ploughEnabled() || !state.grounded || state.speed < .4) return;
   const sine = Math.sin(heading), cosine = Math.cos(heading);
-  for (const localX of [-.4, 0, .4]) {
-    const localZ = 1.22;
+  for (const localX of [-.6, -.2, .2, .6]) {
+    const localZ = 1.58;
     const x = state.x + localX * cosine + localZ * sine;
     const z = state.z - localX * sine + localZ * cosine;
     if (farm.ploughAt(x, z)) ui.incrementPloughed();
@@ -116,6 +116,9 @@ function update(dt) {
   physics.drive(dt, driveDirection, driveAmount, ui.consumeJump());
   physics.step(dt);
   const state = physics.tractorState();
+  if (!before.grounded && state.grounded && before.verticalSpeed < -1.5) {
+    farm.splashAt(state.x, state.z, Math.abs(before.verticalSpeed));
+  }
   if (state.y < -12) {
     resetTractor(true);
     return;

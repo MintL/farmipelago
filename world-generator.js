@@ -8,7 +8,7 @@ const STARTER_ISLAND_ID = 0;
 const BARN_TREE_CLEARANCE = 3.5 * TILE;
 const WATER_DEPTH = .22;
 
-export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff) >>> 0) {
+export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff) >>> 0, attempt = 0) {
   const random = seededRandom(seed);
   const terrainNoise = createPerlin(seed ^ 0x9e3779b9);
   const group = new THREE.Group();
@@ -218,6 +218,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const branch = { cx: (random() > .5 ? 1 : -1) * 20, cz: -22 + Math.round((random() - .5) * 2), h: random() > .5 ? 0 : 2, r: 3.5 };
   const islands = [...backbone, branch].map((island, id) => ({ ...island, id }));
   let barnSite;
+  let waterFeatureCount = 0;
 
   islands.forEach((island, id) => {
     if (id > 0 && id < backbone.length) island.cx += Math.round((random() - .5) * 1.1);
@@ -231,9 +232,10 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     addLowerLayers(cells, island.h, island.r);
     // Two backbone islands always try to grow water, with occasional extra
     // courses elsewhere so regenerated farms remain varied without going dry.
-    const waterTiles = id > 0 && (id === 2 || id === 4 || random() < .25)
-      ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random)
+    let waterTiles = id > 0 && (id === 2 || id === 4 || random() < .25)
+      ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, true)
       : new Set();
+    if (waterTiles.size) waterFeatureCount++;
     if (id === STARTER_ISLAND_ID) barnSite = findBarnSite(terrain, island);
 
     const clearCells = cells.filter(candidate => {
@@ -275,6 +277,11 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   });
   addBridgeBetween(branchAnchor, branchIsland, terrain, group, bridgeBlocks);
 
+  if (!waterFeatureCount && attempt < 7) {
+    scene.remove(group);
+    return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1);
+  }
+
   const occlusion = createOcclusionSystem(group);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const start = terrain.get(gridKey(backbone[0].cx, backbone[0].cz)) || terrain.values().next().value;
@@ -307,7 +314,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       for (let index = waterParticles.length - 1; index >= 0; index--) {
         const particle = waterParticles[index];
         const age = elapsed - particle.born;
-        if (age > .62) {
+        if (age > .82) {
           water.remove(particle.mesh);
           particle.mesh.geometry.dispose();
           waterParticles.splice(index, 1);
@@ -315,7 +322,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         }
         particle.mesh.position.set(
           particle.x + particle.vx * age,
-          particle.y + particle.vy * age - 7.8 * age * age,
+          particle.y + particle.vy * age - 7.2 * age * age,
           particle.z + particle.vz * age,
         );
         particle.mesh.rotation.x = age * particle.spinX;
@@ -336,21 +343,22 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     splashAt(x, z, impact) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
       if (!tile?.water) return false;
-      const count = 7 + Math.round(Math.min(7, impact));
+      const count = 10 + Math.round(Math.min(8, impact * 1.2));
       for (let index = 0; index < count; index++) {
-        const size = .065 + random() * .07;
+        const size = .13 + random() * .13;
         const mesh = box(size, size, size, mats.waterSplash, false, false);
-        mesh.position.set(x, tile.topY + .06, z);
+        mesh.position.set(x, tile.topY + .34, z);
+        mesh.renderOrder = 3;
         water.add(mesh);
         const angle = random() * Math.PI * 2;
         const speed = .65 + random() * (1.1 + impact * .07);
         waterParticles.push({
           mesh,
           x: x + (random() - .5) * .14,
-          y: tile.topY + .06 + random() * .06,
+          y: tile.topY + .30 + random() * .18,
           z: z + (random() - .5) * .14,
           vx: Math.cos(angle) * speed,
-          vy: .8 + random() * .75 + impact * .05,
+          vy: 3.15 + random() * 1.65 + impact * .18,
           vz: Math.sin(angle) * speed,
           spinX: (random() - .5) * 18,
           spinZ: (random() - .5) * 18,
@@ -426,7 +434,7 @@ function findBarnSite(terrain, island) {
   return candidates[0];
 }
 
-function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random) {
+function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, strictBanks) {
   const candidates = shuffle(cells.filter(cell => {
     if (cell.dist < 1.25 || cell.dist > island.r - 1.55) return false;
     const center = terrain.get(gridKey(cell.gx, cell.gz));
@@ -434,7 +442,7 @@ function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, 
     return [[0, 0], [1, 0], [0, 1], [1, 1]].every(([dx, dz]) => {
       const neighbor = terrain.get(gridKey(cell.gx + dx, cell.gz + dz));
       return neighbor?.islandId === island.id && Math.abs(neighbor.topY - center.topY) < .01 &&
-        hasSolidSurroundings(neighbor, terrain, island.id);
+        (strictBanks ? hasSolidSurroundings(neighbor, terrain, island.id) : hasCardinalBlocks(neighbor, terrain, island.id));
     });
   }), random);
 
@@ -442,7 +450,7 @@ function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, 
     const lakeKeys = new Set([[0, 0], [1, 0], [0, 1], [1, 1]]
       .map(([dx, dz]) => gridKey(candidate.gx + dx, candidate.gz + dz)));
     const source = terrain.get(gridKey(candidate.gx + 1, candidate.gz + 1));
-    const route = findWaterRoute(source, lakeKeys, terrain, island.id);
+    const route = findWaterRoute(source, lakeKeys, terrain, island.id, strictBanks);
     if (!route) continue;
 
     const waterKeys = new Set([...lakeKeys, ...route.path.map(tile => gridKey(tile.gx, tile.gz))]);
@@ -493,7 +501,7 @@ function removeTopFace(mesh) {
   original.dispose();
 }
 
-function findWaterRoute(source, lakeKeys, terrain, islandId) {
+function findWaterRoute(source, lakeKeys, terrain, islandId, strictBanks) {
   const queue = [{ tile: source, path: [source] }];
   const visited = new Set([gridKey(source.gx, source.gz)]);
   const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
@@ -506,8 +514,9 @@ function findWaterRoute(source, lakeKeys, terrain, islandId) {
     });
     // Only the final tile may touch the island edge, and it needs a single,
     // deliberate side for the waterfall rather than a corner-shaped opening.
+    const hasBanks = strictBanks ? hasSolidSurroundings : hasCardinalBlocks;
     if (outlets.length === 1 && current.path.length >= 4 &&
-      hasSolidSurroundings(current.tile, terrain, islandId, outlets[0])) {
+      hasBanks(current.tile, terrain, islandId, outlets[0])) {
       return { path: current.path, outlet: outlets[0] };
     }
     if (outlets.length) continue;
@@ -520,7 +529,7 @@ function findWaterRoute(source, lakeKeys, terrain, islandId) {
       // never climbs uphill on its way to the island edge.
       if (neighbor.topY > current.tile.topY + .01) continue;
       const downhill = neighbor.topY < current.tile.topY - .01;
-      if (!hasSolidSurroundings(current.tile, terrain, islandId, downhill ? direction : null)) continue;
+      if (!hasBanks(current.tile, terrain, islandId, downhill ? direction : null)) continue;
       visited.add(key);
       queue.push({ tile: neighbor, path: [...current.path, neighbor] });
     }
@@ -540,6 +549,12 @@ function hasSolidSurroundings(tile, terrain, islandId, opening = null) {
       }
       return neighbor?.islandId === islandId && neighbor.topY >= tile.topY - .01;
     });
+}
+
+function hasCardinalBlocks(tile, terrain, islandId, opening = null) {
+  return [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }]
+    .filter(direction => direction.x !== opening?.x || direction.z !== opening?.z)
+    .every(direction => terrain.get(gridKey(tile.gx + direction.x, tile.gz + direction.z))?.islandId === islandId);
 }
 
 function addWaterSurface(tile, water, lake) {

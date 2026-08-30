@@ -12,6 +12,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - small procedural lakes that feed animated rivers and waterfalls spilling below the islands
 - continuous generated moisture and sunlight fields that tint grass and vary tree and rock density
 - crop suitability mode with Wheat, Corn, Rice, and Potato views; selecting it switches to an elevated map camera with drag and keyboard panning
+- a second, round build button beneath suitability: open it to enter a pannable construction view, select the free detailed grain silo, and drag it onto a clear level patch; placed silos have physical collision and can be repositioned in build mode
 - softly lit, gently fogged miniature terrain with muted grass / dirt / stone layers and deep, pointed undersides
 - sparse, clustered visual-only grass tufts that the tractor can drive through and plough clear
 - blue hero tractor with a glazed cab, treaded wheels, lamps, beacon, and squash-and-stretch jumps
@@ -24,7 +25,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - jump button; no ramps required
 - falling and automatic tractor rescue
 - pause menu with a controls reference and confirmed generation of a new procedural farm
-- keyboard fallback: WASD/arrows to drive, Space to jump, E to raise/lower the tool, Escape for the menu, and 1–3 for equipment inside the barn workshop
+- keyboard fallback: WASD/arrows to drive, Space to jump, E to raise/lower the tool, B for the build menu, Escape to leave building/suitability view or open the menu, and 1–3 for equipment inside the barn workshop
 - Rapier kinematic capsule controller with ground snapping, wall-contact jumping, and fixed 60 Hz simulation
 - seamless terrain collision meshes with solid plateau walls and lower island layers
 
@@ -34,6 +35,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - `physics.js` — Rapier world, seamless static meshes, and tractor character controller
 - `world-generator.js` — procedural islands, environmental fields, terrain meshes, and collider inputs
 - `crops.js` — crop environmental profiles and pure suitability/growth/yield calculations
+- `buildings.js` — detailed procedural silo, placement animation/audio feedback, and placed-building state
 - `tractor.js` — tractor and swappable attachment visuals
 - `farm-assets.js` — reusable procedural vehicle and equipment factories shared by gameplay and UI previews
 - `ui.js` — touch and keyboard controls, HUD, workshop, menus, and suitability controls

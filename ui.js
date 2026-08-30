@@ -36,7 +36,7 @@ function icon(name) {
   return svg;
 }
 
-export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOverlayChange, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   const cropIds = Object.keys(crops);
@@ -45,6 +45,8 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   let toolEnabled = false;
   let cropIndex = Math.max(0, cropIds.indexOf('corn'));
   let cropOverlayEnabled = false;
+  let buildMode = false;
+  let selectedBuilding = null;
   let insideBarn = false;
   let overlayState = null;
   let stickPointer = null;
@@ -54,6 +56,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   let panLastY = 0;
   let panDragX = 0;
   let panDragY = 0;
+  let buildPointer = null;
   let toastTimer = null;
   let restoreFocus = null;
   let grainFill = 0;
@@ -81,6 +84,10 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   const grainFillElement = document.querySelector('#grainFill');
   const grainValue = document.querySelector('#grainValue');
   const suitabilityToggle = document.querySelector('#suitabilityToggle');
+  const buildingToggle = document.querySelector('#buildingToggle');
+  const buildPalette = document.querySelector('#buildPalette');
+  const siloOption = document.querySelector('#siloOption');
+  const viewHint = document.querySelector('#viewHint');
   const cropSelector = document.querySelector('#cropSelector');
   const cropName = document.querySelector('#cropName');
   const toastElement = document.querySelector('#toast');
@@ -111,11 +118,18 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     if (!event || event.pointerId === panPointer) panPointer = null;
   };
 
+  const clearBuildPointer = event => {
+    if (buildPointer === null || (event && event.pointerId !== buildPointer)) return;
+    onBuildPointerCancel?.();
+    buildPointer = null;
+  };
+
   const clearInput = () => {
     keys.clear();
     input.jumpQueued = false;
     clearStick();
     clearPan();
+    clearBuildPointer();
     panDragX = panDragY = 0;
   };
 
@@ -156,13 +170,26 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     suitabilityToggle.setAttribute('aria-label', cropOverlayEnabled ? 'Hide crop suitability' : 'Show crop suitability');
     cropSelector.hidden = !cropOverlayEnabled;
     cropName.textContent = crop.name;
-    document.body.dataset.viewMode = cropOverlayEnabled ? 'overlay' : 'drive';
+    document.body.dataset.viewMode = buildMode ? 'build' : cropOverlayEnabled ? 'overlay' : 'drive';
+  };
+
+  const renderBuildMode = () => {
+    buildingToggle.setAttribute('aria-pressed', String(buildMode));
+    buildingToggle.setAttribute('aria-label', buildMode ? 'Leave building mode' : 'Open building menu');
+    buildingToggle.title = buildMode ? 'Leave building mode' : 'Buildings';
+    buildPalette.hidden = !buildMode;
+    siloOption.setAttribute('aria-pressed', String(selectedBuilding === 'silo'));
+    viewHint.textContent = buildMode
+      ? selectedBuilding ? 'DRAG ON LAND TO PLACE · WASD / ARROWS TO PAN' : 'SELECT A BUILDING · DRAG EMPTY GROUND TO PAN'
+      : 'DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE';
+    renderCropOverlay();
   };
 
   const notifyCropOverlay = () => onCropOverlayChange({ enabled: cropOverlayEnabled, cropId: cropIds[cropIndex] });
 
   const setCropOverlay = enabled => {
     if (overlayState || cropOverlayEnabled === enabled) return;
+    if (enabled && buildMode) setBuildMode(false, true);
     cropOverlayEnabled = enabled;
     clearInput();
     renderCropOverlay();
@@ -170,8 +197,22 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     toast(cropOverlayEnabled ? `${crops[cropIds[cropIndex]].name} suitability` : 'Driving view');
   };
 
+  const setBuildMode = (enabled, silent = false) => {
+    if (overlayState || buildMode === enabled) return;
+    if (enabled && cropOverlayEnabled) {
+      cropOverlayEnabled = false;
+      notifyCropOverlay();
+    }
+    buildMode = enabled;
+    if (!buildMode) selectedBuilding = null;
+    clearInput();
+    renderBuildMode();
+    onBuildModeChange(buildMode);
+    if (!silent) toast(buildMode ? 'Building mode' : 'Driving view');
+  };
+
   const toggleTool = () => {
-    if (overlayState || cropOverlayEnabled) return;
+    if (overlayState || cropOverlayEnabled || buildMode) return;
     toolEnabled = !toolEnabled;
     renderTool();
     onToolChange(toolEnabled);
@@ -343,6 +384,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
       event.preventDefault();
       if (overlayState === 'barn') closeBarn();
       else if (overlayState) closePause();
+      else if (buildMode) setBuildMode(false);
       else if (cropOverlayEnabled) setCropOverlay(false);
       else openPause();
       return;
@@ -359,33 +401,55 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     if (overlayState) return;
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
     keys.add(event.code);
-    if (!cropOverlayEnabled && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
-    if (!cropOverlayEnabled && event.code === 'KeyE' && !event.repeat) toggleTool();
+    if (!cropOverlayEnabled && !buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
+    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyE' && !event.repeat) toggleTool();
+    if (!cropOverlayEnabled && event.code === 'KeyB' && !event.repeat) setBuildMode(!buildMode);
   });
   window.addEventListener('keyup', event => keys.delete(event.code));
   window.addEventListener('blur', clearInput);
   window.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') setInputMode('touch'); }, { capture: true });
 
   panSurface.addEventListener('pointerdown', event => {
-    if (!cropOverlayEnabled || overlayState || panPointer !== null) return;
+    if ((!cropOverlayEnabled && !buildMode) || overlayState || panPointer !== null || buildPointer !== null) return;
+    if (buildMode && onBuildPointerStart?.({ x: event.clientX, y: event.clientY })) {
+      buildPointer = event.pointerId;
+      panSurface.setPointerCapture(event.pointerId);
+      return;
+    }
     panPointer = event.pointerId;
     panLastX = event.clientX;
     panLastY = event.clientY;
     panSurface.setPointerCapture(event.pointerId);
   });
   panSurface.addEventListener('pointermove', event => {
+    if (event.pointerId === buildPointer) {
+      onBuildPointerMove?.({ x: event.clientX, y: event.clientY });
+      return;
+    }
     if (event.pointerId !== panPointer) return;
     panDragX += event.clientX - panLastX;
     panDragY += event.clientY - panLastY;
     panLastX = event.clientX;
     panLastY = event.clientY;
   });
-  panSurface.addEventListener('pointerup', clearPan);
-  panSurface.addEventListener('pointercancel', clearPan);
-  panSurface.addEventListener('lostpointercapture', clearPan);
+  panSurface.addEventListener('pointerup', event => {
+    if (event.pointerId === buildPointer) {
+      onBuildPointerEnd?.();
+      buildPointer = null;
+    }
+    clearPan(event);
+  });
+  panSurface.addEventListener('pointercancel', event => {
+    clearBuildPointer(event);
+    clearPan(event);
+  });
+  panSurface.addEventListener('lostpointercapture', event => {
+    clearBuildPointer(event);
+    clearPan(event);
+  });
 
   stickZone.addEventListener('pointerdown', event => {
-    if (overlayState || cropOverlayEnabled || stickPointer !== null) return;
+    if (overlayState || cropOverlayEnabled || buildMode || stickPointer !== null) return;
     event.preventDefault();
     setInputMode('touch');
     const rect = stickZone.getBoundingClientRect();
@@ -405,12 +469,19 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   stickZone.addEventListener('lostpointercapture', clearStick);
 
   document.querySelector('#jump').addEventListener('pointerdown', event => {
-    if (overlayState || cropOverlayEnabled) return;
+    if (overlayState || cropOverlayEnabled || buildMode) return;
     event.preventDefault();
     input.jumpQueued = true;
   });
   toolToggle.addEventListener('click', toggleTool);
   suitabilityToggle.addEventListener('click', () => setCropOverlay(!cropOverlayEnabled));
+  buildingToggle.addEventListener('click', () => setBuildMode(!buildMode));
+  siloOption.addEventListener('click', () => {
+    if (!buildMode) return;
+    selectedBuilding = selectedBuilding === 'silo' ? null : 'silo';
+    renderBuildMode();
+    toast(selectedBuilding ? 'Silo selected · free' : 'Building selection cleared');
+  });
   document.querySelector('#previousCrop').addEventListener('click', () => {
     cropIndex = (cropIndex + cropIds.length - 1) % cropIds.length;
     renderCropOverlay();
@@ -462,11 +533,12 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   renderTool();
   renderGrainMeter();
   renderCropOverlay();
+  renderBuildMode();
   renderLoadoutBays();
 
   return {
     driveInput() {
-      if (overlayState || cropOverlayEnabled) return { x: 0, y: 0 };
+      if (overlayState || cropOverlayEnabled || buildMode) return { x: 0, y: 0 };
       let x = 0, y = 0;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
       if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
@@ -476,7 +548,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
       return { x: input.x, y: -input.y };
     },
     consumePan() {
-      if (overlayState || !cropOverlayEnabled) return { keyboardX: 0, keyboardZ: 0, dragX: 0, dragY: 0 };
+      if (overlayState || (!cropOverlayEnabled && !buildMode)) return { keyboardX: 0, keyboardZ: 0, dragX: 0, dragY: 0 };
       let keyboardX = 0, keyboardZ = 0;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) keyboardX -= 1;
       if (keys.has('KeyD') || keys.has('ArrowRight')) keyboardX += 1;
@@ -487,13 +559,18 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
       return pan;
     },
     consumeJump() {
-      if (overlayState || cropOverlayEnabled) return false;
+      if (overlayState || cropOverlayEnabled || buildMode) return false;
       const jump = input.jumpQueued;
       input.jumpQueued = false;
       return jump;
     },
     activeLoadout: () => ({ ...activeLoadout }),
     cropOverlayState: () => ({ enabled: cropOverlayEnabled, cropId: cropIds[cropIndex] }),
+    buildState: () => ({ enabled: buildMode, selectedBuilding }),
+    clearBuildingSelection() {
+      selectedBuilding = null;
+      renderBuildMode();
+    },
     toolEnabled: () => toolEnabled,
     setHarvestMeter(nextFill, nextCapacity) {
       grainFill = Math.max(0, Math.min(nextCapacity, nextFill));
@@ -509,6 +586,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     },
     resetFarm() {
       insideBarn = false;
+      if (buildMode) setBuildMode(false, true);
       toolEnabled = false;
       grainFill = 0;
       renderTool();

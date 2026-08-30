@@ -1,11 +1,16 @@
 import { THREE } from './shared.js?v=combine-fix-20260830-6';
 import { createPhysics } from './physics.js?v=combine-fix-20260830-6';
 import { createLoadoutPreview, createTractor } from './tractor.js?v=combine-fix-20260830-6';
-import { createUi } from './ui.js?v=combine-fix-20260830-6';
-import { generateFarm } from './world-generator.js?v=combine-fix-20260830-6';
+import { createUi } from './ui.js?v=render-perf-20260830-11';
+import { createBuildingManager } from './buildings.js?v=render-perf-20260830-11';
+import { generateFarm } from './world-generator.js?v=render-perf-20260830-11';
+
+const pixelRatioCap = 1.5;
+const targetFrameInterval = 1000 / 60 * .96;
+document.body.dataset.renderQuality = 'high';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -20,6 +25,7 @@ scene.fog = new THREE.Fog(0xc7dce0, 34, 92);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, .1, 200);
 const driveCameraOffset = new THREE.Vector3(12, 20, 28);
 const mapCameraOffset = new THREE.Vector3(0, 44, 19);
+const buildCameraOffset = new THREE.Vector3(22, 30, 28);
 const cameraForward = new THREE.Vector2(-driveCameraOffset.x, -driveCameraOffset.z).normalize();
 const cameraRight = new THREE.Vector2(-cameraForward.y, cameraForward.x);
 const driveCameraTarget = new THREE.Vector3();
@@ -85,14 +91,23 @@ const physics = await createPhysics();
 const tractor = createTractor(scene);
 let farm;
 let ui;
+let buildings;
 let loadoutPreviews = null;
 let heading = 0;
 let elapsed = 0;
 let last = performance.now();
+let animationLast = last;
+let frameBudget = targetFrameInterval;
+let gameplayWasBlocked = false;
+let renderRequested = true;
 let viewMode = 'drive';
 const GRAIN_CAPACITY = 36;
 let grainFill = 0;
 let activeVehicle = 'tractor';
+const buildRaycaster = new THREE.Raycaster();
+const buildPointer = new THREE.Vector2();
+const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const buildWorldPoint = new THREE.Vector3();
 
 function updateDriveCamera(state, dt, snap = false) {
   const goal = new THREE.Vector3(state.x, state.y + .75, state.z);
@@ -106,6 +121,11 @@ function updateMapCamera() {
   camera.lookAt(mapCameraTarget);
 }
 
+function updateBuildCamera() {
+  camera.position.copy(mapCameraTarget).add(buildCameraOffset);
+  camera.lookAt(mapCameraTarget);
+}
+
 function setCameraView(nextMode, snapTarget = false) {
   viewMode = nextMode;
   if (viewMode === 'overlay') {
@@ -114,6 +134,13 @@ function setCameraView(nextMode, snapTarget = false) {
     camera.fov = 50;
     camera.updateProjectionMatrix();
     updateMapCamera();
+  }
+  else if (viewMode === 'build') {
+    const state = physics.tractorState();
+    if (snapTarget) mapCameraTarget.set(state.x, 0, state.z);
+    camera.fov = 44;
+    camera.updateProjectionMatrix();
+    updateBuildCamera();
   }
   else {
     camera.fov = 38;
@@ -135,22 +162,60 @@ function applyCropOverlay() {
   }
 }
 
+function applyBuildMode(enabled) {
+  if (!farm) return;
+  buildings?.setBuildMode(enabled);
+  if (enabled) {
+    farm.hideCropOverlay();
+    setCameraView('build', viewMode !== 'build');
+  }
+  else if (viewMode === 'build') setCameraView('drive');
+}
+
+function worldAtScreenPoint(point) {
+  buildPointer.set(point.x / innerWidth * 2 - 1, -(point.y / innerHeight) * 2 + 1);
+  buildRaycaster.setFromCamera(buildPointer, camera);
+  return buildRaycaster.ray.intersectPlane(buildPlane, buildWorldPoint) ? buildWorldPoint.clone() : null;
+}
+
+function buildingAtScreenPoint(point) {
+  buildPointer.set(point.x / innerWidth * 2 - 1, -(point.y / innerHeight) * 2 + 1);
+  buildRaycaster.setFromCamera(buildPointer, camera);
+  for (const hit of buildRaycaster.intersectObject(farm.group, true)) {
+    const building = buildings?.selectFromObject(hit.object);
+    if (building) return building;
+  }
+  return null;
+}
+
+function beginBuildingDrag(point) {
+  const worldPoint = worldAtScreenPoint(point);
+  if (!worldPoint || !buildings) return false;
+  return buildings.beginDrag(worldPoint, ui.buildState().selectedBuilding, buildingAtScreenPoint(point));
+}
+
 function resetTractor(showMessage = false) {
   physics.resetTractor(farm.spawn);
   heading = 0;
   const state = physics.tractorState();
   tractor.sync(state, heading, 0, 0, 0, elapsed);
-  if (viewMode === 'overlay') {
+  if (viewMode === 'overlay' || viewMode === 'build') {
     mapCameraTarget.set(state.x, 0, state.z);
-    updateMapCamera();
+    if (viewMode === 'build') updateBuildCamera();
+    else updateMapCamera();
   }
   else updateDriveCamera(state, 0, true);
   if (showMessage) ui.toast('Tractor rescued');
 }
 
 function regenerateFarm() {
-  if (farm) scene.remove(farm.group);
+  if (farm) {
+    farm.dispose();
+    buildings?.clear();
+    scene.remove(farm.group);
+  }
   farm = generateFarm(scene, physics);
+  buildings?.setParent(farm.group);
   if (physics.tractorBody) resetTractor();
   else physics.createTractor(farm.spawn);
   ui?.resetFarm();
@@ -171,9 +236,27 @@ ui = createUi({
   onLoadoutPreview: loadout => loadoutPreviews?.setLoadout(loadout),
   onToolChange: enabled => tractor.setToolEnabled(enabled),
   onCropOverlayChange: applyCropOverlay,
+  onBuildModeChange: applyBuildMode,
+  onBuildPointerStart: beginBuildingDrag,
+  onBuildPointerMove: point => {
+    const worldPoint = worldAtScreenPoint(point);
+    if (worldPoint) buildings?.moveDrag(worldPoint);
+  },
+  onBuildPointerEnd: () => {
+    if (buildings?.endDrag()) {
+      ui.clearBuildingSelection();
+      ui.toast('Silo placed · free');
+    }
+  },
+  onBuildPointerCancel: () => buildings?.cancelDrag(),
   panSurface: renderer.domElement,
 });
 regenerateFarm();
+buildings = createBuildingManager({
+  getSiteAt: (x, z, radius) => farm?.buildingSiteAt(x, z, radius),
+  setCollider: (id, obstacle) => farm?.setBuildingCollider(id, obstacle),
+});
+buildings.setParent(farm.group);
 resetTractor();
 
 function createLoadoutPreviews() {
@@ -277,36 +360,60 @@ function updateMap(dt) {
   const pan = ui.consumePan();
   mapCameraTarget.x += pan.keyboardX * 19 * dt - pan.dragX * .055;
   mapCameraTarget.z += pan.keyboardZ * 19 * dt - pan.dragY * .055;
-  updateMapCamera();
+  if (viewMode === 'build') updateBuildCamera();
+  else updateMapCamera();
 }
 
 function update(dt) {
   if (ui.isGameplayBlocked()) return;
   elapsed += dt;
-  if (viewMode === 'overlay') updateMap(dt);
+  if (viewMode === 'overlay' || viewMode === 'build') updateMap(dt);
   else updateDrive(dt);
   farm?.animate(elapsed);
+  buildings?.animate(elapsed);
   clouds.animate(elapsed);
 }
 
 function animate(now) {
   requestAnimationFrame(animate);
+  const gameplayBlocked = ui.isGameplayBlocked();
+  if (gameplayBlocked) {
+    if (ui.isBarnOpen() && !loadoutPreviews) {
+      loadoutPreviews = createLoadoutPreviews();
+      loadoutPreviews.setLoadout(ui.activeLoadout());
+      loadoutPreviews.freeze();
+    }
+    if (!gameplayWasBlocked || renderRequested) renderer.render(scene, camera);
+    gameplayWasBlocked = true;
+    renderRequested = false;
+    last = now;
+    animationLast = now;
+    frameBudget = targetFrameInterval;
+    return;
+  }
+  if (gameplayWasBlocked) {
+    gameplayWasBlocked = false;
+    last = now;
+    animationLast = now;
+    frameBudget = targetFrameInterval;
+  }
+  frameBudget += Math.min(100, now - animationLast);
+  animationLast = now;
+  if (frameBudget < targetFrameInterval) return;
+  frameBudget %= targetFrameInterval;
   const dt = Math.min(.033, (now - last) / 1000);
   last = now;
   update(dt);
-  if (ui.isBarnOpen() && !loadoutPreviews) {
-    loadoutPreviews = createLoadoutPreviews();
-    loadoutPreviews.setLoadout(ui.activeLoadout());
-    loadoutPreviews.freeze();
-  }
   renderer.render(scene, camera);
+  renderRequested = false;
 }
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
+  renderRequested = true;
 });
 
 requestAnimationFrame(animate);

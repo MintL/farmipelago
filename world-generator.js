@@ -22,6 +22,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const obstacles = [];
   const lowerBlocks = [];
   const bridgeBlocks = [];
+  const buildingObstacles = new Map();
   const trees = [];
   const tallGrass = new THREE.Group();
   const water = new THREE.Group();
@@ -362,6 +363,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
 
   if (!waterFeatureCount && attempt < 7) {
     scene.remove(group);
+    disposeObjectResources(group);
     return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1);
   }
 
@@ -441,6 +443,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     group,
     terrain,
     spawn: { x: start.x, y: start.topY, z: start.z },
+    dispose() {
+      disposeObjectResources(group);
+    },
     animate(elapsed) {
       waterElapsed = elapsed;
       mats.water.uniforms.time.value = elapsed;
@@ -510,6 +515,43 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         if (neighbor) return neighbor.topY;
       }
       return null;
+    },
+    buildingSiteAt(x, z, radius) {
+      const gx = Math.floor(x / TILE + .5);
+      const gz = Math.floor(z / TILE + .5);
+      const center = terrain.get(gridKey(gx, gz));
+      if (!center || center.water) return null;
+      const span = Math.max(0, Math.ceil(radius - .5));
+      for (let dx = -span; dx <= span; dx++) {
+        for (let dz = -span; dz <= span; dz++) {
+          const tile = terrain.get(gridKey(gx + dx, gz + dz));
+          if (!tile || tile.water || tile.hasTree || Math.abs(tile.topY - center.topY) > .01) return null;
+        }
+      }
+      if (barnArea) {
+        const dx = center.x - barnArea.x;
+        const dz = center.z - barnArea.z;
+        const localX = dx * Math.cos(barnArea.yaw) - dz * Math.sin(barnArea.yaw);
+        const localZ = dx * Math.sin(barnArea.yaw) + dz * Math.cos(barnArea.yaw);
+        if (Math.abs(localX) < barnArea.width * .5 + radius && Math.abs(localZ) < barnArea.depth * .5 + radius) return null;
+      }
+      for (const obstacle of buildingObstacles.values()) {
+        if (Math.hypot(center.x - obstacle.x, center.z - obstacle.z) < radius + obstacle.radius + .25) return null;
+      }
+      return { x: center.x, y: center.topY, z: center.z };
+    },
+    setBuildingCollider(id, obstacle) {
+      const existing = buildingObstacles.get(id);
+      if (existing) {
+        const index = obstacles.indexOf(existing);
+        if (index !== -1) obstacles.splice(index, 1);
+        buildingObstacles.delete(id);
+      }
+      if (obstacle) {
+        buildingObstacles.set(id, obstacle);
+        obstacles.push(obstacle);
+      }
+      physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
     },
     ploughAt(x, z, levelY) {
       const tile = tileAtLevel(x, z, levelY, terrain);
@@ -712,24 +754,31 @@ function createOcclusionSystem(group) {
   const ray = new THREE.Ray();
   const sightline = new THREE.Vector3();
   const hitPoint = new THREE.Vector3();
+  let refreshElapsed = Infinity;
   const entries = group.children
     .filter(child => child.isGroup && child.name !== 'tall-grass' && child.name !== 'water' && child.name !== 'crop-overlay')
-    .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1 }));
+    .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1, targetOpacity: 1 }));
 
   return {
     update(cameraPosition, tractorState, delta) {
       if (!cameraPosition || !tractorState) return;
-      sightline.set(tractorState.x, tractorState.y + .75, tractorState.z).sub(cameraPosition);
-      const sightlineLength = sightline.length();
-      if (sightlineLength < .001) return;
-      ray.set(cameraPosition, sightline.multiplyScalar(1 / sightlineLength));
+      refreshElapsed += delta;
       const fadeAmount = 1 - Math.exp(-12 * Math.min(.1, delta));
-
+      if (refreshElapsed >= 1 / 12) {
+        refreshElapsed = 0;
+        sightline.set(tractorState.x, tractorState.y + .75, tractorState.z).sub(cameraPosition);
+        const sightlineLength = sightline.length();
+        if (sightlineLength >= .001) {
+          ray.set(cameraPosition, sightline.multiplyScalar(1 / sightlineLength));
+          for (const entry of entries) {
+            entry.bounds.setFromObject(entry.object);
+            const hit = ray.intersectBox(entry.bounds, hitPoint);
+            entry.targetOpacity = hit && hit.distanceTo(cameraPosition) < sightlineLength - .2 ? .18 : 1;
+          }
+        }
+      }
       for (const entry of entries) {
-        entry.bounds.setFromObject(entry.object);
-        const hit = ray.intersectBox(entry.bounds, hitPoint);
-        const targetOpacity = hit && hit.distanceTo(cameraPosition) < sightlineLength - .2 ? .18 : 1;
-        entry.opacity = THREE.MathUtils.lerp(entry.opacity, targetOpacity, fadeAmount);
+        entry.opacity = THREE.MathUtils.lerp(entry.opacity, entry.targetOpacity, fadeAmount);
         entry.materials.forEach(material => { material.opacity = entry.opacity; });
       }
     },
@@ -754,6 +803,22 @@ function cloneTransparentMaterials(object) {
       : cloneMaterial(child.material);
   });
   return [...materialClones.values()];
+}
+
+function disposeObjectResources(root) {
+  const sharedMaterials = new Set(Object.values(mats));
+  const geometries = new Set();
+  const materials = new Set();
+  root.traverse(object => {
+    if (!object.isMesh) return;
+    if (object.geometry) geometries.add(object.geometry);
+    const objectMaterials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of objectMaterials) {
+      if (material && !sharedMaterials.has(material)) materials.add(material);
+    }
+  });
+  geometries.forEach(geometry => geometry.dispose());
+  materials.forEach(material => material.dispose());
 }
 
 function findBarnSite(terrain, island) {

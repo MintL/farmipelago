@@ -60,6 +60,7 @@
       white-space: nowrap;
     }
     #topLeftGroup { min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
+    #fieldControls { display: grid; gap: 8px; }
     #suitabilityControl { pointer-events: auto; position: relative; flex: 0 0 auto; }
     #suitabilityToggle {
       min-height: 48px;
@@ -79,6 +80,24 @@
     #suitabilityToggle .icon { width: 18px; height: 18px; color: var(--muted); }
     #suitabilityToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
     #suitabilityToggle[aria-pressed="true"] .icon { color: var(--accent-strong); }
+    #buildingControl { pointer-events: auto; }
+    #buildingToggle {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--glass);
+      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
+      color: var(--muted);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #buildingToggle .icon { width: 21px; height: 21px; }
+    #buildingToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
+    #buildingToggle:active { transform: scale(.95); }
     #grainMeter {
       min-width: 142px;
       display: grid;
@@ -144,8 +163,12 @@
     }
     body[data-view-mode="overlay"] #stickZone,
     body[data-view-mode="overlay"] #actionCluster,
-    body[data-view-mode="overlay"] #desktopHints { display: none; }
-    body[data-view-mode="overlay"] #viewHint { display: block; }
+    body[data-view-mode="overlay"] #desktopHints,
+    body[data-view-mode="build"] #stickZone,
+    body[data-view-mode="build"] #actionCluster,
+    body[data-view-mode="build"] #desktopHints { display: none; }
+    body[data-view-mode="overlay"] #viewHint,
+    body[data-view-mode="build"] #viewHint { display: block; }
     #topBar {
       position: absolute;
       top: var(--safe-top);
@@ -172,6 +195,41 @@
       -webkit-backdrop-filter: blur(16px) saturate(120%);
     }
     #menuToggle:active { transform: scale(.96); }
+    #buildPalette {
+      pointer-events: auto;
+      position: absolute;
+      top: calc(var(--safe-top) + 112px);
+      left: var(--safe-left);
+      width: 164px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--glass-strong);
+      box-shadow: 0 14px 35px rgba(8, 14, 13, .24);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #buildPalette .eyebrow { display: block; margin: 1px 4px 7px; }
+    .buildingOption {
+      width: 100%;
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 25px 1fr auto;
+      align-items: center;
+      gap: 7px;
+      padding: 7px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: rgba(48, 55, 43, .04);
+      color: var(--ink);
+      text-align: left;
+    }
+    .buildingOption .icon { width: 21px; height: 21px; color: var(--accent); }
+    .buildingOption strong { display: block; font-size: 12px; }
+    .buildingOption small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .buildingOption em { padding: 3px 5px; border-radius: 999px; background: rgba(82, 102, 72, .12); color: var(--accent-strong); font-size: 9px; font-style: normal; font-weight: 800; }
+    .buildingOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .18); }
+    #buildPalette p { margin: 8px 4px 1px; color: var(--muted); font-size: 10px; line-height: 1.35; }
 
     #stickZone {
       pointer-events: auto;
@@ -517,17 +575,24 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="buildVersion">0.6</div>
+    <div id="buildVersion">0.11</div>
     <header id="topBar">
       <div id="topLeftGroup">
-        <div id="suitabilityControl">
-          <button id="suitabilityToggle" type="button" aria-label="Show crop suitability" aria-pressed="false">
-            <svg class="icon" aria-hidden="true"><use href="#icon-ready"></use></svg><span class="suitabilityLabel">Suitability</span>
-          </button>
-          <div id="cropSelector" hidden aria-label="Crop suitability selector">
-            <button id="previousCrop" type="button" aria-label="Previous crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
-            <span id="cropName">Wheat</span>
-            <button id="nextCrop" type="button" aria-label="Next crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
+        <div id="fieldControls">
+          <div id="suitabilityControl">
+            <button id="suitabilityToggle" type="button" aria-label="Show crop suitability" aria-pressed="false">
+              <svg class="icon" aria-hidden="true"><use href="#icon-ready"></use></svg><span class="suitabilityLabel">Suitability</span>
+            </button>
+            <div id="cropSelector" hidden aria-label="Crop suitability selector">
+              <button id="previousCrop" type="button" aria-label="Previous crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
+              <span id="cropName">Wheat</span>
+              <button id="nextCrop" type="button" aria-label="Next crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
+            </div>
+          </div>
+          <div id="buildingControl">
+            <button id="buildingToggle" type="button" aria-label="Open building menu" aria-pressed="false" title="Buildings">
+              <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
+            </button>
           </div>
         </div>
         <div id="grainMeter" role="progressbar" aria-label="Combine grain tank" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
@@ -539,6 +604,14 @@
       </button>
     </header>
     <div id="viewHint">DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE</div>
+    <aside id="buildPalette" hidden aria-label="Building menu">
+      <span class="eyebrow">Buildings</span>
+      <button id="siloOption" class="buildingOption" type="button" aria-pressed="false">
+        <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
+        <span><strong>Silo</strong><small>Grain storage</small></span><em>Free</em>
+      </button>
+      <p>Select the silo, then drag it onto a clear level patch. Drag empty land to pan.</p>
+    </aside>
 
     <div id="stickZone" aria-hidden="true">
       <div id="stickBase"><div id="stickKnob"></div></div>
@@ -556,7 +629,7 @@
     </div>
 
     <div id="desktopHints" aria-hidden="true">
-      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>Esc</kbd> Menu
+      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
     </div>
 
     <div id="overlay" hidden>
@@ -618,7 +691,8 @@
               <strong>Jump</strong><span>Space or jump button</span>
               <strong>Tool</strong><span>E or equipped-tool button</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
-              <strong>Menu</strong><span>Escape or menu button; Escape closes suitability first</span>
+              <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
+              <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
             </div>
             <button id="requestRegenerate" class="pauseAction" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
@@ -647,6 +721,7 @@
     <symbol id="icon-field" viewBox="0 0 24 24"><path d="M4 19 9 5M10 19l5-14M16 19l4-11M3 19h18" /></symbol>
     <symbol id="icon-corn" viewBox="0 0 24 24"><path d="M12 21V8M12 17c-4 0-6-2-6-6 4 0 6 2 6 6ZM12 13c4 0 6-2 6-6-4 0-6 2-6 6ZM12 8c-2-1-3-3-2-5 2 1 3 3 2 5Z" /></symbol>
     <symbol id="icon-ready" viewBox="0 0 24 24"><path d="M12 3v18M12 7c-3-2-5-1-6 1 2 2 4 2 6 0M12 12c3-2 5-1 6 1-2 2-4 2-6 0M8 21h8" /></symbol>
+    <symbol id="icon-silo" viewBox="0 0 24 24"><path d="M6 20V9a6 6 0 0 1 12 0v11M4 20h16M7 9h10M12 3v2M9 20v-7h6v7M5 9h14" /><path d="M17 8v5M15 8v5" /></symbol>
     <symbol id="icon-weeds" viewBox="0 0 24 24"><path d="M12 21v-9M12 16c-4 0-7-2-7-6 4 0 7 2 7 6ZM12 13c0-4 2-7 6-8 1 4-1 7-6 8ZM8 21h8" /></symbol>
     <symbol id="icon-jump" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6M12 5v14" /></symbol>
     <symbol id="icon-plough" viewBox="0 0 24 24"><path d="M5 5v8c0 4 3 6 7 6h7M5 9h8l3 3M9 19l2-5M15 19l2-5" /></symbol>
@@ -664,6 +739,6 @@
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=combine-fix-20260830-6"></script>
+  <script type="module" src="./main.js?v=high-profile-20260830-11"></script>
 </body>
 </html>

@@ -1,16 +1,22 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=combine-fix-20260830-6';
+import { cropStats as environmentalCropStats, crops } from './crops.js?v=combine-fix-20260830-6';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
-const BRIDGE_GAP_TILES = 3;
+const BRIDGE_GAP_TILES = 1;
 const BRIDGE_WIDTH = TILE * 1.25;
 const BRIDGE_THICKNESS = 0.18;
 const STARTER_ISLAND_ID = 0;
 const BARN_TREE_CLEARANCE = 3.5 * TILE;
 const WATER_DEPTH = .22;
+const ISLAND_LAYOUT_SCALE = 1.5;
+const CROP_STAGE_SECONDS = 3;
+const WEED_CHANCE = .4;
 
 export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff) >>> 0, attempt = 0) {
   const random = seededRandom(seed);
   const terrainNoise = createPerlin(seed ^ 0x9e3779b9);
+  const moistureNoise = createPerlin(seed ^ 0x243f6a88);
+  const sunNoise = createPerlin(seed ^ 0xb7e15162);
   const group = new THREE.Group();
   const terrain = new Map();
   const obstacles = [];
@@ -22,6 +28,15 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const waterMotion = [];
   const waterfalls = [];
   const waterParticles = [];
+  const grassMaterials = new Map();
+  let barnArea = null;
+  let plantedCount = 0;
+  let readyCount = 0;
+  let weedCount = 0;
+  let cropInstancesDirty = false;
+  let furrowInstancesDirty = false;
+  const growingCrops = new Set();
+  const ploughedTiles = [];
   let waterElapsed = 0;
   tallGrass.name = 'tall-grass';
   water.name = 'water';
@@ -40,10 +55,64 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const top = box(TILE, GRASS_TOP, TILE, topY > baseY + 0.01 ? mats.grassHigh : mats.grass);
     top.position.set(x, topY - GRASS_TOP * 0.5, z);
     group.add(top);
+    const environment = {
+      moisture: environmentalAxis(moistureNoise(gx * .18 + 17.3, gz * .18 - 8.1)),
+      sun: environmentalAxis(sunNoise(gx * .16 - 31.7, gz * .16 + 22.4)),
+    };
     terrain.set(gridKey(gx, gz), {
       gx, gz, x, z, topY, baseY, islandId, radial, topMesh: top, dirtMesh: dirt, dirtDepth,
-      tallGrass: null, ploughed: false, water: false,
+      environment, normalGrassMaterial: null, tallGrass: null, stones: [], hasTree: false,
+      ploughed: false, water: false, crop: null,
     });
+  };
+
+  const grassMaterialFor = tile => {
+    const raised = tile.topY > tile.baseY + .01;
+    const { moisture, sun } = tile.environment;
+    const shade = 1 - sun;
+    const wetShade = moisture * shade;
+    const darkening = THREE.MathUtils.smoothstep(wetShade, .20, .50);
+    // Keep the grass hue fixed. Most terrain remains normal green, while the
+    // wettest shaded pockets move through to a saturated dark green.
+    const hue = .31;
+    const saturation = .42 + moisture * .04 + darkening * .14;
+    const minLightness = .28;
+    const maxLightness = raised ? .47 : .455;
+    const lightness = THREE.MathUtils.clamp(
+      .43 + sun * .01 - moisture * .005 - shade * .005 - darkening * .14 + (raised ? .015 : 0),
+      minLightness,
+      maxLightness,
+    );
+    const saturationStep = Math.round((saturation - .42) / .18 * 7);
+    const lightnessStep = Math.round((lightness - minLightness) / (maxLightness - minLightness) * 8);
+    const quantizedSaturation = .42 + saturationStep * .18 / 7;
+    const quantizedLightness = minLightness + lightnessStep * (maxLightness - minLightness) / 8;
+    const variant = `${raised ? 'high' : 'base'}-${saturationStep}-${lightnessStep}`;
+    if (!grassMaterials.has(variant)) {
+      grassMaterials.set(variant, new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(hue, quantizedSaturation, quantizedLightness),
+        roughness: 1,
+      }));
+    }
+    return grassMaterials.get(variant);
+  };
+
+  const finalizeEnvironment = (cells, waterTiles) => {
+    const waterCells = [...waterTiles].map(key => terrain.get(key)).filter(Boolean);
+    for (const cell of cells) {
+      const tile = terrain.get(gridKey(cell.gx, cell.gz));
+      if (!tile) continue;
+      let waterBonus = 0;
+      for (const waterTile of waterCells) {
+        const distance = Math.hypot(tile.gx - waterTile.gx, tile.gz - waterTile.gz);
+        waterBonus = Math.max(waterBonus, THREE.MathUtils.clamp(1 - distance / 4, 0, 1) * .58);
+      }
+      tile.environment.moisture = tile.water ? 1 : THREE.MathUtils.clamp(tile.environment.moisture + waterBonus, 0, 1);
+      if (!tile.water) {
+        tile.normalGrassMaterial = grassMaterialFor(tile);
+        tile.topMesh.material = tile.normalGrassMaterial;
+      }
+    }
   };
 
   const addTallGrass = tile => {
@@ -119,6 +188,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     tree.position.set(x, y, z);
     tree.rotation.y = random() * Math.PI * 2;
     group.add(tree);
+    const tile = tileAt(x, z, terrain);
+    if (tile) tile.hasTree = true;
     trees.push({
       sway,
       phase: random() * Math.PI * 2,
@@ -137,6 +208,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
     stone.position.set(x, y + voxel * .45, z);
     group.add(stone);
+    const tile = tileAt(x, z, terrain);
+    if (tile) tile.stones.push(stone);
   };
 
   const addBarn = (x, y, z) => {
@@ -154,6 +227,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     barn.position.set(x, y, z);
     barn.rotation.y = yaw;
     group.add(barn);
+    barnArea = { x, z, width, depth, yaw };
 
     const addWall = (wallWidth, wallDepth, localX, localZ) => {
       const wall = box(wallWidth, wallHeight, wallDepth, mats.red);
@@ -214,14 +288,21 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     { cx: 0, cz: 11, h: 0, r: 5.6 }, { cx: -4, cz: 0, h: 1, r: 3.6 },
     { cx: 3, cz: -10, h: 2, r: 3.8 }, { cx: -3, cz: -20, h: 1, r: 5.5 },
     { cx: 3, cz: -31, h: 2, r: 3.8 }, { cx: -2, cz: -41, h: 3, r: 3.7 },
-  ];
-  const branch = { cx: (random() > .5 ? 1 : -1) * 20, cz: -22 + Math.round((random() - .5) * 2), h: random() > .5 ? 0 : 2, r: 3.5 };
+  ].map(scaleIslandLayout);
+  const branch = scaleIslandLayout({
+    cx: (random() > .5 ? 1 : -1) * 20,
+    cz: -22 + Math.round((random() - .5) * 2),
+    h: random() > .5 ? 0 : 2,
+    r: 3.5,
+  });
   const islands = [...backbone, branch].map((island, id) => ({ ...island, id }));
   let barnSite;
   let waterFeatureCount = 0;
 
   islands.forEach((island, id) => {
-    if (id > 0 && id < backbone.length) island.cx += Math.round((random() - .5) * 1.1);
+    if (id > 0 && id < backbone.length) {
+      island.cx = Math.round(island.cx + Math.round((random() - .5) * 1.1) * ISLAND_LAYOUT_SCALE);
+    }
     island.r += (random() - .5) * 0.22;
     const cells = createOrganicCells(island.cx, island.cz, island.r, seed + id * 911);
     const angle = random() * Math.PI * 2;
@@ -236,6 +317,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, true)
       : new Set();
     if (waterTiles.size) waterFeatureCount++;
+    finalizeEnvironment(cells, waterTiles);
     if (id === STARTER_ISLAND_ID) barnSite = findBarnSite(terrain, island);
 
     const clearCells = cells.filter(candidate => {
@@ -248,16 +330,17 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       const x = cell.gx * TILE + (random() - .5) * .18;
       const z = cell.gz * TILE + (random() - .5) * .18;
       const y = terrain.get(gridKey(cell.gx, cell.gz))?.topY ?? island.h;
+      const tile = terrain.get(gridKey(cell.gx, cell.gz));
+      const { moisture, sun } = tile.environment;
+      const treeChance = .014 + moisture * .045 + (1 - sun) * .022 + moisture * (1 - sun) * .04;
+      const rockChance = .04 + (1 - moisture) * .07 + sun * .02;
       const roll = random();
       const nearBarn = barnSite && id === STARTER_ISLAND_ID &&
         Math.hypot(x - barnSite.x, z - barnSite.z) < BARN_TREE_CLEARANCE;
-      if (roll < .025) {
-        if (!nearBarn) addTree(x, y, z, true);
+      if (roll < treeChance) {
+        if (!nearBarn) addTree(x, y, z, random() < .35);
       }
-      else if (roll < .07) {
-        if (!nearBarn) addTree(x, y, z, false);
-      }
-      else if (roll < .17) addStone(x, y, z, .8 + random() * .5);
+      else if (roll < treeChance + rockChance) addStone(x, y, z, .8 + random() * .5);
       else if (grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
         addTallGrass(terrain.get(gridKey(cell.gx, cell.gz)));
       }
@@ -281,6 +364,75 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     scene.remove(group);
     return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1);
   }
+
+  const cropInstances = createCropInstances(terrain.size, group);
+  const cropOverlay = createCropOverlay(terrain, group);
+  const refreshFurrowInstances = () => {
+    const matrix = new THREE.Matrix4();
+    let furrowCount = 0;
+    for (const tile of ploughedTiles) {
+      for (const offset of [-.26, 0, .26]) {
+        matrix.makeTranslation(tile.x, tile.topY + .018, tile.z + offset);
+        cropInstances.furrows.setMatrixAt(furrowCount++, matrix);
+      }
+    }
+    updateInstances(cropInstances.furrows, furrowCount);
+    furrowInstancesDirty = false;
+  };
+  const refreshCropInstances = () => {
+    const matrix = new THREE.Matrix4();
+    const stemCounts = [0, 0, 0, 0];
+    let leafCount = 0;
+    let earCount = 0;
+    let weedPartCount = 0;
+    for (const tile of terrain.values()) {
+      if (!tile.crop) continue;
+      const stageIndex = tile.crop.stage - 1;
+      const height = cropInstances.heights[stageIndex];
+      matrix.makeTranslation(tile.x, tile.topY + height * .5, tile.z);
+      cropInstances.stems[stageIndex].setMatrixAt(stemCounts[stageIndex]++, matrix);
+      const stageLeafCount = tile.crop.stage + 1;
+      for (let index = 0; index < stageLeafCount; index++) {
+        const side = index % 2 ? -1 : 1;
+        matrix.makeRotationY(side * .42);
+        matrix.setPosition(
+          tile.x + side * .12,
+          tile.topY + height * (.28 + index / (stageLeafCount + 2)),
+          tile.z + side * .05,
+        );
+        cropInstances.leaves.setMatrixAt(leafCount++, matrix);
+      }
+      if (tile.crop.stage === 4) {
+        for (const side of [-1, 1]) {
+          matrix.makeTranslation(tile.x + side * .09, tile.topY + height * .67, tile.z);
+          cropInstances.ears.setMatrixAt(earCount++, matrix);
+        }
+      }
+      if (!tile.crop.weeds) continue;
+      for (let index = 0; index < 5; index++) {
+        const angle = index / 5 * Math.PI * 2;
+        matrix.makeRotationZ(Math.sin(angle) * .34);
+        matrix.setPosition(
+          tile.x + Math.cos(angle) * .18,
+          tile.topY + .21,
+          tile.z + Math.sin(angle) * .18,
+        );
+        cropInstances.weedStalks.setMatrixAt(weedPartCount, matrix);
+        matrix.makeTranslation(
+          tile.x + Math.cos(angle) * .25,
+          tile.topY + .44,
+          tile.z + Math.sin(angle) * .25,
+        );
+        cropInstances.weedFlowers.setMatrixAt(weedPartCount++, matrix);
+      }
+    }
+    cropInstances.stems.forEach((mesh, index) => updateInstances(mesh, stemCounts[index]));
+    updateInstances(cropInstances.leaves, leafCount);
+    updateInstances(cropInstances.ears, earCount);
+    updateInstances(cropInstances.weedStalks, weedPartCount);
+    updateInstances(cropInstances.weedFlowers, weedPartCount);
+    cropInstancesDirty = false;
+  };
 
   const occlusion = createOcclusionSystem(group);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
@@ -314,7 +466,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       for (let index = waterParticles.length - 1; index >= 0; index--) {
         const particle = waterParticles[index];
         const age = elapsed - particle.born;
-        if (age > .82) {
+        if (age > 1.15) {
           water.remove(particle.mesh);
           particle.mesh.geometry.dispose();
           waterParticles.splice(index, 1);
@@ -328,17 +480,103 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         particle.mesh.rotation.x = age * particle.spinX;
         particle.mesh.rotation.z = age * particle.spinZ;
       }
+      for (const tile of growingCrops) {
+        if (elapsed - tile.crop.stageStarted < CROP_STAGE_SECONDS) continue;
+        tile.crop.stageStarted += CROP_STAGE_SECONDS;
+        tile.crop.stage++;
+        if (tile.crop.stage === 2 && random() < WEED_CHANCE) {
+          tile.crop.weeds = true;
+          weedCount++;
+        }
+        if (tile.crop.stage === 4) {
+          readyCount++;
+          growingCrops.delete(tile);
+        }
+        cropInstancesDirty = true;
+      }
+      if (cropInstancesDirty) refreshCropInstances();
+      if (furrowInstancesDirty) refreshFurrowInstances();
     },
     updateOcclusion(cameraPosition, tractorState, delta) {
       occlusion.update(cameraPosition, tractorState, delta);
     },
-    ploughAt(x, z) {
-      const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
-      if (!tile || tile.ploughed || tile.water) return false;
+    farmingLevelNear(x, z) {
+      const gx = Math.floor(x / TILE + .5);
+      const gz = Math.floor(z / TILE + .5);
+      const center = terrain.get(gridKey(gx, gz));
+      if (center) return center.topY;
+      for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const neighbor = terrain.get(gridKey(gx + dx, gz + dz));
+        if (neighbor) return neighbor.topY;
+      }
+      return null;
+    },
+    ploughAt(x, z, levelY) {
+      const tile = tileAtLevel(x, z, levelY, terrain);
+      if (!tile || tile.ploughed || tile.water || tile.hasTree) return false;
       tile.ploughed = true;
       tile.topMesh.material = mats.ploughed;
+      tile.topMesh.material.needsUpdate = true;
       if (tile.tallGrass) tile.tallGrass.visible = false;
+      for (const stone of tile.stones) group.remove(stone);
+      tile.stones.length = 0;
+      ploughedTiles.push(tile);
+      furrowInstancesDirty = true;
       return true;
+    },
+    setCropOverlay(cropId) {
+      if (!crops[cropId]) return false;
+      cropOverlay.show(cropId);
+      return true;
+    },
+    hideCropOverlay() {
+      cropOverlay.hide();
+    },
+    cropStatsAt(x, z, cropId) {
+      const tile = tileAt(x, z, terrain);
+      const crop = crops[cropId];
+      return tile && crop ? environmentalCropStats(tile.environment, crop) : null;
+    },
+    seedAt(x, z, levelY, elapsed, cropId = 'corn') {
+      const tile = tileAtLevel(x, z, levelY, terrain);
+      if (!tile || !tile.ploughed || tile.crop || !crops[cropId]) return false;
+      tile.crop = { cropId, stage: 1, stageStarted: elapsed, weeds: false };
+      plantedCount++;
+      growingCrops.add(tile);
+      cropInstancesDirty = true;
+      return true;
+    },
+    sprayAt(x, z, levelY) {
+      const tile = tileAtLevel(x, z, levelY, terrain);
+      if (!tile?.crop?.weeds) return false;
+      tile.crop.weeds = false;
+      weedCount--;
+      cropInstancesDirty = true;
+      return true;
+    },
+    harvestAt(x, z, levelY) {
+      const tile = tileAtLevel(x, z, levelY, terrain);
+      if (tile?.crop?.stage !== 4) return false;
+      const crop = crops[tile.crop.cropId] || crops.corn;
+      const { suitability, yieldMultiplier } = environmentalCropStats(tile.environment, crop);
+      const yieldAmount = Math.max(1, Math.round(yieldMultiplier * 4));
+      if (tile.crop.weeds) weedCount = Math.max(0, weedCount - 1);
+      tile.crop = null;
+      plantedCount = Math.max(0, plantedCount - 1);
+      readyCount = Math.max(0, readyCount - 1);
+      cropInstancesDirty = true;
+      return { yieldAmount, suitability };
+    },
+    cropStats() {
+      return { planted: plantedCount, ready: readyCount, weeds: weedCount };
+    },
+    insideBarn(x, z) {
+      if (!barnArea) return false;
+      const dx = x - barnArea.x;
+      const dz = z - barnArea.z;
+      const localX = dx * Math.cos(barnArea.yaw) - dz * Math.sin(barnArea.yaw);
+      const localZ = dx * Math.sin(barnArea.yaw) + dz * Math.cos(barnArea.yaw);
+      return Math.abs(localX) < barnArea.width * .5 - .2 && Math.abs(localZ) < barnArea.depth * .5 - .2;
     },
     splashAt(x, z, impact) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
@@ -347,15 +585,15 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       for (let index = 0; index < count; index++) {
         const size = .13 + random() * .13;
         const mesh = box(size, size, size, mats.waterSplash, false, false);
-        mesh.position.set(x, tile.topY + .34, z);
-        mesh.renderOrder = 3;
+        mesh.position.set(x, tile.topY + WATER_DEPTH + .32, z);
+        mesh.renderOrder = 10;
         water.add(mesh);
         const angle = random() * Math.PI * 2;
         const speed = .65 + random() * (1.1 + impact * .07);
         waterParticles.push({
           mesh,
           x: x + (random() - .5) * .14,
-          y: tile.topY + .30 + random() * .18,
+          y: tile.topY + WATER_DEPTH + .28 + random() * .18,
           z: z + (random() - .5) * .14,
           vx: Math.cos(angle) * speed,
           vy: 3.15 + random() * 1.65 + impact * .18,
@@ -370,12 +608,112 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   };
 }
 
+function createCropInstances(tileCapacity, group) {
+  const heights = [.22, .48, .78, 1.04];
+  const addInstances = (width, height, depth, material, capacity) => {
+    const mesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(width, height, depth),
+      material,
+      capacity,
+    );
+    mesh.count = 0;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    group.add(mesh);
+    return mesh;
+  };
+  return {
+    heights,
+    stems: heights.map(height => addInstances(.11, height, .11, mats.cornStem, tileCapacity)),
+    leaves: addInstances(.42, .055, .13, mats.cornLeaf, tileCapacity * 5),
+    ears: addInstances(.13, .28, .13, mats.cornRipe, tileCapacity * 2),
+    weedStalks: addInstances(.055, .42, .055, mats.weed, tileCapacity * 5),
+    weedFlowers: addInstances(.13, .13, .13, mats.weed, tileCapacity * 5),
+    furrows: addInstances(.78, .025, .07, mats.furrow, tileCapacity * 3),
+  };
+}
+
+function updateInstances(mesh, count) {
+  mesh.count = count;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (!count) return;
+  mesh.computeBoundingBox();
+  mesh.computeBoundingSphere();
+}
+
+function createCropOverlay(terrain, group) {
+  const tiles = [...terrain.values()].filter(tile => !tile.water);
+  const overlay = new THREE.Group();
+  overlay.name = 'crop-overlay';
+  overlay.visible = false;
+  const geometry = new THREE.PlaneGeometry(TILE * .94, TILE * .94);
+  geometry.rotateX(-Math.PI * .5);
+  const matrix = new THREE.Matrix4();
+  const colorFor = suitability => {
+    const color = new THREE.Color();
+    if (suitability < .5) color.setHSL(THREE.MathUtils.lerp(.02, .14, suitability * 2), .82, .52);
+    else color.setHSL(THREE.MathUtils.lerp(.14, .33, (suitability - .5) * 2), .76, .46);
+    return color;
+  };
+  const paletteSize = 16;
+  const palette = Array.from({ length: paletteSize }, (_, index) => {
+    const material = new THREE.MeshBasicMaterial({
+      color: colorFor(index / (paletteSize - 1)),
+      transparent: true,
+      opacity: .68,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    const mesh = new THREE.InstancedMesh(geometry, material, tiles.length);
+    mesh.count = 0;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.renderOrder = 3;
+    overlay.add(mesh);
+    return mesh;
+  });
+  group.add(overlay);
+
+  return {
+    show(cropId) {
+      const crop = crops[cropId];
+      const counts = Array(paletteSize).fill(0);
+      for (const tile of tiles) {
+        const suitability = environmentalCropStats(tile.environment, crop).suitability;
+        const bucket = Math.round(suitability * (paletteSize - 1));
+        const mesh = palette[bucket];
+        matrix.makeTranslation(tile.x, tile.topY + .028, tile.z);
+        mesh.setMatrixAt(counts[bucket]++, matrix);
+      }
+      palette.forEach((mesh, index) => {
+        mesh.count = counts[index];
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+      });
+      overlay.visible = true;
+    },
+    hide() { overlay.visible = false; },
+  };
+}
+
+function tileAt(x, z, terrain) {
+  return terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
+}
+
+function tileAtLevel(x, z, levelY, terrain) {
+  const tile = tileAt(x, z, terrain);
+  if (!tile || (levelY !== null && Math.abs(tile.topY - levelY) > .01)) return null;
+  return tile;
+}
+
 function createOcclusionSystem(group) {
   const ray = new THREE.Ray();
   const sightline = new THREE.Vector3();
   const hitPoint = new THREE.Vector3();
   const entries = group.children
-    .filter(child => child.isGroup && child.name !== 'tall-grass' && child.name !== 'water')
+    .filter(child => child.isGroup && child.name !== 'tall-grass' && child.name !== 'water' && child.name !== 'crop-overlay')
     .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1 }));
 
   return {
@@ -756,6 +1094,15 @@ function tileEdgeDistance(first, second) {
   return Math.hypot(dx, dz);
 }
 
+function scaleIslandLayout(island) {
+  return {
+    ...island,
+    cx: Math.round(island.cx * ISLAND_LAYOUT_SCALE),
+    cz: Math.round(island.cz * ISLAND_LAYOUT_SCALE),
+    r: island.r * ISLAND_LAYOUT_SCALE,
+  };
+}
+
 function seededRandom(seed) {
   let state = seed >>> 0;
   return () => {
@@ -765,6 +1112,15 @@ function seededRandom(seed) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function normalizeNoise(value) {
+  return THREE.MathUtils.clamp(value * .5 + .5, 0, 1);
+}
+
+function environmentalAxis(value) {
+  const normalized = normalizeNoise(value);
+  return THREE.MathUtils.clamp(.5 + (normalized - .5) * 2, 0, 1);
 }
 
 function createPerlin(seed) {

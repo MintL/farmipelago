@@ -60,6 +60,8 @@ touch-sized viewport when changing interaction or layout.
   Keyboard controls (WASD/arrows and Space) are a required fallback.
 - Keep rendering work out of the fixed physics step. Clamp frame deltas before
   passing them into gameplay as `main.js` does.
+- Increment the `0.x` `#buildVersion` displayed in `index.html` for every
+  change set, so a refreshed game always shows a higher version after an edit.
 - Update `README.md` when player-visible controls, setup, dependencies, or
   major game features change.
 

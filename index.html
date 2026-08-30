@@ -3,146 +3,667 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-  <meta name="theme-color" content="#b9def1" />
-  <title>Floating Farm Prototype</title>
+  <meta name="theme-color" content="#e8dec4" />
+  <title>Farmipelago</title>
   <style>
-    :root { color-scheme: light; }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #b9def1; font-family: system-ui, sans-serif; }
-    body { touch-action: none; user-select: none; }
-    canvas { display: block; width: 100%; height: 100%; }
+    :root {
+      color-scheme: light;
+      --ink: #292b25;
+      --muted: #66695f;
+      --faint: #85877d;
+      --glass: rgba(239, 230, 207, .82);
+      --glass-strong: rgba(242, 234, 214, .96);
+      --glass-soft: rgba(48, 55, 43, .07);
+      --line: rgba(43, 47, 38, .2);
+      --line-strong: rgba(43, 47, 38, .36);
+      --accent: #526648;
+      --accent-strong: #35432f;
+      --warning: #8b642e;
+      --danger: #9f3f39;
+      --shadow: 0 18px 50px rgba(7, 12, 11, .28);
+      --safe-top: max(12px, env(safe-area-inset-top));
+      --safe-right: max(14px, env(safe-area-inset-right));
+      --safe-bottom: max(16px, env(safe-area-inset-bottom));
+      --safe-left: max(14px, env(safe-area-inset-left));
+    }
 
-    #hud { position: fixed; inset: 0; pointer-events: none; --jump-size: 92px; }
-    #status {
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #b9def1; }
+    body {
+      touch-action: none;
+      user-select: none;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      letter-spacing: -.01em;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    button { color: inherit; font: inherit; }
+    button:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .eyebrow { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+    #hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+    #buildVersion {
       position: absolute;
-      top: max(12px, env(safe-area-inset-top));
-      left: 50%; transform: translateX(-50%);
-      padding: 7px 11px;
+      top: calc(var(--safe-top) + 14px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 9px;
       border-radius: 999px;
-      background: rgba(255,255,255,.72);
-      color: rgba(29,45,35,.9);
-      font-weight: 750;
-      font-size: 13px;
-      box-shadow: 0 4px 14px rgba(0,0,0,.10);
-      backdrop-filter: blur(5px);
+      background: rgba(41, 43, 37, .78);
+      color: #fff9e9;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .08em;
       white-space: nowrap;
     }
-    #regen {
-      pointer-events: auto;
-      position: absolute;
-      top: max(12px, env(safe-area-inset-top));
-      right: 12px;
-      width: 42px; height: 42px;
-      border: 0; border-radius: 50%;
-      background: rgba(255,255,255,.78);
-      box-shadow: 0 4px 14px rgba(0,0,0,.12);
-      color: #294836;
-      font-size: 24px; line-height: 42px;
+    #topLeftGroup { min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
+    #suitabilityControl { pointer-events: auto; position: relative; flex: 0 0 auto; }
+    #suitabilityToggle {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--glass);
+      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
+      font-size: 11px;
+      font-weight: 720;
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
     }
+    #suitabilityToggle .icon { width: 18px; height: 18px; color: var(--muted); }
+    #suitabilityToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
+    #suitabilityToggle[aria-pressed="true"] .icon { color: var(--accent-strong); }
+    #grainMeter {
+      min-width: 142px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 7px;
+      height: 48px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--glass);
+      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #grainMeterLabel { color: var(--muted); font-size: 9px; font-weight: 780; letter-spacing: .08em; text-transform: uppercase; }
+    #grainTrack { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(43, 47, 38, .14); }
+    #grainFill { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b7842f, #f2cb51); transition: width .18s ease-out; }
+    #grainValue { min-width: 31px; color: var(--ink); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+    #cropSelector {
+      position: absolute;
+      top: 56px;
+      left: 0;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--glass-strong);
+      box-shadow: 0 14px 35px rgba(8, 14, 13, .24);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #cropSelector button {
+      width: 36px; height: 36px;
+      display: grid; place-items: center;
+      padding: 0;
+      border: 0; border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+    }
+    #cropSelector button:active { background: var(--glass-soft); color: var(--ink); }
+    #cropSelector .icon { width: 17px; height: 17px; }
+    #cropName { min-width: 76px; text-align: center; font-size: 11px; font-weight: 760; }
+    #viewHint {
+      display: none;
+      position: absolute;
+      left: 50%; bottom: var(--safe-bottom);
+      transform: translateX(-50%);
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--glass);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: .08em;
+      white-space: nowrap;
+      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    body[data-view-mode="overlay"] #stickZone,
+    body[data-view-mode="overlay"] #actionCluster,
+    body[data-view-mode="overlay"] #desktopHints { display: none; }
+    body[data-view-mode="overlay"] #viewHint { display: block; }
+    #topBar {
+      position: absolute;
+      top: var(--safe-top);
+      left: var(--safe-left);
+      right: var(--safe-right);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    #menuToggle {
+      pointer-events: auto;
+      flex: 0 0 auto;
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--glass);
+      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #menuToggle:active { transform: scale(.96); }
 
     #stickZone {
       pointer-events: auto;
       position: absolute;
-      left: 0; bottom: 0;
-      width: 58vw; height: 42vh;
-      min-height: 190px;
+      left: 0;
+      bottom: 0;
+      width: 62vw;
+      height: 47vh;
+      min-height: 210px;
     }
     #stickBase {
       position: absolute;
-      left: max(24px, env(safe-area-inset-left));
-      bottom: max(26px, env(safe-area-inset-bottom));
-      width: 132px; height: 132px;
+      left: calc(var(--safe-left) + 72px);
+      top: calc(100% - var(--safe-bottom) - 72px);
+      width: 136px;
+      height: 136px;
+      border: 1px solid rgba(43, 47, 38, .28);
       border-radius: 50%;
-      background: rgba(255,255,255,.24);
-      border: 2px solid rgba(255,255,255,.45);
-      box-shadow: inset 0 0 0 8px rgba(42,63,49,.05);
+      background: rgba(234, 224, 200, .68);
+      box-shadow: inset 0 0 0 9px rgba(49, 56, 43, .04), 0 12px 34px rgba(5, 10, 9, .14);
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(.88);
+      transition: opacity .12s ease, transform .12s ease;
+      backdrop-filter: blur(9px);
+      -webkit-backdrop-filter: blur(9px);
     }
+    #stickBase.active { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    #stickBase::before, #stickBase::after {
+      content: "";
+      position: absolute;
+      left: 50%; top: 50%;
+      background: rgba(43, 47, 38, .14);
+      transform: translate(-50%, -50%);
+    }
+    #stickBase::before { width: 1px; height: 72%; }
+    #stickBase::after { width: 72%; height: 1px; }
     #stickKnob {
       position: absolute;
       left: 50%; top: 50%;
-      width: 62px; height: 62px;
-      margin: -31px;
+      width: 58px; height: 58px;
+      margin: -29px;
+      border: 1px solid rgba(43, 47, 38, .34);
       border-radius: 50%;
-      background: rgba(255,255,255,.82);
-      box-shadow: 0 5px 16px rgba(0,0,0,.18);
-      transform: translate(0px,0px);
+      background: rgba(73, 86, 64, .92);
+      box-shadow: 0 8px 20px rgba(5, 10, 9, .23);
+      transform: translate(0, 0);
     }
 
-    #jump {
+    #actionCluster {
       pointer-events: auto;
       position: absolute;
-      right: max(24px, env(safe-area-inset-right));
-      bottom: max(34px, env(safe-area-inset-bottom));
-      width: var(--jump-size); height: var(--jump-size);
-      border: 0; border-radius: 50%;
-      background: rgba(255,247,220,.88);
-      color: #6b3f22;
-      font-size: 18px;
-      font-weight: 900;
-      letter-spacing: .06em;
-      box-shadow: 0 8px 20px rgba(0,0,0,.18), inset 0 -5px 0 rgba(115,71,39,.14);
+      right: var(--safe-right);
+      bottom: var(--safe-bottom);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 11px;
     }
-    #jump svg { display: block; width: 38px; height: 38px; margin: auto; fill: currentColor; }
-    #jump:active { transform: translateY(2px) scale(.97); }
-
-    #toolToggle {
-      pointer-events: auto;
-      position: absolute;
-      right: max(24px, env(safe-area-inset-right));
-      bottom: calc(max(34px, env(safe-area-inset-bottom)) + var(--jump-size) + 10px);
-      width: 42px; height: 42px;
+    .actionButton {
+      display: grid;
+      place-items: center;
       padding: 0;
-      border: 0; border-radius: 50%;
+      border: 1px solid var(--line);
+      background: var(--glass);
+      box-shadow: 0 12px 34px rgba(5, 10, 9, .2);
+      backdrop-filter: blur(14px) saturate(115%);
+      -webkit-backdrop-filter: blur(14px) saturate(115%);
+    }
+    .actionButton:active { transform: translateY(1px) scale(.97); }
+    #jump { width: 76px; height: 76px; border-radius: 50%; }
+    #jump .icon { width: 30px; height: 30px; }
+    #toolToggle {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      transition: border-color .16s, background .16s, transform .1s;
+    }
+    #toolToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); }
+    #toolToggle[aria-pressed="true"]::after {
+      content: "";
+      position: absolute;
+      top: 4px; right: 4px;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent-strong);
+      box-shadow: 0 0 0 2px rgba(53, 67, 47, .16);
+    }
+    #toolToggle .icon { width: 20px; height: 20px; }
+    .toolCopy, .keycap { display: none; }
+
+    #desktopHints {
+      display: none;
+      position: absolute;
+      left: var(--safe-left);
+      bottom: var(--safe-bottom);
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--glass);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: .01em;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    #desktopHints kbd, .keycap {
+      min-width: 21px;
+      padding: 2px 5px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: rgba(255, 252, 239, .62);
+      color: var(--ink);
+      font: 650 10px/1.3 inherit;
+      text-align: center;
+      box-shadow: inset 0 -1px 0 rgba(43, 47, 38, .12);
+    }
+    body[data-input-mode="keyboard"] #stickZone,
+    body[data-input-mode="keyboard"] #jump { display: none; }
+    body[data-input-mode="keyboard"] #desktopHints { display: block; }
+    body[data-input-mode="keyboard"] #actionCluster { bottom: var(--safe-bottom); }
+    body[data-input-mode="keyboard"] #toolToggle {
+      width: auto;
+      min-width: 178px;
+      height: 54px;
+      padding: 0 10px 0 14px;
+      grid-template-columns: 24px 1fr auto;
+      gap: 10px;
+      border-radius: 15px;
+      text-align: left;
+    }
+    body[data-input-mode="keyboard"] #toolToggle .icon { width: 22px; height: 22px; }
+    body[data-input-mode="keyboard"] .toolCopy { display: grid; gap: 1px; }
+    body[data-input-mode="keyboard"] .toolName { font-size: 12px; font-weight: 740; }
+    body[data-input-mode="keyboard"] .toolState { color: var(--muted); font-size: 10px; }
+    body[data-input-mode="keyboard"] .keycap { display: block; }
+
+    #overlay {
+      pointer-events: auto;
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+      background: rgba(232, 222, 196, .91);
+      animation: veilIn .16s ease-out;
+    }
+    #overlay[data-state="barn"] { background: rgba(232, 222, 196, .91); }
+    .dialog {
+      width: min(920px, 100%);
+      max-height: 100%;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--glass-strong);
+      box-shadow: var(--shadow);
+      animation: panelIn .18s ease-out;
+    }
+    .dialogHeader {
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 16px 18px 14px 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .dialogTitle { margin: 3px 0 0; font-size: 22px; font-weight: 690; letter-spacing: -.035em; }
+    .iconButton {
+      width: 42px; height: 42px;
       display: grid; place-items: center;
-      background: rgba(226,245,208,.92);
-      color: #315d32;
-      box-shadow: 0 5px 14px rgba(0,0,0,.16), inset 0 -3px 0 rgba(45,93,48,.13);
+      flex: 0 0 auto;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--glass-soft);
     }
-    #toolToggle svg { width: 23px; height: 23px; fill: currentColor; }
-    #toolToggle.off {
-      background: rgba(235,235,228,.88);
-      color: #6d7169;
-      box-shadow: 0 5px 14px rgba(0,0,0,.12), inset 0 -3px 0 rgba(60,63,57,.10);
+
+    #barnDialog {
+      position: relative;
+      width: min(800px, 100%);
+      height: min(740px, 100%);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: #292b25;
     }
-    #toolToggle:active { transform: translateY(1px) scale(.97); }
+    #barnDialog .dialogHeader, #loadoutFooter, #loadoutBays { position: relative; z-index: 1; }
+    #barnDialog .dialogHeader { min-height: 46px; justify-content: flex-end; padding: 4px 10px; border: 0; }
+    #barnDialog .dialogHeader .eyebrow { color: var(--accent); }
+    #barnDialog .dialogHeader .eyebrow::before { content: ""; display: inline-block; width: 5px; height: 20px; margin: -3px 12px 0 0; vertical-align: middle; background: var(--accent); }
+    #barnDialog .dialogTitle { margin: 5px 0 0 17px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 26px; letter-spacing: .045em; text-transform: uppercase; }
+    #barnDialog .dialogTitle + p { margin: 4px 0 0 17px; color: var(--muted); }
+    #barnDialog .iconButton { border: 0; border-radius: 0; background: transparent; }
+    #barnDialog .iconButton .icon { width: 32px; height: 32px; stroke-width: 2.4; }
+    #barnDialog .loadoutBay { border-color: rgba(43, 47, 38, .3); }
+    #barnDialog .bayLabel { color: #43503a; }
+    #barnDialog .loadoutOption { color: #292b25; text-shadow: none; }
+    #barnDialog .loadoutOption:hover { background: rgba(52, 60, 45, .06); }
+    #barnDialog .loadoutOption[aria-pressed="true"] { border-color: #30372c; background: rgba(52, 65, 45, .12); }
+    #barnDialog .optionState { color: #405b34; }
+    #barnDialog .loadoutOption.locked, #barnDialog .loadoutOption.locked .optionState { color: #74776c; }
+    #barnDialog .loadoutBay.unavailable { opacity: .38; filter: grayscale(1); }
+    #barnDialog .loadoutBay.unavailable .loadoutOption { cursor: not-allowed; }
+    #barnDialog #loadoutFooter { border-color: rgba(43, 47, 38, .3); }
+    #barnDialog #loadoutSummary { color: #686b61; }
+    #barnDialog #loadoutSummary strong { color: #30372c; }
+    #barnDialog .button { border-color: rgba(43, 47, 38, .35); background: rgba(255, 252, 239, .58); color: #292b25; }
+    #barnDialog .button.primary { border-color: #30372c; background: #3f4b38; color: #f4ecd8; }
+    #barnDialog .button:disabled { opacity: .42; }
+    #loadoutBays { min-height: 0; overflow-y: auto; padding: 0 16px; scrollbar-color: rgba(48, 55, 43, .35) transparent; }
+    .loadoutBay { display: grid; grid-template-rows: auto minmax(145px, 1fr); min-height: 174px; border-top: 1px solid var(--line-strong); }
+    .loadoutBay:first-child { border-top: 0; }
+    .bayLabel { grid-column: 1 / -1; margin: 10px 0 0 8px; color: var(--accent); font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em; text-transform: uppercase; }
+    .optionPresentation { position: relative; min-height: 145px; overflow: hidden; }
+    .previewCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .optionGrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 100%; gap: 0; padding: 5px 0 7px; }
+    #vehicleOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .loadoutOption { position: relative; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 6px 4px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); text-align: center; text-shadow: 0 2px 14px #080907; }
+    .loadoutOption:hover { background: rgba(48, 55, 43, .045); }
+    .loadoutOption:focus-visible { outline: 0; }
+    .loadoutOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .12); }
+    .loadoutOption.locked { color: #a9ada7; }
+    .optionName { position: relative; z-index: 1; display: block; font: 700 12px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .025em; text-transform: uppercase; }
+    .optionState { position: relative; z-index: 1; display: block; min-height: 12px; margin-top: 3px; color: var(--accent); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .loadoutOption.locked .optionState { color: var(--faint); }
+    #loadoutFooter {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      border-top: 1px solid var(--line-strong);
+    }
+    #loadoutSummary { min-width: 0; margin-right: auto; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    #loadoutSummary strong { display: block; color: var(--accent-strong); font-size: 12px; }
+    .button {
+      min-height: 44px;
+      padding: 0 17px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--glass-soft);
+      font-size: 12px;
+      font-weight: 720;
+    }
+    .button.primary { border-color: #30372c; background: #3f4b38; color: #f4ecd8; }
+    .button.danger { border-color: rgba(159, 63, 57, .4); color: var(--danger); }
+    .button:disabled { opacity: .38; }
+
+    #pauseDialog { width: min(480px, 100%); }
+    #pauseBody, #confirmBody { padding: 18px; }
+    .pauseActions { display: grid; gap: 9px; }
+    .pauseAction {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(48, 55, 43, .045);
+      text-align: left;
+    }
+    .pauseAction span { display: grid; gap: 2px; }
+    .pauseAction strong { font-size: 13px; }
+    .pauseAction small { color: var(--muted); font-size: 10px; }
+    #controlsList {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 16px;
+      margin: 16px 0 4px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    #controlsList strong { color: var(--ink); }
+    #confirmBody p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
+    .confirmActions { display: flex; justify-content: flex-end; gap: 9px; }
 
     #toast {
       position: absolute;
-      left: 50%; top: 18%; transform: translate(-50%,-50%) scale(.92);
+      left: 50%;
+      top: calc(var(--safe-top) + 64px);
+      z-index: 30;
+      max-width: calc(100vw - 32px);
+      padding: 9px 13px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(242, 234, 214, .96);
+      box-shadow: 0 12px 30px rgba(5, 10, 9, .22);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 680;
       opacity: 0;
-      padding: 9px 14px;
-      border-radius: 12px;
-      background: rgba(47,38,30,.82);
-      color: white;
-      font-weight: 800;
-      transition: opacity .15s, transform .15s;
+      transform: translate(-50%, -7px);
+      transition: opacity .15s ease, transform .15s ease;
+      white-space: nowrap;
     }
-    #toast.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-    @media (min-width: 700px) {
-      #hud { --jump-size: 104px; }
-      #stickBase { width: 150px; height: 150px; }
+    @keyframes veilIn { from { opacity: 0; } }
+    @keyframes panelIn { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+
+    @media (max-width: 680px) {
+      .suitabilityLabel { display: none; }
+      #suitabilityToggle { width: 48px; justify-content: center; padding: 0; }
+      #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+      .dialog { border-radius: 18px; }
+      #barnDialog { width: 100%; height: 100%; }
+      .dialogHeader { min-height: 68px; padding: 12px 12px 10px 16px; }
+      .dialogTitle { font-size: 19px; }
+      #barnDialog .dialogHeader { min-height: 40px; padding: 2px 4px; }
+      #barnDialog .dialogTitle { font-size: 21px; }
+      #loadoutBays { padding: 0 8px; }
+      .loadoutBay { min-height: 150px; }
+      .bayLabel { margin: 8px 0 0 5px; font-size: 10px; }
+      .optionName { font-size: 10px; }
+      .optionState { font-size: 8px; }
+      #loadoutFooter { min-height: 60px; padding: 7px 8px; }
+      #loadoutSummary { display: none; }
+      #loadoutFooter .button { flex: 1; }
+      #pauseDialog { align-self: center; }
+    }
+
+    @media (max-width: 380px) { #topBar, #topLeftGroup { gap: 6px; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      #menuToggle, .actionButton, #desktopHints { background: rgba(239, 230, 207, .94); }
+      #overlay { background: rgba(232, 222, 196, .96); }
     }
   </style>
 </head>
-<body>
+<body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="status">0 tiles ploughed</div>
-    <button id="regen" aria-label="Generate a new farm">↻</button>
-    <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
-    <button id="toolToggle" class="off" type="button" aria-label="Turn plough on" aria-pressed="false" title="Turn plough on">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M21.7 19.3 12.6 10.2c.9-2.3.4-5-1.4-6.8-1.8-1.8-4.5-2.3-6.8-1.4l3.9 3.9L6 8.2 2.1 4.3c-.9 2.3-.4 5 1.4 6.8 1.8 1.8 4.5 2.3 6.8 1.4l9.1 9.1c.6.6 1.5.6 2.1 0l.2-.2c.6-.6.6-1.5 0-2.1Z" />
-      </svg>
-    </button>
-    <button id="jump" aria-label="Jump" title="Jump">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M12 3 4.5 10.5l1.4 1.4L11 6.8V21h2V6.8l5.1 5.1 1.4-1.4L12 3Z" />
-      </svg>
-    </button>
-    <div id="toast"></div>
+    <div id="buildVersion">0.6</div>
+    <header id="topBar">
+      <div id="topLeftGroup">
+        <div id="suitabilityControl">
+          <button id="suitabilityToggle" type="button" aria-label="Show crop suitability" aria-pressed="false">
+            <svg class="icon" aria-hidden="true"><use href="#icon-ready"></use></svg><span class="suitabilityLabel">Suitability</span>
+          </button>
+          <div id="cropSelector" hidden aria-label="Crop suitability selector">
+            <button id="previousCrop" type="button" aria-label="Previous crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
+            <span id="cropName">Wheat</span>
+            <button id="nextCrop" type="button" aria-label="Next crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
+          </div>
+        </div>
+        <div id="grainMeter" role="progressbar" aria-label="Combine grain tank" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+          <span id="grainMeterLabel">Grain</span><span id="grainTrack"><span id="grainFill"></span></span><strong id="grainValue">0 / 36</strong>
+        </div>
+      </div>
+      <button id="menuToggle" type="button" aria-label="Open pause menu" title="Menu">
+        <svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+      </button>
+    </header>
+    <div id="viewHint">DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE</div>
+
+    <div id="stickZone" aria-hidden="true">
+      <div id="stickBase"><div id="stickKnob"></div></div>
+    </div>
+
+    <div id="actionCluster">
+      <button id="toolToggle" class="actionButton" type="button" aria-label="Lower Plough" aria-pressed="false" title="Lower Plough">
+        <svg class="icon" aria-hidden="true"><use id="toolIconUse" href="#icon-plough"></use></svg>
+        <span class="toolCopy"><span class="toolName" id="toolName">Plough</span><span class="toolState" id="toolState">Raised</span></span>
+        <span class="keycap" aria-hidden="true">E</span>
+      </button>
+      <button id="jump" class="actionButton" type="button" aria-label="Jump" title="Jump">
+        <svg class="icon" aria-hidden="true"><use href="#icon-jump"></use></svg>
+      </button>
+    </div>
+
+    <div id="desktopHints" aria-hidden="true">
+      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>Esc</kbd> Menu
+    </div>
+
+    <div id="overlay" hidden>
+      <section id="barnDialog" class="dialog" role="dialog" aria-modal="true" aria-label="Loadout" hidden>
+        <header class="dialogHeader">
+          <button id="closeBarn" class="iconButton" type="button" aria-label="Close loadout menu">
+            <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </header>
+        <div id="loadoutBays" aria-label="Loadout selection">
+          <section class="loadoutBay" data-category="vehicles" aria-labelledby="vehicleBayLabel">
+            <h2 class="bayLabel" id="vehicleBayLabel">Vehicle</h2>
+            <div class="optionPresentation">
+              <canvas class="previewCanvas" id="vehiclePreview" aria-hidden="true"></canvas>
+              <div class="optionGrid" id="vehicleOptions" role="group" aria-label="Vehicle options"></div>
+            </div>
+          </section>
+          <section class="loadoutBay" data-category="equipment" aria-labelledby="equipmentBayLabel">
+            <h2 class="bayLabel" id="equipmentBayLabel">Rear tool</h2>
+            <div class="optionPresentation">
+              <canvas class="previewCanvas" id="equipmentPreview" aria-hidden="true"></canvas>
+              <div class="optionGrid" id="equipmentOptions" role="group" aria-label="Rear tool options"></div>
+            </div>
+          </section>
+          <section class="loadoutBay" data-category="frontTools" aria-labelledby="frontToolBayLabel">
+            <h2 class="bayLabel" id="frontToolBayLabel">Front tool</h2>
+            <div class="optionPresentation">
+              <canvas class="previewCanvas" id="frontToolPreview" aria-hidden="true"></canvas>
+              <div class="optionGrid" id="frontToolOptions" role="group" aria-label="Front tool options"></div>
+            </div>
+          </section>
+        </div>
+        <footer id="loadoutFooter">
+          <div id="loadoutSummary"></div>
+          <button id="cancelLoadout" class="button" type="button">Cancel</button>
+          <button id="applyLoadout" class="button primary" type="button">Equip &amp; leave</button>
+        </footer>
+      </section>
+
+      <section id="pauseDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="pauseTitle" hidden>
+        <header class="dialogHeader">
+          <div><span class="eyebrow">Farmipelago</span><h1 class="dialogTitle" id="pauseTitle">Paused</h1></div>
+          <button id="closePause" class="iconButton" type="button" aria-label="Resume game">
+            <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </header>
+        <div id="pauseBody">
+          <div class="pauseActions">
+            <button id="resumeGame" class="pauseAction" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+              <span><strong>Resume</strong><small>Return to the farm</small></span>
+            </button>
+            <button id="showControls" class="pauseAction" type="button" aria-expanded="false" aria-controls="controlsList">
+              <svg class="icon" aria-hidden="true"><use href="#icon-controls"></use></svg>
+              <span><strong>Controls</strong><small>Keyboard and touch reference</small></span>
+            </button>
+            <div id="controlsList" hidden>
+              <strong>Drive</strong><span>WASD, arrow keys, or touch joystick</span>
+              <strong>Jump</strong><span>Space or jump button</span>
+              <strong>Tool</strong><span>E or equipped-tool button</span>
+              <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
+              <strong>Menu</strong><span>Escape or menu button; Escape closes suitability first</span>
+            </div>
+            <button id="requestRegenerate" class="pauseAction" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+              <span><strong>New farm</strong><small>Generate a different archipelago</small></span>
+            </button>
+          </div>
+        </div>
+        <div id="confirmBody" hidden>
+          <p>A new farm replaces this layout and clears its field progress. Your equipped loadout will be kept.</p>
+          <div class="confirmActions">
+            <button id="cancelRegenerate" class="button" type="button">Keep this farm</button>
+            <button id="confirmRegenerate" class="button danger" type="button">Generate new farm</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
 
-  <script type="module" src="./main.js"></script>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14" /></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" /></symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" /></symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>
+    <symbol id="icon-field" viewBox="0 0 24 24"><path d="M4 19 9 5M10 19l5-14M16 19l4-11M3 19h18" /></symbol>
+    <symbol id="icon-corn" viewBox="0 0 24 24"><path d="M12 21V8M12 17c-4 0-6-2-6-6 4 0 6 2 6 6ZM12 13c4 0 6-2 6-6-4 0-6 2-6 6ZM12 8c-2-1-3-3-2-5 2 1 3 3 2 5Z" /></symbol>
+    <symbol id="icon-ready" viewBox="0 0 24 24"><path d="M12 3v18M12 7c-3-2-5-1-6 1 2 2 4 2 6 0M12 12c3-2 5-1 6 1-2 2-4 2-6 0M8 21h8" /></symbol>
+    <symbol id="icon-weeds" viewBox="0 0 24 24"><path d="M12 21v-9M12 16c-4 0-7-2-7-6 4 0 7 2 7 6ZM12 13c0-4 2-7 6-8 1 4-1 7-6 8ZM8 21h8" /></symbol>
+    <symbol id="icon-jump" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6M12 5v14" /></symbol>
+    <symbol id="icon-plough" viewBox="0 0 24 24"><path d="M5 5v8c0 4 3 6 7 6h7M5 9h8l3 3M9 19l2-5M15 19l2-5" /></symbol>
+    <symbol id="icon-seeder" viewBox="0 0 24 24"><path d="M5 7h9l2 7H7L5 7ZM8 14v4M15 14v4M7 20h2M14 20h2M16 10h3v8" /></symbol>
+    <symbol id="icon-sprayer" viewBox="0 0 24 24"><path d="M8 6h8v10H8zM10 3h4M4 12h4M16 12h4M4 12v4M20 12v4M3 19h2M11 19h2M19 19h2" /></symbol>
+    <symbol id="icon-wheat" viewBox="0 0 24 24"><path d="M12 21V4M12 8 8 5M12 11l4-3M12 14l-4-3M12 17l4-3" /></symbol>
+    <symbol id="icon-sunflower" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><path d="M12 5V3M12 13v8M9 8H7M17 8h-2M9.8 5.8 8.4 4.4M14.2 10.2l1.4 1.4M14.2 5.8l1.4-1.4M9.8 10.2l-1.4 1.4M12 17c-3 0-5-1-6-3 3 0 5 1 6 3Z" /></symbol>
+    <symbol id="icon-tractor" viewBox="0 0 24 24"><path d="M4 16h2l2-7h6l2 4h3l2 3M9 9V5h4l2 4M3 16h18" /><circle cx="7" cy="17" r="3" /><circle cx="17" cy="17" r="2" /></symbol>
+    <symbol id="icon-utility" viewBox="0 0 24 24"><path d="M3 15h18l-2-6h-5l-2-3H7L5 15M7 9h7M4 15v2h17v-2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></symbol>
+    <symbol id="icon-harvester" viewBox="0 0 24 24"><path d="M4 15h13V7H9l-3 4v4M17 11h3l1 4h-4M3 15h18M3 12l3 3" /><circle cx="8" cy="17" r="3" /><circle cx="18" cy="17" r="2" /></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6Z" /></symbol>
+    <symbol id="icon-controls" viewBox="0 0 24 24"><path d="M8 9h8a5 5 0 0 1 5 5v2a3 3 0 0 1-5 2l-2-2h-4l-2 2a3 3 0 0 1-5-2v-2a5 5 0 0 1 5-5Z" /><path d="M7 13h4M9 11v4M16 12h.01M18 14h.01" /></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
+  </svg>
+
+  <script type="module" src="./main.js?v=combine-fix-20260830-6"></script>
 </body>
 </html>

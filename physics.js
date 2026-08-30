@@ -3,12 +3,15 @@ import { GRASS_TOP, LAYER_DEPTH, SOIL_DEPTH, TILE, gridKey } from './shared.js';
 
 const FIXED_TIMESTEP = 1 / 60;
 const MAX_FRAME_TIME = 0.1;
-const GRAVITY = -18;
+const GRAVITY = -48;
 const GROUND_SPEED = 5.8;
+const TOOL_SPEED = 2.9;
 const AIR_SPEED = 3.7;
 const GROUND_ACCELERATION = 36;
 const AIR_ACCELERATION = 11;
-const JUMP_SPEED = 10.5;
+// Keep the original jump height while the stronger gravity makes the jump arc snappier.
+const JUMP_HEIGHT = 10.5 ** 2 / (2 * 18);
+const JUMP_SPEED = Math.sqrt(2 * -GRAVITY * JUMP_HEIGHT);
 const JUMP_BUFFER_TIME = 0.14;
 const CONTACT_GRACE_TIME = 0.11;
 const TRACTOR_COLLIDER_RADIUS = 0.44;
@@ -40,6 +43,7 @@ class FarmPhysics {
     this.measuredVelocity = { x: 0, y: 0, z: 0 };
     this.driveDirection = { x: 0, z: -1 };
     this.driveStrength = 0;
+    this.toolInUse = false;
     this.jumpBuffer = 0;
     this.groundGrace = 0;
     this.wallGrace = 0;
@@ -145,13 +149,14 @@ class FarmPhysics {
     this.touchingWall = false;
   }
 
-  drive(_dt, direction, strength, jump) {
+  drive(_dt, direction, strength, jump, toolInUse) {
     const length = Math.hypot(direction.x, direction.z);
     if (length > 0.001) {
       this.driveDirection.x = direction.x / length;
       this.driveDirection.z = direction.z / length;
     }
     this.driveStrength = Math.max(0, Math.min(1, strength));
+    this.toolInUse = toolInUse;
     if (jump) this.jumpBuffer = JUMP_BUFFER_TIME;
   }
 
@@ -171,7 +176,8 @@ class FarmPhysics {
     this.wallGrace = Math.max(0, this.wallGrace - dt);
 
     const supported = this.grounded || this.groundGrace > 0;
-    const targetSpeed = (supported ? GROUND_SPEED : AIR_SPEED) * this.driveStrength;
+    const baseSpeed = this.toolInUse ? TOOL_SPEED : (supported ? GROUND_SPEED : AIR_SPEED);
+    const targetSpeed = baseSpeed * this.driveStrength;
     const acceleration = supported ? GROUND_ACCELERATION : AIR_ACCELERATION;
     this.velocity.x = approach(this.velocity.x, this.driveDirection.x * targetSpeed, acceleration * dt);
     this.velocity.z = approach(this.velocity.z, this.driveDirection.z * targetSpeed, acceleration * dt);

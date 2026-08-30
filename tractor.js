@@ -1,84 +1,43 @@
-import { box, mats, THREE } from './shared.js';
+import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTractorAsset } from './farm-assets.js?v=combine-fix-20260830-6';
+import { THREE } from './shared.js?v=combine-fix-20260830-6';
 
 export function createTractor(scene) {
   const root = new THREE.Group();
-  const visual = new THREE.Group();
-  const wheels = [];
+  const { group: tractorVisual, wheels: tractorWheels } = createTractorAsset();
+  const combine = createCombineAsset();
   let wasGrounded = false;
   let lastVerticalSpeed = 0;
   let landingSquash = 0;
   root.scale.setScalar(.92);
-  root.add(visual);
+  root.add(tractorVisual, combine.group);
+  combine.group.visible = false;
   scene.add(root);
-
-  const chassis = box(.98, .18, 1.36, mats.tractorDark); chassis.position.y = .4; visual.add(chassis);
-  const body = box(.94, .42, 1.22, mats.tractor); body.position.y = .61; visual.add(body);
-  const hood = box(.88, .38, .7, mats.tractorAccent); hood.position.set(0, .83, -.54); visual.add(hood);
-  const hoodStripe = box(.58, .045, .74, mats.tractorCream); hoodStripe.position.set(0, 1.04, -.54); visual.add(hoodStripe);
-  const grille = box(.58, .24, .045, mats.tractorDark); grille.position.set(0, .79, -.913); visual.add(grille);
-  for (const x of [-.28, .28]) {
-    const lamp = box(.16, .14, .055, mats.headlamp); lamp.position.set(x, .86, -.94); visual.add(lamp);
-  }
-
-  const cab = new THREE.Group();
-  cab.position.z = .26;
-  visual.add(cab);
-  const roof = box(.92, .13, .75, mats.tractorCream); roof.position.set(0, 1.52, 0); cab.add(roof);
-  for (const x of [-.37, .37]) for (const z of [-.25, .25]) {
-    const post = box(.09, .76, .09, mats.tractorDark); post.position.set(x, 1.15, z); cab.add(post);
-  }
-  const windscreen = box(.64, .53, .035, mats.cab, false); windscreen.position.set(0, 1.19, -.265); cab.add(windscreen);
-  const backWindow = box(.64, .53, .035, mats.cab, false); backWindow.position.set(0, 1.19, .265); cab.add(backWindow);
-  for (const x of [-.39, .39]) {
-    const sideWindow = box(.035, .53, .42, mats.cab, false); sideWindow.position.set(x, 1.19, 0); cab.add(sideWindow);
-  }
-  const seat = box(.42, .16, .32, mats.tire); seat.position.set(0, .84, .29); visual.add(seat);
-  const steeringColumn = box(.055, .34, .055, mats.tractorDark); steeringColumn.position.set(0, 1.0, -.02); steeringColumn.rotation.x = -.38; visual.add(steeringColumn);
-  const steeringWheel = new THREE.Mesh(new THREE.TorusGeometry(.17, .027, 6, 10), mats.tractorCream);
-  steeringWheel.position.set(0, 1.16, -.085); steeringWheel.rotation.x = Math.PI * .54; steeringWheel.castShadow = true; visual.add(steeringWheel);
-  const exhaust = box(.1, .56, .1, mats.tractorDark); exhaust.position.set(-.28, 1.17, -.72); visual.add(exhaust);
-  const exhaustTip = box(.15, .07, .15, mats.metal); exhaustTip.position.set(-.28, 1.47, -.72); visual.add(exhaustTip);
-  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(.09, .09, .1, 10), mats.headlamp);
-  beacon.position.set(0, 1.66, .18); beacon.castShadow = true; visual.add(beacon);
-
-  const addWheel = (x, y, z, radius, width, front) => {
-    const holder = new THREE.Group();
-    holder.position.set(x, y, z);
-    const roller = new THREE.Group();
-    holder.add(roller);
-    const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, width, 12), mats.tire);
-    tire.rotation.z = Math.PI / 2; tire.castShadow = true; roller.add(tire);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * .43, radius * .43, width + .025, 12), mats.hub);
-    hub.rotation.z = Math.PI / 2; hub.castShadow = true; roller.add(hub);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(radius * .16, radius * .16, width + .04, 10), mats.tractorCream);
-    cap.rotation.z = Math.PI / 2; cap.castShadow = true; roller.add(cap);
-    for (let index = 0; index < 10; index++) {
-      const angle = index / 10 * Math.PI * 2;
-      const tread = box(width + .04, .07, .14, mats.tractorDark);
-      tread.position.set(0, Math.cos(angle) * radius, Math.sin(angle) * radius);
-      tread.rotation.x = -angle;
-      roller.add(tread);
-    }
-    visual.add(holder);
-    wheels.push({ holder, roller, tire, hub, front, radius, spin: 0, phase: Math.random() * Math.PI * 2 });
-  };
-  addWheel(-.58, .35, -.4, .34, .25, true); addWheel(.58, .35, -.4, .34, .25, true);
-  addWheel(-.6, .43, .47, .45, .28, false); addWheel(.6, .43, .47, .45, .28, false);
-
-  const plough = new THREE.Group();
-  plough.position.set(0, .3, 1.38);
-  visual.add(plough);
-  const hitch = box(.28, .16, .34, mats.tractorDark); hitch.position.z = -.15; plough.add(hitch);
-  const ploughBeam = box(1.62, .13, .16, mats.tractorAccent); ploughBeam.position.y = .1; plough.add(ploughBeam);
-  for (const x of [-.57, -.19, .19, .57]) {
-    const arm = box(.09, .46, .11, mats.tractorDark); arm.position.set(x, -.1, .16); arm.rotation.x = -.38; plough.add(arm);
-    const blade = box(.29, .11, .43, mats.tractor); blade.position.set(x, -.29, .35); blade.rotation.y = -.28; blade.rotation.x = -.22; plough.add(blade);
-    const tip = box(.1, .08, .16, mats.metal); tip.position.set(x + .1, -.34, .53); tip.rotation.y = -.28; plough.add(tip);
-  }
-  plough.visible = false;
+  const toolDownY = .3;
+  const toolUpY = .78;
+  let toolTargetY = toolUpY;
+  const attachments = Object.fromEntries(['plough', 'seeder', 'sprayer'].map(type => {
+    const attachment = createRearToolAsset(type);
+    attachment.position.set(0, toolUpY, 1.38);
+    tractorVisual.add(attachment);
+    return [type, attachment];
+  }));
+  let loadout = 'plough';
+  let vehicle = 'tractor';
+  Object.entries(attachments).forEach(([name, attachment]) => { attachment.visible = name === loadout; });
 
   return {
-    setPloughEnabled(enabled) { plough.visible = enabled; },
+    setLoadout(nextLoadout) {
+      const nextVehicle = nextLoadout.vehicle || vehicle;
+      const nextTool = nextLoadout.tool || loadout;
+      vehicle = nextVehicle;
+      tractorVisual.visible = vehicle !== 'harvester';
+      combine.group.visible = vehicle === 'harvester';
+      if (attachments[nextTool]) loadout = nextTool;
+      Object.entries(attachments).forEach(([name, attachment]) => {
+        attachment.visible = vehicle !== 'harvester' && name === loadout;
+      });
+    },
+    setToolEnabled(enabled) { toolTargetY = enabled ? toolDownY : toolUpY; },
     sync(state, heading, steer, driveAmount, dt, elapsed) {
       root.position.set(state.x, state.y, state.z);
       root.rotation.y = heading;
@@ -88,22 +47,145 @@ export function createTractor(scene) {
       landingSquash *= Math.exp(-7 * dt);
       wasGrounded = state.grounded;
       lastVerticalSpeed = state.verticalSpeed;
+      const attachment = attachments[loadout];
+      attachment.position.y += (toolTargetY - attachment.position.y) * (1 - Math.exp(-10 * dt));
+      const headerTargetY = vehicle === 'harvester' && toolTargetY === toolDownY ? .24 : .42;
+      combine.header.position.y += (headerTargetY - combine.header.position.y) * (1 - Math.exp(-10 * dt));
 
       const speedFactor = Math.min(1, state.speed / 5.5);
-      wheels.forEach(wheel => {
+      const activeWheels = vehicle === 'harvester' ? combine.wheels : tractorWheels;
+      activeWheels.forEach(wheel => {
         wheel.spin += state.speed * dt / wheel.radius;
         wheel.roller.rotation.x = wheel.spin;
-        if (wheel.front) wheel.holder.rotation.y = steer * .38;
+        if (wheel.front || wheel.steer) wheel.holder.rotation.y = steer * .38;
         const wobble = Math.sin(elapsed * (8 + speedFactor * 15) + wheel.phase) * (.012 + speedFactor * .065);
         wheel.holder.rotation.z = wobble;
       });
       const engineBob = state.grounded ? Math.sin(elapsed * (8 + Math.min(1, state.speed / 4) * 5)) * .04 * Math.min(1, state.speed / 4) : 0;
       const airStretch = state.grounded ? 0 : .14;
       const squash = landingSquash - airStretch;
+      const visual = vehicle === 'harvester' ? combine.group : tractorVisual;
       visual.position.y = engineBob;
       visual.scale.set(1 + squash * .9, 1 - squash, 1 + squash * .9);
-      visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .13;
-      visual.rotation.x = state.grounded ? -driveAmount * .04 : THREE.MathUtils.clamp(-state.verticalSpeed * .045, -.28, .28);
+      visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .1;
+      visual.rotation.x = state.grounded ? -driveAmount * .035 : THREE.MathUtils.clamp(-state.verticalSpeed * .045, -.28, .28);
+      if (vehicle === 'harvester') combine.reel.rotation.x -= (toolTargetY === toolDownY ? Math.max(.7, state.speed * 3.2) : 0) * dt;
     },
+  };
+}
+
+export function createLoadoutPreview(canvas, category) {
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power', preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(34, 1, .1, 50);
+  camera.position.set(0, 2.7, 5.5);
+  scene.add(new THREE.HemisphereLight(0xfff5df, 0x25231a, 2.8));
+  const key = new THREE.DirectionalLight(0xffd89b, 2.5);
+  key.position.set(-3, 5, 4);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xa1cfff, 1.3);
+  rim.position.set(4, 2, -4);
+  scene.add(rim);
+
+  const ids = category === 'vehicles'
+    ? ['tractor', 'harvester']
+    : category === 'equipment'
+      ? ['plough', 'seeder', 'sprayer']
+      : ['loader', 'forks', 'weight'];
+  const models = Object.fromEntries(ids.map(id => {
+    const presentation = new THREE.Group();
+    const model = createLoadoutAsset(category, id);
+    if (category === 'vehicles') {
+      model.rotation.y = Math.PI - .48;
+      if (id === 'tractor') model.scale.setScalar(.92);
+    }
+    else if (category === 'equipment') {
+      model.position.y = .38;
+      model.rotation.y = -.36;
+    }
+    else model.rotation.y = -.45;
+    presentation.add(model);
+    return [id, presentation];
+  }));
+  const stage = new THREE.Group();
+  stage.scale.setScalar(.72);
+  scene.add(stage);
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.35, 28), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .24 }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.scale.set(1.4, .65, 1);
+  stage.add(shadow);
+  const modelEntries = Object.entries(models);
+  modelEntries.forEach(([, model]) => stage.add(model));
+  modelEntries.forEach(([, model]) => { model.visible = false; });
+  let current = Object.keys(models)[0];
+
+  const setItem = nextItem => {
+    if (!models[nextItem]) return;
+    current = nextItem;
+    modelEntries.forEach(([name, model]) => model.scale.setScalar(name === current ? 1 : .88));
+  };
+  setItem(current);
+
+  const resize = () => {
+    const width = Math.max(1, canvas.clientWidth);
+    const height = Math.max(1, canvas.clientHeight);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  };
+  const observer = new ResizeObserver(resize);
+  observer.observe(canvas);
+  resize();
+  let frozen = false;
+
+  return {
+    setItem,
+    render(time) {
+      if (frozen) return;
+      const width = Math.max(1, canvas.clientWidth);
+      const height = Math.max(1, canvas.clientHeight);
+      const viewportWidth = width / modelEntries.length;
+      renderer.autoClear = false;
+      renderer.setScissorTest(true);
+      renderer.setViewport(0, 0, width, height);
+      renderer.setScissor(0, 0, width, height);
+      renderer.clear();
+      stage.rotation.y = Math.sin(time * .45) * .045;
+      stage.position.y = Math.sin(time * 1.2) * .025;
+      modelEntries.forEach(([, model], index) => {
+        model.visible = true;
+        camera.aspect = viewportWidth / height;
+        camera.updateProjectionMatrix();
+        camera.lookAt(0, .65, 0);
+        const x = index * viewportWidth;
+        renderer.setViewport(x, 0, viewportWidth, height);
+        renderer.setScissor(x, 0, viewportWidth, height);
+        shadow.visible = true;
+        renderer.render(scene, camera);
+        model.visible = false;
+      });
+      shadow.visible = false;
+      renderer.setScissorTest(false);
+    },
+    freeze() {
+      if (frozen) return;
+      this.render(0);
+      const image = new Image();
+      image.className = canvas.className;
+      image.alt = '';
+      image.setAttribute('aria-hidden', 'true');
+      image.src = canvas.toDataURL('image/png');
+      canvas.replaceWith(image);
+      observer.disconnect();
+      renderer.dispose();
+      frozen = true;
+    },
+    dispose() { observer.disconnect(); renderer.dispose(); },
   };
 }

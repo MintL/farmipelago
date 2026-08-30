@@ -30,6 +30,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const waterfalls = [];
   const waterParticles = [];
   const grassMaterials = new Map();
+  let tallGrassGeometry = null;
   let barnArea = null;
   let plantedCount = 0;
   let readyCount = 0;
@@ -119,13 +120,22 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const addTallGrass = tile => {
     const tuft = new THREE.Group();
     tuft.position.set(tile.x, tile.topY, tile.z);
+    tallGrassGeometry ||= new THREE.BoxGeometry(1, 1, 1);
+    const blades = new THREE.InstancedMesh(tallGrassGeometry, mats.tallGrass, 9);
+    const bladeTransform = new THREE.Object3D();
+    blades.castShadow = false;
+    blades.receiveShadow = false;
     for (let index = 0; index < 9; index++) {
       const height = .55 + random() * .38;
-      const blade = box(.05, height, .065, mats.tallGrass, false, false);
-      blade.position.set((random() - .5) * .5, height * .5, (random() - .5) * .5);
-      blade.rotation.set((random() - .5) * .18, random() * Math.PI, (random() - .5) * .18);
-      tuft.add(blade);
+      bladeTransform.position.set((random() - .5) * .5, height * .5, (random() - .5) * .5);
+      bladeTransform.rotation.set((random() - .5) * .18, random() * Math.PI, (random() - .5) * .18);
+      bladeTransform.scale.set(.05, height, .065);
+      bladeTransform.updateMatrix();
+      blades.setMatrixAt(index, bladeTransform.matrix);
     }
+    blades.instanceMatrix.needsUpdate = true;
+    blades.computeBoundingSphere();
+    tuft.add(blades);
     tallGrass.add(tuft);
     tile.tallGrass = tuft;
   };
@@ -139,19 +149,38 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       for (const cell of cells) {
         const wobble = terrainNoise(cell.gx * .22 + layer * 2.7, cell.gz * .22 - layer * 1.9) * (0.13 + layer * 0.018);
         if (cell.dist <= maxRadius + wobble) {
-          const layerMesh = box(TILE, LAYER_DEPTH, TILE, material);
-          layerMesh.position.set(cell.gx * TILE, y, cell.gz * TILE);
-          group.add(layerMesh);
           lowerBlocks.push({
-            x: layerMesh.position.x,
+            x: cell.gx * TILE,
             y,
-            z: layerMesh.position.z,
+            z: cell.gz * TILE,
             width: TILE,
             height: LAYER_DEPTH,
             depth: TILE,
+            material,
           });
         }
       }
+    }
+  };
+
+  const addLowerLayerInstances = () => {
+    const geometry = new THREE.BoxGeometry(TILE, LAYER_DEPTH, TILE);
+    const transform = new THREE.Matrix4();
+    for (const material of [mats.soil, mats.stone, mats.stoneDark]) {
+      const blocks = lowerBlocks.filter(block => block.material === material);
+      if (!blocks.length) continue;
+      const mesh = new THREE.InstancedMesh(geometry, material, blocks.length);
+      mesh.name = 'lower-layers';
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      blocks.forEach((block, index) => {
+        transform.makeTranslation(block.x, block.y, block.z);
+        mesh.setMatrixAt(index, transform);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingBox();
+      mesh.computeBoundingSphere();
+      group.add(mesh);
     }
   };
 
@@ -347,6 +376,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       }
     }
   });
+
+  addLowerLayerInstances();
 
   if (barnSite) addBarn(barnSite.x, barnSite.topY, barnSite.z);
 

@@ -29,6 +29,9 @@ class FarmPhysics {
     this.tractorCollider = null;
     this.characterController = this.world.createCharacterController(0.03);
     this.characterController.enableSnapToGround(0.28);
+    // Water basins sit .22 units below the farm surface. Let the tractor roll
+    // out of them, but leave the one-unit terrain terraces jump-only.
+    this.characterController.enableAutostep(0.32, 0.12, true);
     this.characterController.setMaxSlopeClimbAngle(Math.PI * 0.28);
     this.characterController.setMinSlopeSlideAngle(Math.PI * 0.34);
     this.characterController.setSlideEnabled(true);

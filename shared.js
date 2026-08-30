@@ -88,10 +88,10 @@ export const mats = {
     depthWrite: false,
   }),
   waterSplash: new THREE.MeshStandardMaterial({
-    color: 0x47a9cf,
-    emissive: 0x1d718d,
-    emissiveIntensity: .45,
-    roughness: .42,
+    color: 0x62d8ee,
+    emissive: 0x238eae,
+    emissiveIntensity: .9,
+    roughness: .32,
   }),
 };
 

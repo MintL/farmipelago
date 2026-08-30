@@ -116,7 +116,7 @@ function update(dt) {
   physics.drive(dt, driveDirection, driveAmount, ui.consumeJump());
   physics.step(dt);
   const state = physics.tractorState();
-  if (!before.grounded && state.grounded && before.verticalSpeed < -1.5) {
+  if (!before.grounded && state.grounded && before.verticalSpeed < -.35) {
     farm.splashAt(state.x, state.z, Math.abs(before.verticalSpeed));
   }
   if (state.y < -12) {

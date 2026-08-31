@@ -1,7 +1,7 @@
 import { THREE, box } from './shared.js?v=combine-fix-20260830-6';
 
 const SILO_RADIUS = 1.05;
-const SILO_HEIGHT = 3.25;
+const SILO_HEIGHT = 3.7;
 
 export function createBuildingManager({ getSiteAt, setCollider }) {
   let parent = null;
@@ -131,6 +131,12 @@ export function createBuildingManager({ getSiteAt, setCollider }) {
         building.visual.animate(elapsed, building === active);
       }
     },
+    isNearSilo(x, z, range = 2.45) {
+      for (const building of buildings.values()) {
+        if (building.type === 'silo' && building.placed && Math.hypot(x - building.site.x, z - building.site.z) <= range) return true;
+      }
+      return false;
+    },
     isDragging: () => active !== null,
   };
 }
@@ -139,12 +145,12 @@ export function createSilo() {
   const group = new THREE.Group();
   const spring = new THREE.Group();
   const shell = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0xaeb8b4, roughness: .45, metalness: .62 });
-  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x51605e, roughness: .54, metalness: .52 });
-  const roofMetal = new THREE.MeshStandardMaterial({ color: 0x768b8d, roughness: .38, metalness: .68 });
-  const concrete = new THREE.MeshStandardMaterial({ color: 0x8c8c80, roughness: .9 });
-  const ladderMetal = new THREE.MeshStandardMaterial({ color: 0xc8d0c8, roughness: .4, metalness: .72 });
-  const warning = new THREE.MeshStandardMaterial({ color: 0xd7a73f, roughness: .67, metalness: .18 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x8d5e3d, roughness: .78, metalness: .12 });
+  const darkMetal = new THREE.MeshStandardMaterial({ color: 0x573824, roughness: .84, metalness: .08 });
+  const roofMetal = new THREE.MeshStandardMaterial({ color: 0x70452c, roughness: .72, metalness: .1 });
+  const concrete = new THREE.MeshStandardMaterial({ color: 0x765442, roughness: .94 });
+  const ladderMetal = new THREE.MeshStandardMaterial({ color: 0x67442e, roughness: .76, metalness: .12 });
+  const warning = new THREE.MeshStandardMaterial({ color: 0xc18a4d, roughness: .76, metalness: .06 });
   const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xe7d56d, transparent: true, opacity: .88, depthWrite: false });
   const materials = [metal, darkMetal, roofMetal, concrete, ladderMetal, warning];
   let dragging = false;
@@ -155,47 +161,35 @@ export function createSilo() {
   group.add(spring);
   spring.add(shell);
 
-  const foundation = new THREE.Mesh(new THREE.CylinderGeometry(1.17, 1.17, .16, 24), concrete);
+  const foundation = new THREE.Mesh(new THREE.CylinderGeometry(1.17, 1.17, .16, 16), concrete);
   foundation.position.y = .08;
   foundation.castShadow = true;
   foundation.receiveShadow = true;
   shell.add(foundation);
 
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(.96, .98, 2.7, 24), metal);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.96, .98, 2.7, 16), metal);
   body.position.y = 1.5;
   body.castShadow = true;
   body.receiveShadow = true;
   shell.add(body);
 
-  for (let index = 0; index < 24; index++) {
-    const angle = index / 24 * Math.PI * 2;
-    const rib = box(.035, 2.62, .055, darkMetal);
-    rib.position.set(Math.sin(angle) * .982, 1.5, Math.cos(angle) * .982);
-    rib.rotation.y = angle;
-    shell.add(rib);
-  }
-  for (const y of [.43, 1.34, 2.25]) {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(1.01, .045, 7, 28), darkMetal);
+  for (const y of [.58, 2.22]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(1.01, .05, 6, 20), darkMetal);
     band.rotation.x = Math.PI * .5;
     band.position.y = y;
     band.castShadow = true;
     shell.add(band);
   }
 
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.04, .78, 24), roofMetal);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.04, .78, 16), roofMetal);
   roof.position.y = 3.22;
   roof.castShadow = true;
   roof.receiveShadow = true;
   shell.add(roof);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(.16, .19, .24, 12), darkMetal);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(.16, .19, .24, 10), darkMetal);
   cap.position.y = 3.71;
   cap.castShadow = true;
   shell.add(cap);
-  const vent = new THREE.Mesh(new THREE.ConeGeometry(.32, .22, 12), roofMetal);
-  vent.position.y = 3.94;
-  vent.castShadow = true;
-  shell.add(vent);
-
   const ladder = new THREE.Group();
   ladder.position.set(0, 0, 1.025);
   shell.add(ladder);
@@ -204,29 +198,16 @@ export function createSilo() {
     rail.position.set(side * .2, 1.47, 0);
     ladder.add(rail);
   }
-  for (let index = 0; index < 10; index++) {
+  for (let index = 0; index < 7; index++) {
     const rung = box(.44, .04, .05, ladderMetal);
-    rung.position.set(0, .48 + index * .225, 0);
+    rung.position.set(0, .58 + index * .29, 0);
     ladder.add(rung);
   }
-  const platform = box(.68, .05, .44, darkMetal);
-  platform.position.set(0, 2.72, .98);
-  shell.add(platform);
 
   const hatch = new THREE.Mesh(new THREE.BoxGeometry(.42, .56, .04), warning);
   hatch.position.set(0, .7, 1.005);
   hatch.castShadow = true;
   shell.add(hatch);
-  const chute = new THREE.Mesh(new THREE.CylinderGeometry(.11, .11, .85, 10), darkMetal);
-  chute.position.set(-.93, .6, -.14);
-  chute.rotation.z = Math.PI * .5;
-  chute.castShadow = true;
-  shell.add(chute);
-  const chuteEnd = new THREE.Mesh(new THREE.ConeGeometry(.2, .42, 10), roofMetal);
-  chuteEnd.position.set(-1.48, .6, -.14);
-  chuteEnd.rotation.z = -Math.PI * .5;
-  chuteEnd.castShadow = true;
-  shell.add(chuteEnd);
 
   const ring = new THREE.Mesh(new THREE.RingGeometry(1.27, 1.35, 32), ringMaterial);
   ring.rotation.x = -Math.PI * .5;

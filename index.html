@@ -45,19 +45,28 @@
     .eyebrow { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 
     #hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
-    #buildVersion {
+    #performanceBadge {
       position: absolute;
-      top: calc(var(--safe-top) + 14px);
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 6px 9px;
+      left: var(--safe-left);
+      bottom: var(--safe-bottom);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 7px;
       border-radius: 999px;
-      background: rgba(41, 43, 37, .78);
-      color: #fff9e9;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: .08em;
+      background: rgba(41, 43, 37, .62);
+      color: rgba(255, 249, 233, .82);
+      font-size: 9px;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: .06em;
       white-space: nowrap;
+    }
+    #fpsValue {
+      min-width: 38px;
+      padding-left: 6px;
+      border-left: 1px solid rgba(255, 249, 233, .24);
+      text-align: right;
     }
     #topLeftGroup { min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
     #fieldControls { display: grid; gap: 8px; }
@@ -283,10 +292,8 @@
       position: absolute;
       right: var(--safe-right);
       bottom: var(--safe-bottom);
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 11px;
+      width: 220px;
+      height: 220px;
     }
     .actionButton {
       display: grid;
@@ -299,12 +306,14 @@
       -webkit-backdrop-filter: blur(14px) saturate(115%);
     }
     .actionButton:active { transform: translateY(1px) scale(.97); }
-    #jump { width: 76px; height: 76px; border-radius: 50%; }
+    #jump { position: absolute; right: 0; bottom: 0; width: 76px; height: 76px; border-radius: 50%; }
     #jump .icon { width: 30px; height: 30px; }
     #toolToggle {
-      position: relative;
-      width: 38px;
-      height: 38px;
+      position: absolute;
+      right: 94px;
+      bottom: 14px;
+      width: 42px;
+      height: 42px;
       border-radius: 50%;
       transition: border-color .16s, background .16s, transform .1s;
     }
@@ -319,6 +328,19 @@
       box-shadow: 0 0 0 2px rgba(53, 67, 47, .16);
     }
     #toolToggle .icon { width: 20px; height: 20px; }
+    #unloadButton {
+      position: absolute;
+      right: 81px;
+      bottom: 60px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      color: var(--accent-strong);
+      transition: opacity .16s, border-color .16s, background .16s, transform .1s;
+    }
+    #unloadButton .icon { width: 22px; height: 22px; }
+    #unloadButton[aria-disabled="true"] { opacity: .52; color: var(--muted); }
+    #unloadButton[aria-disabled="false"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); }
     .toolCopy, .keycap { display: none; }
 
     #desktopHints {
@@ -350,9 +372,20 @@
     }
     body[data-input-mode="keyboard"] #stickZone,
     body[data-input-mode="keyboard"] #jump { display: none; }
+    body[data-input-mode="keyboard"] #performanceBadge { bottom: calc(var(--safe-bottom) + 48px); }
     body[data-input-mode="keyboard"] #desktopHints { display: block; }
-    body[data-input-mode="keyboard"] #actionCluster { bottom: var(--safe-bottom); }
+    body[data-input-mode="keyboard"] #actionCluster {
+      right: var(--safe-right);
+      bottom: var(--safe-bottom);
+      width: auto;
+      height: auto;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+    }
     body[data-input-mode="keyboard"] #toolToggle {
+      position: static;
       width: auto;
       min-width: 178px;
       height: 54px;
@@ -363,6 +396,7 @@
       text-align: left;
     }
     body[data-input-mode="keyboard"] #toolToggle .icon { width: 22px; height: 22px; }
+    body[data-input-mode="keyboard"] #unloadButton { position: static; width: 54px; height: 54px; }
     body[data-input-mode="keyboard"] .toolCopy { display: grid; gap: 1px; }
     body[data-input-mode="keyboard"] .toolName { font-size: 12px; font-weight: 740; }
     body[data-input-mode="keyboard"] .toolState { color: var(--muted); font-size: 10px; }
@@ -575,7 +609,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="buildVersion">0.11</div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.20</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <div id="fieldControls">
@@ -623,13 +657,16 @@
         <span class="toolCopy"><span class="toolName" id="toolName">Plough</span><span class="toolState" id="toolState">Raised</span></span>
         <span class="keycap" aria-hidden="true">E</span>
       </button>
+      <button id="unloadButton" class="actionButton" type="button" aria-label="Move beside a silo to empty combine" aria-disabled="true" title="Move beside a silo" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-unload"></use></svg>
+      </button>
       <button id="jump" class="actionButton" type="button" aria-label="Jump" title="Jump">
         <svg class="icon" aria-hidden="true"><use href="#icon-jump"></use></svg>
       </button>
     </div>
 
     <div id="desktopHints" aria-hidden="true">
-      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
+      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>F</kbd> Empty combine &nbsp; <kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
     </div>
 
     <div id="overlay" hidden>
@@ -690,6 +727,7 @@
               <strong>Drive</strong><span>WASD, arrow keys, or touch joystick</span>
               <strong>Jump</strong><span>Space or jump button</span>
               <strong>Tool</strong><span>E or equipped-tool button</span>
+              <strong>Unload</strong><span>With the combine beside a silo, use the round unload button or F to empty its grain tank</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
               <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
@@ -722,6 +760,7 @@
     <symbol id="icon-corn" viewBox="0 0 24 24"><path d="M12 21V8M12 17c-4 0-6-2-6-6 4 0 6 2 6 6ZM12 13c4 0 6-2 6-6-4 0-6 2-6 6ZM12 8c-2-1-3-3-2-5 2 1 3 3 2 5Z" /></symbol>
     <symbol id="icon-ready" viewBox="0 0 24 24"><path d="M12 3v18M12 7c-3-2-5-1-6 1 2 2 4 2 6 0M12 12c3-2 5-1 6 1-2 2-4 2-6 0M8 21h8" /></symbol>
     <symbol id="icon-silo" viewBox="0 0 24 24"><path d="M6 20V9a6 6 0 0 1 12 0v11M4 20h16M7 9h10M12 3v2M9 20v-7h6v7M5 9h14" /><path d="M17 8v5M15 8v5" /></symbol>
+    <symbol id="icon-unload" viewBox="0 0 24 24"><path d="M5 4v10h10M9 10l6 6 6-6M15 16v4M4 20h16" /></symbol>
     <symbol id="icon-weeds" viewBox="0 0 24 24"><path d="M12 21v-9M12 16c-4 0-7-2-7-6 4 0 7 2 7 6ZM12 13c0-4 2-7 6-8 1 4-1 7-6 8ZM8 21h8" /></symbol>
     <symbol id="icon-jump" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6M12 5v14" /></symbol>
     <symbol id="icon-plough" viewBox="0 0 24 24"><path d="M5 5v8c0 4 3 6 7 6h7M5 9h8l3 3M9 19l2-5M15 19l2-5" /></symbol>
@@ -739,6 +778,6 @@
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=high-profile-20260830-11"></script>
+  <script type="module" src="./main.js?v=action-layout-20260831-19"></script>
 </body>
 </html>

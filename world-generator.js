@@ -29,7 +29,6 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const waterMotion = [];
   const waterfalls = [];
   const waterParticles = [];
-  const grassMaterials = new Map();
   let tallGrassGeometry = null;
   let barnArea = null;
   let plantedCount = 0;
@@ -50,25 +49,19 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const x = gx * TILE;
     const z = gz * TILE;
     const dirtDepth = SOIL_DEPTH + Math.max(0, topY - baseY);
-    const dirt = box(TILE, dirtDepth, TILE, mats.soil);
-    dirt.position.set(x, topY - GRASS_TOP - dirtDepth * 0.5, z);
-    group.add(dirt);
-
-    const top = box(TILE, GRASS_TOP, TILE, topY > baseY + 0.01 ? mats.grassHigh : mats.grass);
-    top.position.set(x, topY - GRASS_TOP * 0.5, z);
-    group.add(top);
     const environment = {
       moisture: environmentalAxis(moistureNoise(gx * .18 + 17.3, gz * .18 - 8.1)),
       sun: environmentalAxis(sunNoise(gx * .16 - 31.7, gz * .16 + 22.4)),
     };
     terrain.set(gridKey(gx, gz), {
-      gx, gz, x, z, topY, baseY, islandId, radial, topMesh: top, dirtMesh: dirt, dirtDepth,
-      environment, normalGrassMaterial: null, tallGrass: null, stones: [], hasTree: false,
+      gx, gz, x, z, topY, baseY, islandId, radial, dirtDepth,
+      environment, normalGrassColor: null, surfaceBatch: null, surfaceInstance: -1,
+      tallGrass: null, stones: [], hasTree: false,
       ploughed: false, water: false, crop: null,
     });
   };
 
-  const grassMaterialFor = tile => {
+  const grassColorFor = tile => {
     const raised = tile.topY > tile.baseY + .01;
     const { moisture, sun } = tile.environment;
     const shade = 1 - sun;
@@ -89,14 +82,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const lightnessStep = Math.round((lightness - minLightness) / (maxLightness - minLightness) * 8);
     const quantizedSaturation = .42 + saturationStep * .18 / 7;
     const quantizedLightness = minLightness + lightnessStep * (maxLightness - minLightness) / 8;
-    const variant = `${raised ? 'high' : 'base'}-${saturationStep}-${lightnessStep}`;
-    if (!grassMaterials.has(variant)) {
-      grassMaterials.set(variant, new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(hue, quantizedSaturation, quantizedLightness),
-        roughness: 1,
-      }));
-    }
-    return grassMaterials.get(variant);
+    return new THREE.Color().setHSL(hue, quantizedSaturation, quantizedLightness);
   };
 
   const finalizeEnvironment = (cells, waterTiles) => {
@@ -110,10 +96,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         waterBonus = Math.max(waterBonus, THREE.MathUtils.clamp(1 - distance / 4, 0, 1) * .58);
       }
       tile.environment.moisture = tile.water ? 1 : THREE.MathUtils.clamp(tile.environment.moisture + waterBonus, 0, 1);
-      if (!tile.water) {
-        tile.normalGrassMaterial = grassMaterialFor(tile);
-        tile.topMesh.material = tile.normalGrassMaterial;
-      }
+      if (!tile.water) tile.normalGrassColor = grassColorFor(tile);
     }
   };
 
@@ -181,6 +164,49 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       mesh.computeBoundingBox();
       mesh.computeBoundingSphere();
       group.add(mesh);
+    }
+  };
+
+  const addTerrainInstances = () => {
+    const surfaceGeometry = new THREE.BoxGeometry(TILE, GRASS_TOP, TILE);
+    const soilGeometry = new THREE.BoxGeometry(TILE, 1, TILE);
+    const surfaceMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+    const tilesByIsland = new Map();
+    for (const tile of terrain.values()) {
+      if (tile.water) continue;
+      if (!tilesByIsland.has(tile.islandId)) tilesByIsland.set(tile.islandId, []);
+      tilesByIsland.get(tile.islandId).push(tile);
+    }
+
+    for (const [islandId, tiles] of tilesByIsland) {
+      const surface = new THREE.InstancedMesh(surfaceGeometry, surfaceMaterial, tiles.length);
+      const soil = new THREE.InstancedMesh(soilGeometry, mats.soil, tiles.length);
+      const matrix = new THREE.Matrix4();
+      surface.name = `terrain-surface-${islandId}`;
+      soil.name = `terrain-soil-${islandId}`;
+      surface.castShadow = surface.receiveShadow = true;
+      soil.castShadow = soil.receiveShadow = true;
+
+      tiles.forEach((tile, index) => {
+        matrix.makeTranslation(tile.x, tile.topY - GRASS_TOP * .5, tile.z);
+        surface.setMatrixAt(index, matrix);
+        surface.setColorAt(index, tile.normalGrassColor || mats.grass.color);
+        tile.surfaceBatch = surface;
+        tile.surfaceInstance = index;
+
+        matrix.makeScale(1, tile.dirtDepth, 1);
+        matrix.setPosition(tile.x, tile.topY - GRASS_TOP - tile.dirtDepth * .5, tile.z);
+        soil.setMatrixAt(index, matrix);
+      });
+
+      surface.instanceMatrix.needsUpdate = true;
+      surface.instanceColor.needsUpdate = true;
+      soil.instanceMatrix.needsUpdate = true;
+      surface.computeBoundingBox();
+      surface.computeBoundingSphere();
+      soil.computeBoundingBox();
+      soil.computeBoundingSphere();
+      group.add(surface, soil);
     }
   };
 
@@ -362,8 +388,14 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       const y = terrain.get(gridKey(cell.gx, cell.gz))?.topY ?? island.h;
       const tile = terrain.get(gridKey(cell.gx, cell.gz));
       const { moisture, sun } = tile.environment;
-      const treeChance = .014 + moisture * .045 + (1 - sun) * .022 + moisture * (1 - sun) * .04;
-      const rockChance = .04 + (1 - moisture) * .07 + sun * .02;
+      // Trees form distinct cool, damp groves instead of appearing evenly
+      // throughout the farm. Rocks remain the dry, bright counterpart.
+      const wet = THREE.MathUtils.smoothstep(moisture, .38, .78);
+      const shade = THREE.MathUtils.smoothstep(1 - sun, .32, .72);
+      const dry = THREE.MathUtils.smoothstep(1 - moisture, .36, .76);
+      const bright = THREE.MathUtils.smoothstep(sun, .36, .76);
+      const treeChance = .002 + wet * shade * .18;
+      const rockChance = .03 + dry * .09 + bright * .028;
       const roll = random();
       const nearBarn = barnSite && id === STARTER_ISLAND_ID &&
         Math.hypot(x - barnSite.x, z - barnSite.z) < BARN_TREE_CLEARANCE;
@@ -398,6 +430,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1);
   }
 
+  addTerrainInstances();
   const cropInstances = createCropInstances(terrain.size, group);
   const cropOverlay = createCropOverlay(terrain, group);
   const refreshFurrowInstances = () => {
@@ -588,8 +621,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       const tile = tileAtLevel(x, z, levelY, terrain);
       if (!tile || tile.ploughed || tile.water || tile.hasTree) return false;
       tile.ploughed = true;
-      tile.topMesh.material = mats.ploughed;
-      tile.topMesh.material.needsUpdate = true;
+      tile.surfaceBatch.setColorAt(tile.surfaceInstance, mats.ploughed.color);
+      tile.surfaceBatch.instanceColor.needsUpdate = true;
       if (tile.tallGrass) tile.tallGrass.visible = false;
       for (const stone of tile.stones) group.remove(stone);
       tile.stones.length = 0;
@@ -910,29 +943,8 @@ function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, 
 }
 
 function excavateWaterTile(tile) {
-  const loweredTop = tile.topY - WATER_DEPTH;
-  const loweredDirtDepth = tile.dirtDepth - WATER_DEPTH;
-  tile.topY = loweredTop;
-  tile.dirtMesh.scale.y = loweredDirtDepth / tile.dirtDepth;
-  tile.dirtMesh.position.y = loweredTop - GRASS_TOP - loweredDirtDepth * .5;
-  tile.topMesh.position.y = loweredTop - GRASS_TOP * .5;
-  tile.topMesh.material = mats.stoneDark;
-  removeTopFace(tile.topMesh);
-  removeTopFace(tile.dirtMesh);
-  tile.topMesh.visible = false;
-  tile.dirtMesh.visible = false;
-}
-
-function removeTopFace(mesh) {
-  const original = mesh.geometry;
-  const openTop = original.clone();
-  openTop.clearGroups();
-  original.groups.forEach((group, index) => {
-    // BoxGeometry builds faces in +x, -x, +y, -y, +z, -z order; omit +y.
-    if (index !== 2) openTop.addGroup(group.start, group.count, 0);
-  });
-  mesh.geometry = openTop;
-  original.dispose();
+  tile.topY -= WATER_DEPTH;
+  tile.dirtDepth -= WATER_DEPTH;
 }
 
 function findWaterRoute(source, lakeKeys, terrain, islandId, strictBanks) {
@@ -1216,7 +1228,9 @@ function normalizeNoise(value) {
 
 function environmentalAxis(value) {
   const normalized = normalizeNoise(value);
-  return THREE.MathUtils.clamp(.5 + (normalized - .5) * 2, 0, 1);
+  // Expand the middle of Perlin's distribution so each field develops
+  // decisive bright/dry and dark/wet regions rather than mostly midtones.
+  return THREE.MathUtils.clamp(.5 + (normalized - .5) * 3, 0, 1);
 }
 
 function createPerlin(seed) {

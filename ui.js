@@ -36,7 +36,7 @@ function icon(name) {
   return svg;
 }
 
-export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onUnload, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   const cropIds = Object.keys(crops);
@@ -61,6 +61,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   let restoreFocus = null;
   let grainFill = 0;
   let grainCapacity = 36;
+  let unloadAvailable = false;
 
   const topBar = document.querySelector('#topBar');
   const overlay = document.querySelector('#overlay');
@@ -77,6 +78,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
   const actionCluster = document.querySelector('#actionCluster');
   const desktopHints = document.querySelector('#desktopHints');
   const toolToggle = document.querySelector('#toolToggle');
+  const unloadButton = document.querySelector('#unloadButton');
   const toolIconUse = document.querySelector('#toolIconUse');
   const toolName = document.querySelector('#toolName');
   const toolState = document.querySelector('#toolState');
@@ -162,6 +164,19 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     grainValue.textContent = `${grainFill} / ${grainCapacity}`;
     grainMeter.setAttribute('aria-valuenow', String(percent));
     grainMeter.setAttribute('aria-valuetext', `${grainFill} of ${grainCapacity} grain collected`);
+  };
+
+  const renderUnload = () => {
+    const visible = activeLoadout.vehicle === 'harvester';
+    unloadButton.hidden = !visible;
+    unloadButton.setAttribute('aria-disabled', String(!unloadAvailable));
+    unloadButton.setAttribute('aria-label', unloadAvailable ? 'Empty combine into nearby silo' : 'Move beside a silo to empty combine');
+    unloadButton.title = unloadAvailable ? 'Empty combine' : 'Move beside a silo';
+  };
+
+  const unload = () => {
+    if (overlayState || cropOverlayEnabled || buildMode || activeLoadout.vehicle !== 'harvester') return;
+    onUnload();
   };
 
   const renderCropOverlay = () => {
@@ -403,6 +418,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     keys.add(event.code);
     if (!cropOverlayEnabled && !buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
     if (!cropOverlayEnabled && !buildMode && event.code === 'KeyE' && !event.repeat) toggleTool();
+    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyF' && !event.repeat) unload();
     if (!cropOverlayEnabled && event.code === 'KeyB' && !event.repeat) setBuildMode(!buildMode);
   });
   window.addEventListener('keyup', event => keys.delete(event.code));
@@ -474,6 +490,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
     input.jumpQueued = true;
   });
   toolToggle.addEventListener('click', toggleTool);
+  unloadButton.addEventListener('click', unload);
   suitabilityToggle.addEventListener('click', () => setCropOverlay(!cropOverlayEnabled));
   buildingToggle.addEventListener('click', () => setBuildMode(!buildMode));
   siloOption.addEventListener('click', () => {
@@ -532,6 +549,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
 
   renderTool();
   renderGrainMeter();
+  renderUnload();
   renderCropOverlay();
   renderBuildMode();
   renderLoadoutBays();
@@ -577,6 +595,10 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
       grainCapacity = nextCapacity;
       renderGrainMeter();
     },
+    setUnloadAvailable(nextAvailable) {
+      unloadAvailable = Boolean(nextAvailable);
+      renderUnload();
+    },
     isGameplayBlocked: () => overlayState !== null,
     isBarnOpen: () => overlayState === 'barn',
     setBarnAvailable(nextInsideBarn) {
@@ -589,8 +611,10 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCropOv
       if (buildMode) setBuildMode(false, true);
       toolEnabled = false;
       grainFill = 0;
+      unloadAvailable = false;
       renderTool();
       renderGrainMeter();
+      renderUnload();
       onToolChange(false);
       if (overlayState) hideOverlay();
     },

@@ -1,13 +1,15 @@
 import { THREE } from './shared.js?v=combine-fix-20260830-6';
 import { createPhysics } from './physics.js?v=combine-fix-20260830-6';
 import { createLoadoutPreview, createTractor } from './tractor.js?v=combine-fix-20260830-6';
-import { createUi } from './ui.js?v=render-perf-20260830-11';
-import { createBuildingManager } from './buildings.js?v=render-perf-20260830-11';
-import { generateFarm } from './world-generator.js?v=render-perf-20260830-11';
+import { createUi } from './ui.js?v=combine-unload-20260831-17';
+import { createBuildingManager } from './buildings.js?v=combine-unload-20260831-17';
+import { generateFarm } from './world-generator.js?v=terrain-batch-20260830-12';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
+const fpsSampleInterval = 500;
 document.body.dataset.renderQuality = 'high';
+const fpsValue = document.querySelector('#fpsValue');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
@@ -98,6 +100,8 @@ let elapsed = 0;
 let last = performance.now();
 let animationLast = last;
 let frameBudget = targetFrameInterval;
+let fpsWindowStarted = last;
+let fpsFrameCount = 0;
 let gameplayWasBlocked = false;
 let renderRequested = true;
 let viewMode = 'drive';
@@ -108,6 +112,21 @@ const buildRaycaster = new THREE.Raycaster();
 const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const buildWorldPoint = new THREE.Vector3();
+
+function resetFpsMeter(now) {
+  fpsWindowStarted = now;
+  fpsFrameCount = 0;
+  fpsValue.textContent = '-- FPS';
+}
+
+function recordRenderedFrame(now) {
+  fpsFrameCount++;
+  const sampleTime = now - fpsWindowStarted;
+  if (sampleTime < fpsSampleInterval) return;
+  fpsValue.textContent = `${Math.round(fpsFrameCount * 1000 / sampleTime)} FPS`;
+  fpsWindowStarted = now;
+  fpsFrameCount = 0;
+}
 
 function updateDriveCamera(state, dt, snap = false) {
   const goal = new THREE.Vector3(state.x, state.y + .75, state.z);
@@ -224,6 +243,23 @@ function regenerateFarm() {
   applyCropOverlay();
 }
 
+function unloadCombine() {
+  if (activeVehicle !== 'harvester') return;
+  const state = physics.tractorState();
+  if (!grainFill) {
+    ui.toast('Grain tank is already empty');
+    return;
+  }
+  if (!buildings?.isNearSilo(state.x, state.z)) {
+    ui.toast('Move beside a silo to unload');
+    return;
+  }
+  grainFill = 0;
+  ui.setHarvestMeter(grainFill, GRAIN_CAPACITY);
+  ui.setUnloadAvailable(false);
+  ui.toast('Combine emptied into silo');
+}
+
 ui = createUi({
   onRegenerate: regenerateFarm,
   onLoadoutChange: loadout => {
@@ -232,9 +268,11 @@ ui = createUi({
     if (vehicleChanged) grainFill = 0;
     tractor.setLoadout(loadout);
     ui.setHarvestMeter(grainFill, GRAIN_CAPACITY);
+    ui.setUnloadAvailable(false);
   },
   onLoadoutPreview: loadout => loadoutPreviews?.setLoadout(loadout),
   onToolChange: enabled => tractor.setToolEnabled(enabled),
+  onUnload: unloadCombine,
   onCropOverlayChange: applyCropOverlay,
   onBuildModeChange: applyBuildMode,
   onBuildPointerStart: beginBuildingDrag,
@@ -351,6 +389,7 @@ function updateDrive(dt) {
 
   ui.setBarnAvailable(farm.insideBarn(state.x, state.z));
   applyTool(state);
+  ui.setUnloadAvailable(activeVehicle === 'harvester' && grainFill > 0 && buildings?.isNearSilo(state.x, state.z));
   tractor.sync(state, heading, steer, driveAmount, dt, elapsed);
   updateDriveCamera(state, dt);
   farm.updateOcclusion(camera.position, state, dt);
@@ -378,6 +417,7 @@ function animate(now) {
   requestAnimationFrame(animate);
   const gameplayBlocked = ui.isGameplayBlocked();
   if (gameplayBlocked) {
+    if (!gameplayWasBlocked) resetFpsMeter(now);
     if (ui.isBarnOpen() && !loadoutPreviews) {
       loadoutPreviews = createLoadoutPreviews();
       loadoutPreviews.setLoadout(ui.activeLoadout());
@@ -393,6 +433,7 @@ function animate(now) {
   }
   if (gameplayWasBlocked) {
     gameplayWasBlocked = false;
+    resetFpsMeter(now);
     last = now;
     animationLast = now;
     frameBudget = targetFrameInterval;
@@ -405,6 +446,7 @@ function animate(now) {
   last = now;
   update(dt);
   renderer.render(scene, camera);
+  recordRenderedFrame(now);
   renderRequested = false;
 }
 
@@ -415,5 +457,7 @@ window.addEventListener('resize', () => {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
   renderRequested = true;
 });
+
+document.addEventListener('visibilitychange', () => resetFpsMeter(performance.now()));
 
 requestAnimationFrame(animate);

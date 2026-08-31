@@ -48,7 +48,7 @@
     #performanceBadge {
       position: absolute;
       left: var(--safe-left);
-      bottom: var(--safe-bottom);
+      bottom: calc(var(--safe-bottom) + 52px);
       display: flex;
       align-items: center;
       gap: 6px;
@@ -68,8 +68,33 @@
       border-left: 1px solid rgba(255, 249, 233, .24);
       text-align: right;
     }
-    #topLeftGroup { min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
-    #fieldControls { display: grid; gap: 8px; }
+    #topLeftGroup { width: 190px; min-width: 0; display: grid; align-items: start; gap: 8px; }
+    #topActions { display: flex; align-items: flex-start; gap: 8px; }
+    #fieldControls { display: flex; gap: 8px; }
+    #milestoneTracker {
+      width: 100%;
+      display: grid;
+      gap: 7px;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--glass);
+      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #milestoneHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    #milestoneTitle { font-size: 11px; font-weight: 810; letter-spacing: .08em; text-transform: uppercase; }
+    #milestoneStatus { overflow: hidden; color: var(--muted); font-size: 9px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+    #milestoneRows { display: grid; gap: 7px; }
+    .milestoneRow { display: grid; gap: 4px; }
+    .milestoneRowHeading { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
+    .milestoneRowHeading span { color: var(--muted); font-weight: 720; }
+    .milestoneRowHeading strong { font-variant-numeric: tabular-nums; font-weight: 790; }
+    .milestoneTrack { height: 7px; overflow: hidden; border-radius: 999px; background: rgba(43, 47, 38, .14); }
+    .milestoneTrack span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f824d, #a7c967); transition: width .22s ease-out; }
+    #milestoneTracker[data-complete="true"] { border-color: rgba(82, 102, 72, .55); background: rgba(218, 225, 183, .9); }
+    #milestoneTracker[data-complete="true"] #milestoneStatus { color: var(--accent-strong); }
     #suitabilityControl { pointer-events: auto; position: relative; flex: 0 0 auto; }
     #suitabilityToggle {
       min-height: 48px;
@@ -108,7 +133,7 @@
     #buildingToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
     #buildingToggle:active { transform: scale(.95); }
     #grainMeter {
-      min-width: 142px;
+      width: 100%;
       display: grid;
       grid-template-columns: auto 1fr auto;
       align-items: center;
@@ -171,9 +196,11 @@
       -webkit-backdrop-filter: blur(16px);
     }
     body[data-view-mode="overlay"] #stickZone,
+    body[data-view-mode="overlay"] #cycleVehicle,
     body[data-view-mode="overlay"] #actionCluster,
     body[data-view-mode="overlay"] #desktopHints,
     body[data-view-mode="build"] #stickZone,
+    body[data-view-mode="build"] #cycleVehicle,
     body[data-view-mode="build"] #actionCluster,
     body[data-view-mode="build"] #desktopHints { display: none; }
     body[data-view-mode="overlay"] #viewHint,
@@ -207,8 +234,8 @@
     #buildPalette {
       pointer-events: auto;
       position: absolute;
-      top: calc(var(--safe-top) + 112px);
-      left: var(--safe-left);
+      top: calc(var(--safe-top) + 56px);
+      right: var(--safe-right);
       width: 164px;
       padding: 9px;
       border: 1px solid var(--line);
@@ -306,6 +333,17 @@
       -webkit-backdrop-filter: blur(14px) saturate(115%);
     }
     .actionButton:active { transform: translateY(1px) scale(.97); }
+    #cycleVehicle {
+      pointer-events: auto;
+      position: absolute;
+      left: var(--safe-left);
+      bottom: var(--safe-bottom);
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      transition: border-color .16s, background .16s, transform .1s;
+    }
+    #cycleVehicle .icon { width: 22px; height: 22px; }
     #jump { position: absolute; right: 0; bottom: 0; width: 76px; height: 76px; border-radius: 50%; }
     #jump .icon { width: 30px; height: 30px; }
     #toolToggle {
@@ -371,6 +409,7 @@
       box-shadow: inset 0 -1px 0 rgba(43, 47, 38, .12);
     }
     body[data-input-mode="keyboard"] #stickZone,
+    body[data-input-mode="keyboard"] #cycleVehicle,
     body[data-input-mode="keyboard"] #jump { display: none; }
     body[data-input-mode="keyboard"] #performanceBadge { bottom: calc(var(--safe-bottom) + 48px); }
     body[data-input-mode="keyboard"] #desktopHints { display: block; }
@@ -487,6 +526,9 @@
     .previewCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     .optionGrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 100%; gap: 0; padding: 5px 0 7px; }
     #vehicleOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #vehicleIdentity { position: absolute; inset: 0; z-index: 1; display: flex; align-items: flex-end; justify-content: center; padding: 10px; text-align: center; }
+    #vehicleIdentity strong { font: 700 12px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .025em; text-transform: uppercase; }
+    #vehicleIdentity small { display: block; margin-top: 3px; color: #405b34; font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
     .loadoutOption { position: relative; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 6px 4px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); text-align: center; text-shadow: 0 2px 14px #080907; }
     .loadoutOption:hover { background: rgba(48, 55, 43, .045); }
     .loadoutOption:focus-visible { outline: 0; }
@@ -518,37 +560,97 @@
     .button.danger { border-color: rgba(159, 63, 57, .4); color: var(--danger); }
     .button:disabled { opacity: .38; }
 
-    #pauseDialog { width: min(480px, 100%); }
-    #pauseBody, #confirmBody { padding: 18px; }
-    .pauseActions { display: grid; gap: 9px; }
+    #pauseDialog {
+      width: min(520px, 100%);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      color: #292b25;
+    }
+    #pauseDialog .dialogHeader { min-height: 58px; padding: 4px 10px 10px 14px; border: 0; }
+    #pauseDialog .dialogHeader .eyebrow { color: var(--accent); }
+    #pauseDialog .dialogHeader .eyebrow::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 20px;
+      margin: -3px 12px 0 0;
+      vertical-align: middle;
+      background: var(--accent);
+    }
+    #pauseDialog .dialogTitle {
+      margin: 5px 0 0 17px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 26px;
+      letter-spacing: .045em;
+      text-transform: uppercase;
+    }
+    #pauseDialog .iconButton { border: 0; border-radius: 0; background: transparent; }
+    #pauseDialog .iconButton .icon { width: 32px; height: 32px; stroke-width: 2.4; }
+    #pauseBody, #confirmBody {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 10px 16px 16px;
+      scrollbar-color: rgba(48, 55, 43, .35) transparent;
+    }
+    .pauseActions {
+      display: grid;
+      gap: 0;
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
     .pauseAction {
-      min-height: 58px;
+      width: 100%;
+      min-height: 64px;
       display: flex;
       align-items: center;
       gap: 13px;
-      padding: 0 16px;
-      border: 1px solid var(--line);
-      border-radius: 13px;
-      background: rgba(48, 55, 43, .045);
+      padding: 10px 14px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
       text-align: left;
+      transition: background .14s ease, color .14s ease;
     }
+    .pauseAction:last-child { border-bottom: 0; }
+    .pauseAction:active, .pauseAction[aria-expanded="true"] { background: rgba(52, 60, 45, .075); }
+    .pauseAction > .icon { flex: 0 0 auto; width: 24px; height: 24px; color: var(--accent); }
+    #requestRegenerate > .icon { color: var(--danger); }
     .pauseAction span { display: grid; gap: 2px; }
-    .pauseAction strong { font-size: 13px; }
-    .pauseAction small { color: var(--muted); font-size: 10px; }
+    .pauseAction strong { font-size: 13px; letter-spacing: .01em; }
+    .pauseAction small { color: var(--muted); font-size: 10px; line-height: 1.35; }
     #controlsList {
       display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 8px 16px;
-      margin: 16px 0 4px;
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
+      grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+      gap: 8px 18px;
+      margin: 0;
+      padding: 14px 14px 16px 51px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: rgba(52, 60, 45, .035);
       color: var(--muted);
       font-size: 11px;
+      line-height: 1.4;
     }
     #controlsList strong { color: var(--ink); }
-    #confirmBody p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
-    .confirmActions { display: flex; justify-content: flex-end; gap: 9px; }
+    #confirmBody p {
+      margin: 0 0 14px;
+      padding: 20px 14px;
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .confirmActions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 6px; }
+
+    @media (hover: hover) {
+      #pauseDialog .iconButton:hover, .pauseAction:hover { background: rgba(52, 60, 45, .06); }
+    }
 
     #toast {
       position: absolute;
@@ -575,6 +677,7 @@
     @keyframes panelIn { from { opacity: 0; transform: translateY(8px) scale(.985); } }
 
     @media (max-width: 680px) {
+      #topLeftGroup { width: 148px; }
       .suitabilityLabel { display: none; }
       #suitabilityToggle { width: 48px; justify-content: center; padding: 0; }
       #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
@@ -592,10 +695,27 @@
       #loadoutFooter { min-height: 60px; padding: 7px 8px; }
       #loadoutSummary { display: none; }
       #loadoutFooter .button { flex: 1; }
-      #pauseDialog { align-self: center; }
+      #pauseDialog { width: 100%; align-self: center; }
+      #pauseDialog .dialogHeader { min-height: 52px; padding: 2px 4px 8px 10px; }
+      #pauseDialog .dialogTitle { font-size: 21px; }
+      #pauseBody, #confirmBody { padding: 8px 8px 12px; }
+      #controlsList { padding-left: 47px; }
+      .confirmActions { padding: 0; }
+      .confirmActions .button { flex: 1; }
     }
 
-    @media (max-width: 380px) { #topBar, #topLeftGroup { gap: 6px; } }
+    @media (max-width: 380px) {
+      #topBar, #topLeftGroup, #topActions, #fieldControls { gap: 6px; }
+      #topLeftGroup { width: 136px; }
+      #milestoneTracker { padding: 8px 9px; }
+      #milestoneHeader { display: grid; gap: 1px; }
+      #milestoneTitle { font-size: 10px; }
+      #milestoneStatus { font-size: 8px; }
+      #suitabilityToggle, #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
+      #grainMeter { height: 42px; padding: 0 8px; gap: 5px; }
+      #grainMeterLabel { display: none; }
+      #buildPalette { top: calc(var(--safe-top) + 50px); }
+    }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; }
@@ -609,9 +729,18 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.20</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.25</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
+        <section id="milestoneTracker" data-complete="false" aria-live="polite">
+          <div id="milestoneHeader"><strong id="milestoneTitle">Milestone 1</strong><span id="milestoneStatus">Corn delivery</span></div>
+          <div id="milestoneRows"></div>
+        </section>
+        <div id="grainMeter" role="progressbar" aria-label="Combine internal storage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+          <span id="grainMeterLabel">Storage</span><span id="grainTrack"><span id="grainFill"></span></span><strong id="grainValue">0 / 36</strong>
+        </div>
+      </div>
+      <div id="topActions">
         <div id="fieldControls">
           <div id="suitabilityControl">
             <button id="suitabilityToggle" type="button" aria-label="Show crop suitability" aria-pressed="false">
@@ -619,7 +748,7 @@
             </button>
             <div id="cropSelector" hidden aria-label="Crop suitability selector">
               <button id="previousCrop" type="button" aria-label="Previous crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
-              <span id="cropName">Wheat</span>
+              <span id="cropName">Corn</span>
               <button id="nextCrop" type="button" aria-label="Next crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
             </div>
           </div>
@@ -629,13 +758,10 @@
             </button>
           </div>
         </div>
-        <div id="grainMeter" role="progressbar" aria-label="Combine grain tank" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
-          <span id="grainMeterLabel">Grain</span><span id="grainTrack"><span id="grainFill"></span></span><strong id="grainValue">0 / 36</strong>
-        </div>
+        <button id="menuToggle" type="button" aria-label="Open pause menu" title="Menu">
+          <svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+        </button>
       </div>
-      <button id="menuToggle" type="button" aria-label="Open pause menu" title="Menu">
-        <svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
-      </button>
     </header>
     <div id="viewHint">DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE</div>
     <aside id="buildPalette" hidden aria-label="Building menu">
@@ -651,14 +777,18 @@
       <div id="stickBase"><div id="stickKnob"></div></div>
     </div>
 
+    <button id="cycleVehicle" class="actionButton" type="button" aria-label="Cycle vehicle" title="Cycle vehicle">
+      <svg class="icon" aria-hidden="true"><use href="#icon-cycle-vehicle"></use></svg>
+    </button>
+
     <div id="actionCluster">
       <button id="toolToggle" class="actionButton" type="button" aria-label="Lower Plough" aria-pressed="false" title="Lower Plough">
         <svg class="icon" aria-hidden="true"><use id="toolIconUse" href="#icon-plough"></use></svg>
         <span class="toolCopy"><span class="toolName" id="toolName">Plough</span><span class="toolState" id="toolState">Raised</span></span>
         <span class="keycap" aria-hidden="true">E</span>
       </button>
-      <button id="unloadButton" class="actionButton" type="button" aria-label="Move beside a silo to empty combine" aria-disabled="true" title="Move beside a silo" hidden>
-        <svg class="icon" aria-hidden="true"><use href="#icon-unload"></use></svg>
+      <button id="unloadButton" class="actionButton" type="button" aria-label="Move beside a silo or cargo pad" aria-disabled="true" title="Find a storage destination" hidden>
+        <svg class="icon" aria-hidden="true"><use id="unloadIconUse" href="#icon-unload"></use></svg>
       </button>
       <button id="jump" class="actionButton" type="button" aria-label="Jump" title="Jump">
         <svg class="icon" aria-hidden="true"><use href="#icon-jump"></use></svg>
@@ -666,7 +796,7 @@
     </div>
 
     <div id="desktopHints" aria-hidden="true">
-      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>F</kbd> Empty combine &nbsp; <kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
+      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>V</kbd> Vehicle &nbsp; <span id="secondaryHint" hidden><kbd>F</kbd> <span id="secondaryHintLabel">Transfer cargo</span> &nbsp; </span><kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
     </div>
 
     <div id="overlay" hidden>
@@ -678,10 +808,10 @@
         </header>
         <div id="loadoutBays" aria-label="Loadout selection">
           <section class="loadoutBay" data-category="vehicles" aria-labelledby="vehicleBayLabel">
-            <h2 class="bayLabel" id="vehicleBayLabel">Vehicle</h2>
+            <h2 class="bayLabel" id="vehicleBayLabel">Current vehicle</h2>
             <div class="optionPresentation">
               <canvas class="previewCanvas" id="vehiclePreview" aria-hidden="true"></canvas>
-              <div class="optionGrid" id="vehicleOptions" role="group" aria-label="Vehicle options"></div>
+              <div id="vehicleIdentity"><span><strong id="vehicleName">Farm Tractor</strong><small>Loadout being configured</small></span></div>
             </div>
           </section>
           <section class="loadoutBay" data-category="equipment" aria-labelledby="equipmentBayLabel">
@@ -727,7 +857,8 @@
               <strong>Drive</strong><span>WASD, arrow keys, or touch joystick</span>
               <strong>Jump</strong><span>Space or jump button</span>
               <strong>Tool</strong><span>E or equipped-tool button</span>
-              <strong>Unload</strong><span>With the combine beside a silo, use the round unload button or F to empty its grain tank</span>
+              <strong>Vehicle</strong><span>V or the lower-left vehicle button cycles between owned vehicles</span>
+              <strong>Seed / storage</strong><span>With the seeder, use the crop button or F to cycle seed; with the combine, use it to transfer beside a silo or cargo pad</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
               <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
@@ -739,7 +870,7 @@
           </div>
         </div>
         <div id="confirmBody" hidden>
-          <p>A new farm replaces this layout and clears its field progress. Your equipped loadout will be kept.</p>
+          <p>A new farm replaces this layout, resets vehicle positions and storage, and clears field and delivery progress. Vehicle loadouts will be kept.</p>
           <div class="confirmActions">
             <button id="cancelRegenerate" class="button" type="button">Keep this farm</button>
             <button id="confirmRegenerate" class="button danger" type="button">Generate new farm</button>
@@ -758,11 +889,15 @@
     <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>
     <symbol id="icon-field" viewBox="0 0 24 24"><path d="M4 19 9 5M10 19l5-14M16 19l4-11M3 19h18" /></symbol>
     <symbol id="icon-corn" viewBox="0 0 24 24"><path d="M12 21V8M12 17c-4 0-6-2-6-6 4 0 6 2 6 6ZM12 13c4 0 6-2 6-6-4 0-6 2-6 6ZM12 8c-2-1-3-3-2-5 2 1 3 3 2 5Z" /></symbol>
+    <symbol id="icon-barley" viewBox="0 0 24 24"><path d="M11 21V6M11 8 7 4M11 11 6 7M11 14l-5-3M13 19V7M13 9l4-5M13 12l5-4M13 15l5-3" /></symbol>
+    <symbol id="icon-canola" viewBox="0 0 24 24"><path d="M12 21V10M12 15 7 11M12 13l5-4M12 18l5-3" /><circle cx="7" cy="8" r="2" /><circle cx="12" cy="7" r="2" /><circle cx="17" cy="6" r="2" /><circle cx="18" cy="13" r="2" /></symbol>
+    <symbol id="icon-soybean" viewBox="0 0 24 24"><path d="M12 21V6M12 11c-5 0-7-2-7-5 4 0 7 1 7 5ZM12 15c5 0 7-2 7-5-4 0-7 1-7 5Z" /><path d="M9 13c-2 2-2 5 0 7M15 9c2 2 2 5 0 7" /></symbol>
     <symbol id="icon-ready" viewBox="0 0 24 24"><path d="M12 3v18M12 7c-3-2-5-1-6 1 2 2 4 2 6 0M12 12c3-2 5-1 6 1-2 2-4 2-6 0M8 21h8" /></symbol>
     <symbol id="icon-silo" viewBox="0 0 24 24"><path d="M6 20V9a6 6 0 0 1 12 0v11M4 20h16M7 9h10M12 3v2M9 20v-7h6v7M5 9h14" /><path d="M17 8v5M15 8v5" /></symbol>
     <symbol id="icon-unload" viewBox="0 0 24 24"><path d="M5 4v10h10M9 10l6 6 6-6M15 16v4M4 20h16" /></symbol>
     <symbol id="icon-weeds" viewBox="0 0 24 24"><path d="M12 21v-9M12 16c-4 0-7-2-7-6 4 0 7 2 7 6ZM12 13c0-4 2-7 6-8 1 4-1 7-6 8ZM8 21h8" /></symbol>
     <symbol id="icon-jump" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6M12 5v14" /></symbol>
+    <symbol id="icon-cycle-vehicle" viewBox="0 0 24 24"><path d="M5 8a8 8 0 0 1 12-2l2 2M19 4v4h-4M19 16a8 8 0 0 1-12 2l-2-2M5 20v-4h4" /><path d="M8 15h1l1-4h4l1 2h2l1 2M11 11V9h3l1 2" /><circle cx="10" cy="16" r="1.5" /><circle cx="16" cy="16" r="1.2" /></symbol>
     <symbol id="icon-plough" viewBox="0 0 24 24"><path d="M5 5v8c0 4 3 6 7 6h7M5 9h8l3 3M9 19l2-5M15 19l2-5" /></symbol>
     <symbol id="icon-seeder" viewBox="0 0 24 24"><path d="M5 7h9l2 7H7L5 7ZM8 14v4M15 14v4M7 20h2M14 20h2M16 10h3v8" /></symbol>
     <symbol id="icon-sprayer" viewBox="0 0 24 24"><path d="M8 6h8v10H8zM10 3h4M4 12h4M16 12h4M4 12v4M20 12v4M3 19h2M11 19h2M19 19h2" /></symbol>
@@ -778,6 +913,6 @@
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=action-layout-20260831-19"></script>
+  <script type="module" src="./main.js?v=vehicle-fleet-20260831-1"></script>
 </body>
 </html>

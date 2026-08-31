@@ -1,40 +1,34 @@
-import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTractorAsset } from './farm-assets.js?v=combine-fix-20260830-6';
-import { THREE } from './shared.js?v=combine-fix-20260830-6';
+import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTractorAsset } from './farm-assets.js?v=crop-diversity-20260831-1';
+import { THREE } from './shared.js?v=crop-diversity-20260831-1';
 
-export function createTractor(scene) {
+export function createVehicle(scene, vehicle) {
   const root = new THREE.Group();
-  const { group: tractorVisual, wheels: tractorWheels } = createTractorAsset();
-  const combine = createCombineAsset();
+  const tractor = vehicle === 'tractor' ? createTractorAsset() : null;
+  const combine = vehicle === 'harvester' ? createCombineAsset() : null;
   let wasGrounded = false;
   let lastVerticalSpeed = 0;
   let landingSquash = 0;
   root.scale.setScalar(.92);
-  root.add(tractorVisual, combine.group);
-  combine.group.visible = false;
+  root.add(tractor?.group || combine.group);
   scene.add(root);
   const toolDownY = .3;
   const toolUpY = .78;
   let toolTargetY = toolUpY;
-  const attachments = Object.fromEntries(['plough', 'seeder', 'sprayer'].map(type => {
+  const attachments = tractor ? Object.fromEntries(['plough', 'seeder', 'sprayer'].map(type => {
     const attachment = createRearToolAsset(type);
     attachment.position.set(0, toolUpY, 1.38);
-    tractorVisual.add(attachment);
+    tractor.group.add(attachment);
     return [type, attachment];
-  }));
+  })) : {};
   let loadout = 'plough';
-  let vehicle = 'tractor';
   Object.entries(attachments).forEach(([name, attachment]) => { attachment.visible = name === loadout; });
 
   return {
     setLoadout(nextLoadout) {
-      const nextVehicle = nextLoadout.vehicle || vehicle;
       const nextTool = nextLoadout.tool || loadout;
-      vehicle = nextVehicle;
-      tractorVisual.visible = vehicle !== 'harvester';
-      combine.group.visible = vehicle === 'harvester';
       if (attachments[nextTool]) loadout = nextTool;
       Object.entries(attachments).forEach(([name, attachment]) => {
-        attachment.visible = vehicle !== 'harvester' && name === loadout;
+        attachment.visible = name === loadout;
       });
     },
     setToolEnabled(enabled) { toolTargetY = enabled ? toolDownY : toolUpY; },
@@ -48,12 +42,14 @@ export function createTractor(scene) {
       wasGrounded = state.grounded;
       lastVerticalSpeed = state.verticalSpeed;
       const attachment = attachments[loadout];
-      attachment.position.y += (toolTargetY - attachment.position.y) * (1 - Math.exp(-10 * dt));
-      const headerTargetY = vehicle === 'harvester' && toolTargetY === toolDownY ? .24 : .42;
-      combine.header.position.y += (headerTargetY - combine.header.position.y) * (1 - Math.exp(-10 * dt));
+      if (attachment) attachment.position.y += (toolTargetY - attachment.position.y) * (1 - Math.exp(-10 * dt));
+      if (combine) {
+        const headerTargetY = toolTargetY === toolDownY ? .24 : .42;
+        combine.header.position.y += (headerTargetY - combine.header.position.y) * (1 - Math.exp(-10 * dt));
+      }
 
       const speedFactor = Math.min(1, state.speed / 5.5);
-      const activeWheels = vehicle === 'harvester' ? combine.wheels : tractorWheels;
+      const activeWheels = combine ? combine.wheels : tractor.wheels;
       activeWheels.forEach(wheel => {
         wheel.spin += state.speed * dt / wheel.radius;
         wheel.roller.rotation.x = wheel.spin;
@@ -64,12 +60,12 @@ export function createTractor(scene) {
       const engineBob = state.grounded ? Math.sin(elapsed * (8 + Math.min(1, state.speed / 4) * 5)) * .04 * Math.min(1, state.speed / 4) : 0;
       const airStretch = state.grounded ? 0 : .14;
       const squash = landingSquash - airStretch;
-      const visual = vehicle === 'harvester' ? combine.group : tractorVisual;
+      const visual = combine ? combine.group : tractor.group;
       visual.position.y = engineBob;
       visual.scale.set(1 + squash * .9, 1 - squash, 1 + squash * .9);
       visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .1;
       visual.rotation.x = state.grounded ? -driveAmount * .035 : THREE.MathUtils.clamp(-state.verticalSpeed * .045, -.28, .28);
-      if (vehicle === 'harvester') combine.reel.rotation.x -= (toolTargetY === toolDownY ? Math.max(.7, state.speed * 3.2) : 0) * dt;
+      if (combine) combine.reel.rotation.x -= (toolTargetY === toolDownY ? Math.max(.7, state.speed * 3.2) : 0) * dt;
     },
   };
 }
@@ -150,7 +146,6 @@ export function createLoadoutPreview(canvas, category) {
       if (frozen) return;
       const width = Math.max(1, canvas.clientWidth);
       const height = Math.max(1, canvas.clientHeight);
-      const viewportWidth = width / modelEntries.length;
       renderer.autoClear = false;
       renderer.setScissorTest(true);
       renderer.setViewport(0, 0, width, height);
@@ -158,7 +153,11 @@ export function createLoadoutPreview(canvas, category) {
       renderer.clear();
       stage.rotation.y = Math.sin(time * .45) * .045;
       stage.position.y = Math.sin(time * 1.2) * .025;
-      modelEntries.forEach(([, model], index) => {
+      const visibleEntries = category === 'vehicles'
+        ? modelEntries.filter(([name]) => name === current)
+        : modelEntries;
+      const viewportWidth = width / visibleEntries.length;
+      visibleEntries.forEach(([, model], index) => {
         model.visible = true;
         camera.aspect = viewportWidth / height;
         camera.updateProjectionMatrix();

@@ -1,4 +1,4 @@
-import { box, mats, THREE } from './shared.js?v=combine-fix-20260830-6';
+import { box, mats, THREE } from './shared.js?v=crop-diversity-20260831-1';
 
 const previewMats = {
   green: new THREE.MeshStandardMaterial({ color: 0x6eab37, roughness: .7 }),

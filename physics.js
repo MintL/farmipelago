@@ -28,8 +28,8 @@ class FarmPhysics {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
     this.world.timestep = FIXED_TIMESTEP;
     this.staticColliders = [];
-    this.tractorBody = null;
-    this.tractorCollider = null;
+    this.vehicles = new Map();
+    this.activeVehicleId = null;
     this.characterController = this.world.createCharacterController(0.03);
     this.characterController.enableSnapToGround(0.28);
     // Water basins sit .22 units below the farm surface. Let the tractor roll
@@ -113,35 +113,74 @@ class FarmPhysics {
     this.staticColliders.push(collider);
   }
 
-  createTractor(spawn) {
-    if (this.tractorBody) this.world.removeRigidBody(this.tractorBody);
-
-    this.tractorBody = this.world.createRigidBody(
+  createVehicle(id, spawn) {
+    const existing = this.vehicles.get(id);
+    if (existing) this.world.removeRigidBody(existing.body);
+    const becomesActive = this.activeVehicleId === null || this.activeVehicleId === id;
+    const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased()
         .setTranslation(spawn.x, spawn.y + 0.02, spawn.z)
     );
-    this.tractorCollider = this.world.createCollider(
+    const collider = this.world.createCollider(
       RAPIER.ColliderDesc.capsule(TRACTOR_CAPSULE_HALF_HEIGHT, TRACTOR_COLLIDER_RADIUS)
         .setTranslation(0, TRACTOR_COLLIDER_CENTER_Y, 0)
         .setFriction(0)
         .setRestitution(0),
-      this.tractorBody
+      body
     );
+    this.vehicles.set(id, { body, collider, grounded: true, touchingWall: false });
+    this.activeVehicleId ||= id;
     this.world.propagateModifiedBodyPositionsToColliders();
-    this.clearMotion();
+    if (becomesActive) {
+      this.clearMotion();
+      this.grounded = true;
+      this.groundGrace = CONTACT_GRACE_TIME;
+    }
   }
 
-  resetTractor(spawn) {
-    this.tractorBody.setTranslation({ x: spawn.x, y: spawn.y + 0.02, z: spawn.z }, true);
-    this.tractorBody.setNextKinematicTranslation({ x: spawn.x, y: spawn.y + 0.02, z: spawn.z });
-    this.world.propagateModifiedBodyPositionsToColliders();
+  hasVehicle(id) {
+    return this.vehicles.has(id);
+  }
+
+  setActiveVehicle(id) {
+    if (!this.vehicles.has(id)) return false;
+    const previous = this.vehicles.get(this.activeVehicleId);
+    if (previous) {
+      previous.grounded = this.grounded;
+      previous.touchingWall = this.touchingWall;
+    }
+    this.activeVehicleId = id;
     this.clearMotion();
+    const vehicle = this.vehicles.get(id);
+    this.grounded = vehicle.grounded;
+    this.touchingWall = vehicle.touchingWall;
+    if (this.grounded) this.groundGrace = CONTACT_GRACE_TIME;
+    if (this.touchingWall) this.wallGrace = CONTACT_GRACE_TIME;
+    return true;
+  }
+
+  resetVehicle(id, spawn) {
+    const vehicle = this.vehicles.get(id);
+    if (!vehicle) return;
+    vehicle.body.setTranslation({ x: spawn.x, y: spawn.y + 0.02, z: spawn.z }, true);
+    vehicle.body.setNextKinematicTranslation({ x: spawn.x, y: spawn.y + 0.02, z: spawn.z });
+    vehicle.grounded = true;
+    vehicle.touchingWall = false;
+    this.world.propagateModifiedBodyPositionsToColliders();
+    if (id === this.activeVehicleId) {
+      this.clearMotion();
+      this.grounded = true;
+      this.groundGrace = CONTACT_GRACE_TIME;
+    }
   }
 
   clearMotion() {
     this.accumulator = 0;
     this.velocity = { x: 0, y: 0, z: 0 };
     this.measuredVelocity = { x: 0, y: 0, z: 0 };
+    this.driveDirection = { x: 0, z: -1 };
+    this.driveStrength = 0;
+    this.toolInUse = false;
     this.jumpBuffer = 0;
     this.groundGrace = 0;
     this.wallGrace = 0;
@@ -169,7 +208,8 @@ class FarmPhysics {
   }
 
   fixedStep(dt) {
-    if (!this.tractorBody || !this.tractorCollider) return;
+    const vehicle = this.vehicles.get(this.activeVehicleId);
+    if (!vehicle) return;
 
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     this.groundGrace = Math.max(0, this.groundGrace - dt);
@@ -204,8 +244,8 @@ class FarmPhysics {
       y: this.velocity.y * dt,
       z: this.velocity.z * dt,
     };
-    const before = this.tractorBody.translation();
-    this.characterController.computeColliderMovement(this.tractorCollider, desiredMovement);
+    const before = vehicle.body.translation();
+    this.characterController.computeColliderMovement(vehicle.collider, desiredMovement);
     const movement = this.characterController.computedMovement();
 
     this.grounded = this.characterController.computedGrounded();
@@ -220,11 +260,13 @@ class FarmPhysics {
     }
     if (this.grounded) this.groundGrace = CONTACT_GRACE_TIME;
     if (this.touchingWall) this.wallGrace = CONTACT_GRACE_TIME;
+    vehicle.grounded = this.grounded;
+    vehicle.touchingWall = this.touchingWall;
 
     if (this.grounded && this.velocity.y < 0) this.velocity.y = 0;
     if (Math.abs(movement.y - desiredMovement.y) > 0.002 && this.velocity.y > 0) this.velocity.y = 0;
 
-    this.tractorBody.setNextKinematicTranslation({
+    vehicle.body.setNextKinematicTranslation({
       x: before.x + movement.x,
       y: before.y + movement.y,
       z: before.z + movement.z,
@@ -237,16 +279,19 @@ class FarmPhysics {
     };
   }
 
-  tractorState() {
-    const position = this.tractorBody.translation();
+  vehicleState(id = this.activeVehicleId) {
+    const vehicle = this.vehicles.get(id);
+    if (!vehicle) return null;
+    const position = vehicle.body.translation();
+    const active = id === this.activeVehicleId;
     return {
       x: position.x,
       y: position.y,
       z: position.z,
-      speed: Math.hypot(this.measuredVelocity.x, this.measuredVelocity.z),
-      verticalSpeed: this.measuredVelocity.y,
-      grounded: this.grounded,
-      touchingWall: this.touchingWall,
+      speed: active ? Math.hypot(this.measuredVelocity.x, this.measuredVelocity.z) : 0,
+      verticalSpeed: active ? this.measuredVelocity.y : 0,
+      grounded: active ? this.grounded : vehicle.grounded,
+      touchingWall: active ? this.touchingWall : vehicle.touchingWall,
     };
   }
 }

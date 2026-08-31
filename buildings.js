@@ -1,4 +1,4 @@
-import { THREE, box } from './shared.js?v=combine-fix-20260830-6';
+import { THREE, box } from './shared.js?v=crop-diversity-20260831-1';
 
 const SILO_RADIUS = 1.05;
 const SILO_HEIGHT = 3.7;

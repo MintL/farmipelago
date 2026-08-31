@@ -1,11 +1,13 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=combine-fix-20260830-6';
-import { cropStats as environmentalCropStats, crops } from './crops.js?v=combine-fix-20260830-6';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=crop-diversity-20260831-1';
+import { cropStats as environmentalCropStats, crops } from './crops.js?v=crop-diversity-20260831-1';
+import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=cargo-clearance-20260831-1';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;
 const BRIDGE_WIDTH = TILE * 1.25;
 const BRIDGE_THICKNESS = 0.18;
 const STARTER_ISLAND_ID = 0;
+const CARGO_ISLAND_ID = 1;
 const BARN_TREE_CLEARANCE = 3.5 * TILE;
 const WATER_DEPTH = .22;
 const ISLAND_LAYOUT_SCALE = 1.5;
@@ -57,7 +59,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       gx, gz, x, z, topY, baseY, islandId, radial, dirtDepth,
       environment, normalGrassColor: null, surfaceBatch: null, surfaceInstance: -1,
       tallGrass: null, stones: [], hasTree: false,
-      ploughed: false, water: false, crop: null,
+      ploughed: false, water: false, reserved: false, noDecoration: false, crop: null,
     });
   };
 
@@ -353,6 +355,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   });
   const islands = [...backbone, branch].map((island, id) => ({ ...island, id }));
   let barnSite;
+  let cargoSite;
   let waterFeatureCount = 0;
 
   islands.forEach((island, id) => {
@@ -375,11 +378,17 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     if (waterTiles.size) waterFeatureCount++;
     finalizeEnvironment(cells, waterTiles);
     if (id === STARTER_ISLAND_ID) barnSite = findBarnSite(terrain, island);
+    if (id === CARGO_ISLAND_ID) {
+      cargoSite = findCargoSite(terrain, island, [islands[id - 1], islands[id + 1]]);
+      reserveCargoApproach(terrain, cargoSite);
+    }
 
     const clearCells = cells.filter(candidate => {
       const starterField = id === STARTER_ISLAND_ID && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
+      const tile = terrain.get(gridKey(candidate.gx, candidate.gz));
       return candidate.dist > 1.1 && candidate.dist < island.r - .15 && !starterField &&
-        tileHeight(candidate) === 0 && !waterTiles.has(gridKey(candidate.gx, candidate.gz));
+        tileHeight(candidate) === 0 && !waterTiles.has(gridKey(candidate.gx, candidate.gz)) &&
+        !tile?.reserved && !tile?.noDecoration;
     });
     const grassPatches = chooseGrassPatches(clearCells, random, id === STARTER_ISLAND_ID ? 1 : 2);
     for (const cell of clearCells) {
@@ -409,9 +418,27 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   });
 
+  if (!cargoSite) {
+    scene.remove(group);
+    disposeObjectResources(group);
+    if (attempt >= 20) throw new Error('Unable to generate a clear first-floor cargo deck site');
+    return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1);
+  }
+  const cargoAnchor = terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)));
+  if (!cargoAnchor || Math.abs(cargoAnchor.topY - cargoAnchor.baseY) > .01) {
+    throw new Error('Cargo deck must be anchored on the first floor');
+  }
+  const terrainOverlap = [...terrain.values()].find(tile =>
+    cargoDeckContains(cargoSite, tile.x, tile.z, TILE * .72) && tile.topY > cargoSite.y + .01
+  );
+  if (terrainOverlap) throw new Error(`Cargo deck clearance failed at ${gridKey(terrainOverlap.gx, terrainOverlap.gz)}`);
+
   addLowerLayerInstances();
 
   if (barnSite) addBarn(barnSite.x, barnSite.topY, barnSite.z);
+  const cargoPort = createCargoPort(cargoSite);
+  group.add(cargoPort.group);
+  obstacles.push(...cargoPort.colliders);
 
   for (let index = 0; index < backbone.length - 1; index++) {
     addBridgeBetween(islands[index], islands[index + 1], terrain, group, bridgeBlocks);
@@ -446,67 +473,42 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     furrowInstancesDirty = false;
   };
   const refreshCropInstances = () => {
-    const matrix = new THREE.Matrix4();
-    const stemCounts = [0, 0, 0, 0];
-    let leafCount = 0;
-    let earCount = 0;
-    let weedPartCount = 0;
+    cropInstances.begin();
     for (const tile of terrain.values()) {
       if (!tile.crop) continue;
-      const stageIndex = tile.crop.stage - 1;
-      const height = cropInstances.heights[stageIndex];
-      matrix.makeTranslation(tile.x, tile.topY + height * .5, tile.z);
-      cropInstances.stems[stageIndex].setMatrixAt(stemCounts[stageIndex]++, matrix);
-      const stageLeafCount = tile.crop.stage + 1;
-      for (let index = 0; index < stageLeafCount; index++) {
-        const side = index % 2 ? -1 : 1;
-        matrix.makeRotationY(side * .42);
-        matrix.setPosition(
-          tile.x + side * .12,
-          tile.topY + height * (.28 + index / (stageLeafCount + 2)),
-          tile.z + side * .05,
-        );
-        cropInstances.leaves.setMatrixAt(leafCount++, matrix);
-      }
-      if (tile.crop.stage === 4) {
-        for (const side of [-1, 1]) {
-          matrix.makeTranslation(tile.x + side * .09, tile.topY + height * .67, tile.z);
-          cropInstances.ears.setMatrixAt(earCount++, matrix);
-        }
-      }
+      renderCropTile(cropInstances, tile);
       if (!tile.crop.weeds) continue;
       for (let index = 0; index < 5; index++) {
         const angle = index / 5 * Math.PI * 2;
-        matrix.makeRotationZ(Math.sin(angle) * .34);
-        matrix.setPosition(
+        cropInstances.place(
+          'weedStalk',
           tile.x + Math.cos(angle) * .18,
           tile.topY + .21,
           tile.z + Math.sin(angle) * .18,
+          0, 0, Math.sin(angle) * .34,
         );
-        cropInstances.weedStalks.setMatrixAt(weedPartCount, matrix);
-        matrix.makeTranslation(
+        cropInstances.place(
+          'weedFlower',
           tile.x + Math.cos(angle) * .25,
           tile.topY + .44,
           tile.z + Math.sin(angle) * .25,
         );
-        cropInstances.weedFlowers.setMatrixAt(weedPartCount++, matrix);
       }
     }
-    cropInstances.stems.forEach((mesh, index) => updateInstances(mesh, stemCounts[index]));
-    updateInstances(cropInstances.leaves, leafCount);
-    updateInstances(cropInstances.ears, earCount);
-    updateInstances(cropInstances.weedStalks, weedPartCount);
-    updateInstances(cropInstances.weedFlowers, weedPartCount);
+    cropInstances.finish();
     cropInstancesDirty = false;
   };
 
   const occlusion = createOcclusionSystem(group);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const start = terrain.get(gridKey(backbone[0].cx, backbone[0].cz)) || terrain.values().next().value;
+  const vehicleSpawns = findVehicleSpawns(terrain, start, barnArea);
   return {
     group,
     terrain,
-    spawn: { x: start.x, y: start.topY, z: start.z },
+    cargoPort,
+    spawn: vehicleSpawns[0],
+    vehicleSpawns,
     dispose() {
       disposeObjectResources(group);
     },
@@ -566,8 +568,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       if (cropInstancesDirty) refreshCropInstances();
       if (furrowInstancesDirty) refreshFurrowInstances();
     },
-    updateOcclusion(cameraPosition, tractorState, delta) {
-      occlusion.update(cameraPosition, tractorState, delta);
+    updateOcclusion(cameraPosition, vehicleState, delta) {
+      occlusion.update(cameraPosition, vehicleState, delta);
     },
     farmingLevelNear(x, z) {
       const gx = Math.floor(x / TILE + .5);
@@ -589,7 +591,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       for (let dx = -span; dx <= span; dx++) {
         for (let dz = -span; dz <= span; dz++) {
           const tile = terrain.get(gridKey(gx + dx, gz + dz));
-          if (!tile || tile.water || tile.hasTree || Math.abs(tile.topY - center.topY) > .01) return null;
+          if (!tile || tile.water || tile.hasTree || tile.reserved || Math.abs(tile.topY - center.topY) > .01) return null;
         }
       }
       if (barnArea) {
@@ -619,7 +621,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     ploughAt(x, z, levelY) {
       const tile = tileAtLevel(x, z, levelY, terrain);
-      if (!tile || tile.ploughed || tile.water || tile.hasTree) return false;
+      if (!tile || tile.ploughed || tile.water || tile.hasTree || tile.reserved) return false;
       tile.ploughed = true;
       tile.surfaceBatch.setColorAt(tile.surfaceInstance, mats.ploughed.color);
       tile.surfaceBatch.instanceColor.needsUpdate = true;
@@ -660,9 +662,11 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       cropInstancesDirty = true;
       return true;
     },
-    harvestAt(x, z, levelY) {
+    harvestAt(x, z, levelY, acceptedCropId = null) {
       const tile = tileAtLevel(x, z, levelY, terrain);
       if (tile?.crop?.stage !== 4) return false;
+      const cropId = tile.crop.cropId;
+      if (acceptedCropId && cropId !== acceptedCropId) return false;
       const crop = crops[tile.crop.cropId] || crops.corn;
       const { suitability, yieldMultiplier } = environmentalCropStats(tile.environment, crop);
       const yieldAmount = Math.max(1, Math.round(yieldMultiplier * 4));
@@ -671,7 +675,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       plantedCount = Math.max(0, plantedCount - 1);
       readyCount = Math.max(0, readyCount - 1);
       cropInstancesDirty = true;
-      return { yieldAmount, suitability };
+      return { cropId, yieldAmount, suitability };
     },
     cropStats() {
       return { planted: plantedCount, ready: readyCount, weeds: weedCount };
@@ -715,8 +719,10 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
 }
 
 function createCropInstances(tileCapacity, group) {
-  const heights = [.22, .48, .78, 1.04];
-  const addInstances = (width, height, depth, material, capacity) => {
+  const transform = new THREE.Object3D();
+  const counts = {};
+  const pools = {};
+  const addInstances = (name, width, height, depth, material, capacity) => {
     const mesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(width, height, depth),
       material,
@@ -727,17 +733,144 @@ function createCropInstances(tileCapacity, group) {
     mesh.receiveShadow = true;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     group.add(mesh);
+    pools[name] = mesh;
+    counts[name] = 0;
     return mesh;
   };
+  addInstances('shootStem', .07, .22, .07, mats.cropShoot, tileCapacity);
+  addInstances('shootLeaf', .22, .04, .09, mats.cropShoot, tileCapacity * 4);
+  addInstances('youngCerealStem', .08, .42, .08, mats.cerealGreen, tileCapacity);
+  addInstances('youngCerealLeaf', .32, .045, .1, mats.cerealGreen, tileCapacity * 4);
+  addInstances('youngBroadStem', .08, .34, .08, mats.cropShoot, tileCapacity);
+  addInstances('youngBroadLeaf', .24, .05, .16, mats.cropShoot, tileCapacity * 4);
+  addInstances('cornStem', .11, 1, .11, mats.cornStem, tileCapacity);
+  addInstances('cornLeaf', .42, .055, .13, mats.cornLeaf, tileCapacity * 5);
+  addInstances('cornEar', .13, .28, .13, mats.cornRipe, tileCapacity * 2);
+  addInstances('wheatStemGreen', .055, 1, .055, mats.cerealGreen, tileCapacity * 4);
+  addInstances('wheatStemRipe', .055, 1, .055, mats.wheatRipe, tileCapacity * 4);
+  addInstances('wheatHead', .1, .2, .1, mats.wheatRipe, tileCapacity * 4);
+  addInstances('barleyStemGreen', .05, 1, .05, mats.cerealGreen, tileCapacity * 4);
+  addInstances('barleyStemRipe', .05, 1, .05, mats.barleyRipe, tileCapacity * 4);
+  addInstances('barleyHead', .1, .18, .1, mats.barleyRipe, tileCapacity * 4);
+  addInstances('barleyAwn', .025, .28, .025, mats.barleyRipe, tileCapacity * 8);
+  addInstances('canolaStem', .065, 1, .065, mats.canolaStem, tileCapacity * 3);
+  addInstances('canolaBranch', .28, .05, .05, mats.canolaStem, tileCapacity * 4);
+  addInstances('canolaFlower', .12, .12, .12, mats.canolaFlower, tileCapacity * 5);
+  addInstances('soybeanStem', .065, 1, .065, mats.soybeanStem, tileCapacity * 5);
+  addInstances('soybeanLeaf', .24, .05, .16, mats.soybeanLeaf, tileCapacity * 8);
+  addInstances('soybeanPod', .08, .18, .08, mats.soybeanPod, tileCapacity * 5);
+  addInstances('weedStalk', .055, .42, .055, mats.weed, tileCapacity * 5);
+  addInstances('weedFlower', .13, .13, .13, mats.weed, tileCapacity * 5);
+  const furrows = addInstances('furrow', .78, .025, .07, mats.furrow, tileCapacity * 3);
   return {
-    heights,
-    stems: heights.map(height => addInstances(.11, height, .11, mats.cornStem, tileCapacity)),
-    leaves: addInstances(.42, .055, .13, mats.cornLeaf, tileCapacity * 5),
-    ears: addInstances(.13, .28, .13, mats.cornRipe, tileCapacity * 2),
-    weedStalks: addInstances(.055, .42, .055, mats.weed, tileCapacity * 5),
-    weedFlowers: addInstances(.13, .13, .13, mats.weed, tileCapacity * 5),
-    furrows: addInstances(.78, .025, .07, mats.furrow, tileCapacity * 3),
+    furrows,
+    begin() {
+      for (const name of Object.keys(counts)) {
+        if (name !== 'furrow') counts[name] = 0;
+      }
+    },
+    place(name, x, y, z, rotationX = 0, rotationY = 0, rotationZ = 0, scaleX = 1, scaleY = 1, scaleZ = 1) {
+      const mesh = pools[name];
+      const index = counts[name]++;
+      transform.position.set(x, y, z);
+      transform.rotation.set(rotationX, rotationY, rotationZ);
+      transform.scale.set(scaleX, scaleY, scaleZ);
+      transform.updateMatrix();
+      mesh.setMatrixAt(index, transform.matrix);
+    },
+    finish() {
+      for (const [name, mesh] of Object.entries(pools)) {
+        if (name !== 'furrow') updateInstances(mesh, counts[name]);
+      }
+    },
   };
+}
+
+function renderCropTile(instances, tile) {
+  const { cropId, stage } = tile.crop;
+  const { x, topY: y, z } = tile;
+  const place = (name, dx, dy, dz, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) =>
+    instances.place(name, x + dx, y + dy, z + dz, rx, ry, rz, sx, sy, sz);
+
+  if (stage === 1) {
+    place('shootStem', 0, .11, 0);
+    place('shootLeaf', -.07, .14, 0, 0, -.38, -.18);
+    place('shootLeaf', .07, .17, .02, 0, .38, .18);
+    return;
+  }
+
+  if (stage === 2) {
+    if (cropId === 'corn' || cropId === 'wheat' || cropId === 'barley') {
+      place('youngCerealStem', 0, .21, 0);
+      place('youngCerealLeaf', -.1, .18, 0, 0, -.35, -.22);
+      place('youngCerealLeaf', .1, .27, .02, 0, .35, .22);
+    }
+    else {
+      place('youngBroadStem', 0, .17, 0);
+      for (const [dx, dz, rotation] of [[-.1, 0, 0], [.1, 0, Math.PI], [0, -.09, Math.PI * .5], [0, .09, -Math.PI * .5]]) {
+        place('youngBroadLeaf', dx, .27, dz, 0, rotation);
+      }
+    }
+    return;
+  }
+
+  if (cropId === 'corn') {
+    const height = stage === 3 ? .78 : 1.04;
+    place('cornStem', 0, height * .5, 0, 0, 0, 0, 1, height, 1);
+    const leafCount = stage === 3 ? 4 : 5;
+    for (let index = 0; index < leafCount; index++) {
+      const side = index % 2 ? -1 : 1;
+      place('cornLeaf', side * .12, height * (.3 + index * .11), side * .05, 0, side * .42, side * .13);
+    }
+    if (stage === 4) {
+      place('cornEar', -.09, height * .67, 0, 0, 0, -.12);
+      place('cornEar', .09, height * .67, 0, 0, 0, .12);
+    }
+    return;
+  }
+
+  const stalkOffsets = [[-.14, -.08], [.13, -.1], [-.06, .12], [.15, .1]];
+  if (cropId === 'wheat' || cropId === 'barley') {
+    const barley = cropId === 'barley';
+    const height = stage === 3 ? (barley ? .62 : .66) : (barley ? .76 : .8);
+    const stemName = `${cropId}Stem${stage === 4 ? 'Ripe' : 'Green'}`;
+    stalkOffsets.forEach(([dx, dz], index) => {
+      const lean = (index - 1.5) * .025;
+      place(stemName, dx, height * .5, dz, 0, 0, lean, 1, height, 1);
+      if (stage !== 4) return;
+      place(`${cropId}Head`, dx + lean * .4, height + .06, dz, 0, index * .45, lean);
+      if (barley) {
+        place('barleyAwn', dx - .025, height + .25, dz, 0, 0, -.1 + lean);
+        place('barleyAwn', dx + .025, height + .25, dz, 0, 0, .1 + lean);
+      }
+    });
+    return;
+  }
+
+  if (cropId === 'canola') {
+    const height = stage === 3 ? .62 : .76;
+    place('canolaStem', 0, height * .5, 0, 0, 0, 0, 1, height, 1);
+    for (const [side, dz, level] of [[-1, -.05, .4], [1, .04, .48], [-1, .08, .58], [1, -.08, .66]]) {
+      place('canolaBranch', side * .12, level, dz, 0, side * .18, side * .48);
+    }
+    if (stage === 4) {
+      [[0, .84, 0], [-.2, .68, -.05], [.2, .73, .04], [-.16, .79, .08], [.16, .82, -.08]].forEach(([dx, dy, dz]) =>
+        place('canolaFlower', dx, dy, dz));
+    }
+    return;
+  }
+
+  const height = stage === 3 ? .48 : .56;
+  place('soybeanStem', 0, height * .5, 0, 0, 0, 0, 1, height, 1);
+  for (const [side, dz, level] of [[-1, -.08, .25], [1, .06, .32], [-1, .08, .4], [1, -.06, .47]]) {
+    place('soybeanStem', side * .1, level, dz, 0, side * .2, side * .62, 1, .34, 1);
+    place('soybeanLeaf', side * .2, level + .08, dz, 0, side < 0 ? 0 : Math.PI);
+    place('soybeanLeaf', side * .11, level + .12, dz + side * .1, 0, side * Math.PI * .5);
+  }
+  if (stage === 4) {
+    [[-.12, .3, -.05], [.1, .34, .04], [-.08, .43, .08], [.14, .46, -.06], [0, .51, 0]].forEach(([dx, dy, dz], index) =>
+      place('soybeanPod', dx, dy, dz, 0, index * .5, index % 2 ? .22 : -.22));
+  }
 }
 
 function updateInstances(mesh, count) {
@@ -824,13 +957,13 @@ function createOcclusionSystem(group) {
     .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1, targetOpacity: 1 }));
 
   return {
-    update(cameraPosition, tractorState, delta) {
-      if (!cameraPosition || !tractorState) return;
+    update(cameraPosition, vehicleState, delta) {
+      if (!cameraPosition || !vehicleState) return;
       refreshElapsed += delta;
       const fadeAmount = 1 - Math.exp(-12 * Math.min(.1, delta));
       if (refreshElapsed >= 1 / 12) {
         refreshElapsed = 0;
-        sightline.set(tractorState.x, tractorState.y + .75, tractorState.z).sub(cameraPosition);
+        sightline.set(vehicleState.x, vehicleState.y + .75, vehicleState.z).sub(cameraPosition);
         const sightlineLength = sightline.length();
         if (sightlineLength >= .001) {
           ray.set(cameraPosition, sightline.multiplyScalar(1 / sightlineLength));
@@ -899,6 +1032,117 @@ function findBarnSite(terrain, island) {
   }
   candidates.sort((first, second) => first.score - second.score);
   return candidates[0];
+}
+
+function findVehicleSpawns(terrain, start, barnArea) {
+  const outsideBarn = tile => {
+    if (!barnArea) return true;
+    const dx = tile.x - barnArea.x;
+    const dz = tile.z - barnArea.z;
+    const localX = dx * Math.cos(barnArea.yaw) - dz * Math.sin(barnArea.yaw);
+    const localZ = dx * Math.sin(barnArea.yaw) + dz * Math.cos(barnArea.yaw);
+    return Math.abs(localX) > barnArea.width * .5 + .8 || Math.abs(localZ) > barnArea.depth * .5 + .8;
+  };
+  const candidates = [...terrain.values()].filter(tile =>
+    tile.islandId === STARTER_ISLAND_ID && !tile.water && !tile.hasTree && !tile.reserved &&
+    Math.abs(tile.topY - start.topY) < .01 && outsideBarn(tile)
+  );
+  candidates.sort((first, second) => {
+    const firstDistance = Math.hypot(first.x - start.x, first.z - start.z);
+    const secondDistance = Math.hypot(second.x - start.x, second.z - start.z);
+    return firstDistance - secondDistance || first.gx - second.gx || first.gz - second.gz;
+  });
+  const selected = [];
+  for (const tile of candidates) {
+    if (selected.every(spawn => Math.hypot(tile.x - spawn.x, tile.z - spawn.z) >= 3.5)) {
+      selected.push({ x: tile.x, y: tile.topY, z: tile.z });
+      if (selected.length === 8) break;
+    }
+  }
+  if (selected.length < 2) {
+    for (const tile of candidates) {
+      if (selected.some(spawn => spawn.x === tile.x && spawn.z === tile.z)) continue;
+      selected.push({ x: tile.x, y: tile.topY, z: tile.z });
+      if (selected.length === 2) break;
+    }
+  }
+  return selected.length ? selected : [{ x: start.x, y: start.topY, z: start.z }];
+}
+
+function findCargoSite(terrain, island, neighbors) {
+  const inward = neighbors.reduce((sum, neighbor) => {
+    if (!neighbor) return sum;
+    const dx = neighbor.cx - island.cx;
+    const dz = neighbor.cz - island.cz;
+    const length = Math.hypot(dx, dz) || 1;
+    sum.x += dx / length;
+    sum.z += dz / length;
+    return sum;
+  }, { x: 0, z: 0 });
+  const inwardLength = Math.hypot(inward.x, inward.z) || 1;
+  const preferredOutward = { x: -inward.x / inwardLength, z: -inward.z / inwardLength };
+  const islandTiles = [...terrain.values()].filter(tile => tile.islandId === CARGO_ISLAND_ID);
+  const candidates = [];
+
+  // The half-diagonal margin treats each terrain tile as a full square rather
+  // than only testing its center against the rotated deck footprint.
+  const deckIsClear = site => [...terrain.values()].every(tile =>
+    !cargoDeckContains(site, tile.x, tile.z, TILE * .72) || tile.topY <= site.y + .01
+  );
+
+  const approachIsClear = site => {
+    const lateral = { x: -site.outward.z, z: site.outward.x };
+    for (const depth of [0, 1, 2]) {
+      for (const across of [-1, 0, 1]) {
+        const gx = Math.round(site.x / TILE - site.outward.x * depth + lateral.x * across);
+        const gz = Math.round(site.z / TILE - site.outward.z * depth + lateral.z * across);
+        const approach = terrain.get(gridKey(gx, gz));
+        if (!approach || approach.islandId !== CARGO_ISLAND_ID || approach.water || Math.abs(approach.topY - site.y) > .01) return false;
+      }
+    }
+    return true;
+  };
+
+  for (const tile of islandTiles) {
+    // Cargo infrastructure is only allowed on the island's first/base floor.
+    if (tile.water || Math.abs(tile.topY - tile.baseY) > .01) continue;
+    const dx = tile.gx - island.cx;
+    const dz = tile.gz - island.cz;
+    const distance = Math.hypot(dx, dz) || 1;
+    if (tile.radial < .62) continue;
+    const outward = { x: dx / distance, z: dz / distance };
+    const preferredExposure = outward.x * preferredOutward.x + outward.z * preferredOutward.z;
+    const site = { x: tile.x, y: tile.topY, z: tile.z, outward };
+    if (!approachIsClear(site) || !deckIsClear(site)) continue;
+    candidates.push({ site, score: preferredExposure * 3 + tile.radial });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  if (candidates.length) return candidates[0].site;
+
+  const safeFallback = islandTiles
+    .filter(tile => !tile.water && Math.abs(tile.topY - tile.baseY) <= .01 && tile.radial >= .62)
+    .map(tile => {
+      const dx = tile.gx - island.cx;
+      const dz = tile.gz - island.cz;
+      const distance = Math.hypot(dx, dz) || 1;
+      return { site: { x: tile.x, y: tile.topY, z: tile.z, outward: { x: dx / distance, z: dz / distance } }, tile };
+    })
+    .filter(candidate => deckIsClear(candidate.site))
+    .sort((a, b) => b.tile.radial - a.tile.radial)[0];
+  return safeFallback?.site || null;
+}
+
+function reserveCargoApproach(terrain, site) {
+  if (!site) return;
+  for (const tile of terrain.values()) {
+    if (tile.islandId !== CARGO_ISLAND_ID) continue;
+    const approach = Math.abs(tile.topY - site.y) <= .01 && Math.hypot(tile.x - site.x, tile.z - site.z) <= 2.35;
+    if (approach || cargoDeckContains(site, tile.x, tile.z, TILE * .85)) tile.reserved = true;
+    // Tree crowns reach farther than their trunks; keep decorations clear
+    // without unnecessarily removing the surrounding tiles from farming.
+    if (cargoDeckContains(site, tile.x, tile.z, TILE * 2.75)) tile.noDecoration = true;
+  }
 }
 
 function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, strictBanks) {

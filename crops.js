@@ -1,25 +1,32 @@
 const clamp = value => Math.max(0, Math.min(1, value));
 
+export const cropIds = ['corn', 'wheat', 'barley', 'canola', 'soybean'];
+
 export const crops = {
-  wheat: {
-    name: 'Wheat',
-    moisture: { preferred: .28, tolerance: .28 },
-    sun: { preferred: .86, tolerance: .27 },
-  },
   corn: {
     name: 'Corn',
     moisture: { preferred: .58, tolerance: .25 },
     sun: { preferred: .8, tolerance: .26 },
   },
-  rice: {
-    name: 'Rice',
-    moisture: { preferred: .9, tolerance: .2 },
-    sun: { preferred: .64, tolerance: .3 },
+  wheat: {
+    name: 'Wheat',
+    moisture: { preferred: .28, tolerance: .28 },
+    sun: { preferred: .86, tolerance: .27 },
   },
-  potato: {
-    name: 'Potato',
-    moisture: { preferred: .46, tolerance: .25 },
-    sun: { preferred: .34, tolerance: .27 },
+  barley: {
+    name: 'Barley',
+    moisture: { preferred: .22, tolerance: .27 },
+    sun: { preferred: .72, tolerance: .3 },
+  },
+  canola: {
+    name: 'Canola',
+    moisture: { preferred: .68, tolerance: .26 },
+    sun: { preferred: .62, tolerance: .3 },
+  },
+  soybean: {
+    name: 'Soybeans',
+    moisture: { preferred: .76, tolerance: .25 },
+    sun: { preferred: .84, tolerance: .25 },
   },
 };
 

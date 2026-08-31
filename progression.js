@@ -2,13 +2,17 @@ const MILESTONE_TEMPLATE = {
   id: 'corn-delivery',
   title: 'Corn delivery',
   requirements: [
-    { cropId: 'corn', name: 'Corn', target: 36 },
+    { cropId: 'corn', name: 'Corn', target: 3600 },
   ],
 };
 
-export function createMilestoneProgression() {
-  let number = 1;
-  let delivered = Object.fromEntries(MILESTONE_TEMPLATE.requirements.map(requirement => [requirement.cropId, 0]));
+export function createMilestoneProgression(savedState = null) {
+  const savedNumber = Math.floor(Number(savedState?.number));
+  let number = Number.isSafeInteger(savedNumber) ? Math.max(1, savedNumber) : 1;
+  let delivered = Object.fromEntries(MILESTONE_TEMPLATE.requirements.map(requirement => [
+    requirement.cropId,
+    Math.min(requirement.target, Math.max(0, Math.floor(Number(savedState?.delivered?.[requirement.cropId]) || 0))),
+  ]));
 
   const complete = () => MILESTONE_TEMPLATE.requirements.every(requirement =>
     delivered[requirement.cropId] >= requirement.target
@@ -26,6 +30,9 @@ export function createMilestoneProgression() {
           delivered: delivered[requirement.cropId],
         })),
       };
+    },
+    persistentState() {
+      return { number, delivered: { ...delivered } };
     },
     accept(contents) {
       if (complete()) return {};

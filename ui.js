@@ -20,8 +20,11 @@ const CATALOG = {
 
 const TOOL_LABELS = { plough: 'Plough', seeder: 'Seeder', sprayer: 'Sprayer' };
 const DEFAULT_LOADOUT = { tool: 'plough', frontTool: 'loader' };
+const TICKER_STEP_LITRES = 10;
+const METER_TICKS_PER_SECOND = 120;
+const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 
-export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleVehicle, onStorageAction, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -46,9 +49,12 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
   let toastTimer = null;
   let restoreFocus = null;
   let grainFill = 0;
-  let grainCapacity = 36;
+  let grainCapacity = 3600;
   let grainLabel = 'Storage';
-  let storageAction = { kind: 'hidden', enabled: false };
+  let siloInventory = null;
+  let siloCropId = null;
+  let milestoneState = null;
+  const amountTickers = new Map();
 
   const topBar = document.querySelector('#topBar');
   const overlay = document.querySelector('#overlay');
@@ -77,6 +83,14 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
   const grainMeterLabel = document.querySelector('#grainMeterLabel');
   const grainFillElement = document.querySelector('#grainFill');
   const grainValue = document.querySelector('#grainValue');
+  const siloInventoryElement = document.querySelector('#siloInventory');
+  const siloCropIconUse = document.querySelector('#siloCropIconUse');
+  const siloCropName = document.querySelector('#siloCropName');
+  const siloCropValue = document.querySelector('#siloCropValue');
+  const previousSiloCrop = document.querySelector('#previousSiloCrop');
+  const nextSiloCrop = document.querySelector('#nextSiloCrop');
+  const siloLoadButton = document.querySelector('#siloLoad');
+  const siloUnloadButton = document.querySelector('#siloUnload');
   const milestoneTracker = document.querySelector('#milestoneTracker');
   const milestoneTitle = document.querySelector('#milestoneTitle');
   const milestoneStatus = document.querySelector('#milestoneStatus');
@@ -93,7 +107,7 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
   const vehicleName = document.querySelector('#vehicleName');
   const vehicleIdentity = document.querySelector('#vehicleIdentity');
   const applyLoadout = document.querySelector('#applyLoadout');
-  const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints];
+  const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints, siloInventoryElement];
   const stickRadius = 43;
 
   document.body.tabIndex = -1;
@@ -105,6 +119,27 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
     toastElement.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toastElement.classList.remove('show'), 1100);
+  };
+
+  const formatLitres = amount => `${Math.max(0, Number(amount) || 0).toLocaleString(undefined, {
+    maximumFractionDigits: 0,
+  })} L`;
+
+  const tickerValue = (key, target, initialValue = target, ticksPerSecond = METER_TICKS_PER_SECOND, view = 'grain') => {
+    const safeTarget = Math.max(0, Number(target) || 0);
+    const ticker = amountTickers.get(key);
+    if (!ticker) {
+      const safeInitialValue = Math.max(0, Number(initialValue) || 0);
+      amountTickers.set(key, { value: safeInitialValue, target: safeTarget, elapsed: 0, ticksPerSecond, view });
+      return safeInitialValue;
+    }
+    if (ticker.target !== safeTarget) {
+      ticker.target = safeTarget;
+      ticker.elapsed = 0;
+    }
+    ticker.ticksPerSecond = ticksPerSecond;
+    ticker.view = view;
+    return ticker.value;
   };
 
   const clearStick = () => {
@@ -157,19 +192,68 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
   const renderGrainMeter = () => {
     const visible = activeVehicle.type === 'harvester';
     grainMeter.hidden = !visible;
-    const percent = grainCapacity ? Math.round(grainFill / grainCapacity * 100) : 0;
+    const displayFill = tickerValue('grain-tank', grainFill, grainFill, METER_TICKS_PER_SECOND, 'grain');
+    const percent = grainCapacity ? Math.round(displayFill / grainCapacity * 100) : 0;
     grainMeterLabel.textContent = grainLabel;
     grainFillElement.style.width = `${percent}%`;
-    grainValue.textContent = `${grainFill} / ${grainCapacity}`;
+    grainValue.textContent = `${formatLitres(displayFill)} / ${formatLitres(grainCapacity)}`;
     grainMeter.setAttribute('aria-valuenow', String(percent));
-    grainMeter.setAttribute('aria-valuetext', `${grainFill} of ${grainCapacity} ${grainLabel.toLowerCase()} stored`);
+    grainMeter.setAttribute('aria-valuetext', `${formatLitres(displayFill)} of ${formatLitres(grainCapacity)} ${grainLabel.toLowerCase()} stored`);
+  };
+
+  const renderSiloInventory = () => {
+    const cropsInSilo = siloInventory?.crops || [];
+    siloInventoryElement.hidden = !siloInventory;
+    if (!siloInventory) return;
+    const machine = siloInventory.machine;
+    const cargoPad = siloInventory.kind === 'cargo';
+    const tankAmount = Object.values(machine.contents).reduce((sum, amount) => sum + amount, 0);
+    const tankCropId = Object.keys(machine.contents).find(cropId => machine.contents[cropId] > 0) || null;
+    if (cropsInSilo.length && !cropsInSilo.some(crop => crop.id === siloCropId)) siloCropId = cropsInSilo[0].id;
+    const crop = cropsInSilo.find(entry => entry.id === siloCropId) || cropsInSilo[0] || null;
+    const canLoad = !cargoPad && Boolean(crop?.amount) && machine.type === 'harvester'
+      && tankAmount < machine.capacity && (!tankCropId || tankCropId === crop.id);
+    const canUnload = cargoPad
+      ? Boolean(crop) && machine.type === 'harvester' && crop.amount < crop.target && (machine.contents[crop.id] || 0) > 0
+      : machine.type === 'harvester' && tankAmount > 0;
+    previousSiloCrop.disabled = cropsInSilo.length < 2;
+    nextSiloCrop.disabled = cropsInSilo.length < 2;
+    siloLoadButton.hidden = cargoPad;
+    siloUnloadButton.textContent = cargoPad ? 'Deliver' : 'Unload';
+    siloUnloadButton.setAttribute('aria-label', cargoPad ? 'Deliver selected cargo' : 'Unload combine into silo');
+    siloLoadButton.disabled = !canLoad;
+    siloUnloadButton.disabled = !canUnload;
+    if (!crop) {
+      siloCropIconUse.setAttribute('href', '#icon-silo');
+      siloCropName.textContent = 'Empty';
+      siloCropValue.textContent = '—';
+      siloInventoryElement.setAttribute('aria-label', 'Silo inventory is empty');
+      return;
+    }
+    siloCropIconUse.setAttribute('href', `#icon-${crop.id}`);
+    siloCropName.textContent = crops[crop.id].name;
+    const tickerKey = `${cargoPad ? 'cargo' : 'silo'}:${siloInventory.id}:${crop.id}`;
+    const displayAmount = tickerValue(tickerKey, crop.amount, crop.amount, TRANSFER_TICKS_PER_SECOND, 'silo');
+    siloCropValue.textContent = cargoPad
+      ? `${formatLitres(displayAmount)} / ${formatLitres(crop.target)}`
+      : formatLitres(displayAmount);
+    siloInventoryElement.setAttribute('aria-label', cargoPad
+      ? `Cargo pad: ${formatLitres(crop.amount)} of ${formatLitres(crop.target)} ${crops[crop.id].name} delivered`
+      : `Silo inventory: ${formatLitres(crop.amount)} ${crops[crop.id].name}`);
+  };
+
+  const cycleSiloCrop = direction => {
+    const cropsInSilo = siloInventory?.crops || [];
+    if (cropsInSilo.length < 2) return;
+    const currentIndex = Math.max(0, cropsInSilo.findIndex(crop => crop.id === siloCropId));
+    siloCropId = cropsInSilo[(currentIndex + direction + cropsInSilo.length) % cropsInSilo.length].id;
+    renderSiloInventory();
   };
 
   const renderSecondaryAction = () => {
     const seederActive = activeVehicle.type !== 'harvester' && activeLoadout.tool === 'seeder';
-    const visible = seederActive || (activeVehicle.type === 'harvester' && storageAction.kind !== 'hidden');
-    unloadButton.hidden = !visible;
-    secondaryHint.hidden = !visible;
+    unloadButton.hidden = !seederActive;
+    secondaryHint.hidden = !seederActive;
     if (seederActive) {
       const cropId = cropIds[seedIndex];
       const nextCrop = crops[cropIds[(seedIndex + 1) % cropIds.length]];
@@ -178,22 +262,6 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
       unloadButton.title = `${crops[cropId].name} seed · select ${nextCrop.name}`;
       unloadIconUse.setAttribute('href', `#icon-${cropId}`);
       secondaryHintLabel.textContent = 'Seed';
-      return;
-    }
-    unloadIconUse.setAttribute('href', '#icon-unload');
-    secondaryHintLabel.textContent = 'Transfer cargo';
-    unloadButton.setAttribute('aria-disabled', String(!storageAction.enabled));
-    if (storageAction.kind === 'cargo') {
-      unloadButton.setAttribute('aria-label', storageAction.enabled ? 'Drop off required produce at cargo pad' : 'Cargo pad cannot accept this storage');
-      unloadButton.title = storageAction.enabled ? 'Drop off produce' : 'Cargo pad awaiting required produce';
-    }
-    else if (storageAction.kind === 'silo') {
-      unloadButton.setAttribute('aria-label', storageAction.enabled ? 'Empty combine into nearby silo' : 'Combine storage is empty');
-      unloadButton.title = storageAction.enabled ? 'Empty combine' : 'Storage empty';
-    }
-    else {
-      unloadButton.setAttribute('aria-label', 'Move beside a silo or cargo pad');
-      unloadButton.title = 'Find a storage destination';
     }
   };
 
@@ -202,13 +270,14 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
     if (activeVehicle.type !== 'harvester' && activeLoadout.tool === 'seeder') {
       seedIndex = (seedIndex + 1) % cropIds.length;
       renderSecondaryAction();
+      onPersistentStateChange();
       toast(`${crops[cropIds[seedIndex]].name} seed selected`);
       return;
     }
-    if (activeVehicle.type === 'harvester') onStorageAction();
   };
 
   const renderMilestone = milestone => {
+    milestoneState = milestone;
     milestoneTitle.textContent = `Milestone ${milestone.number}`;
     milestoneStatus.textContent = milestone.complete ? 'Awaiting pickup' : milestone.title;
     milestoneTracker.dataset.complete = String(milestone.complete);
@@ -220,18 +289,19 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
       const value = document.createElement('strong');
       const track = document.createElement('div');
       const fill = document.createElement('span');
-      const percent = requirement.target ? Math.min(100, requirement.delivered / requirement.target * 100) : 0;
+      const displayDelivered = tickerValue(`milestone:${milestone.number}:${requirement.cropId}`, requirement.delivered, requirement.delivered, TRANSFER_TICKS_PER_SECOND, 'milestone');
+      const percent = requirement.target ? Math.min(100, displayDelivered / requirement.target * 100) : 0;
       row.className = 'milestoneRow';
       heading.className = 'milestoneRowHeading';
       name.textContent = requirement.name;
-      value.textContent = `${requirement.delivered} / ${requirement.target}`;
+      value.textContent = `${formatLitres(displayDelivered)} / ${formatLitres(requirement.target)}`;
       track.className = 'milestoneTrack';
       track.setAttribute('role', 'progressbar');
       track.setAttribute('aria-label', `${requirement.name} delivered`);
       track.setAttribute('aria-valuemin', '0');
       track.setAttribute('aria-valuemax', String(requirement.target));
-      track.setAttribute('aria-valuenow', String(requirement.delivered));
-      track.setAttribute('aria-valuetext', `${requirement.delivered} of ${requirement.target} ${requirement.name} delivered`);
+      track.setAttribute('aria-valuenow', String(displayDelivered));
+      track.setAttribute('aria-valuetext', `${formatLitres(displayDelivered)} of ${formatLitres(requirement.target)} ${requirement.name} delivered`);
       fill.style.width = `${percent}%`;
       heading.append(name, value);
       track.append(fill);
@@ -587,6 +657,16 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
     renderCropOverlay();
     notifyCropOverlay();
   });
+  previousSiloCrop.addEventListener('click', () => cycleSiloCrop(-1));
+  nextSiloCrop.addEventListener('click', () => cycleSiloCrop(1));
+  siloLoadButton.addEventListener('click', () => {
+    if (siloInventory && siloCropId) onSiloLoad(siloInventory.id, siloCropId);
+  });
+  siloUnloadButton.addEventListener('click', () => {
+    if (!siloInventory) return;
+    if (siloInventory.kind === 'cargo') onCargoDropOff();
+    else onSiloUnload(siloInventory.id);
+  });
   document.querySelector('#menuToggle').addEventListener('click', openPause);
   document.querySelector('#closeBarn').addEventListener('click', closeBarn);
   document.querySelector('#cancelLoadout').addEventListener('click', closeBarn);
@@ -602,17 +682,15 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
     overlayState = 'confirm';
     pauseBody.hidden = true;
     confirmBody.hidden = false;
-    pauseTitle.textContent = 'Generate new farm?';
+    pauseTitle.textContent = 'Restart Farmipelago?';
     document.querySelector('#cancelRegenerate').focus();
   });
   document.querySelector('#cancelRegenerate').addEventListener('click', closePause);
   document.querySelector('#confirmRegenerate').addEventListener('click', () => {
-    toolEnabled = false;
-    renderTool();
-    onToolChange(false);
-    hideOverlay();
-    onRegenerate();
-    toast('New farm generated');
+    if (onRestart()) return;
+    overlayState = 'pause';
+    resetPausePanel();
+    toast('Could not delete the saved farm');
   });
 
   overlay.addEventListener('keydown', event => {
@@ -662,6 +740,12 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
     },
     activeLoadout: () => ({ ...activeLoadout, vehicle: activeVehicle.type }),
     activeSeedId: () => cropIds[seedIndex],
+    persistentState: () => ({ seedCropId: cropIds[seedIndex] }),
+    restorePersistentState(savedState) {
+      const savedSeedIndex = cropIds.indexOf(savedState?.seedCropId);
+      if (savedSeedIndex !== -1) seedIndex = savedSeedIndex;
+      renderSecondaryAction();
+    },
     cropOverlayState: () => ({ enabled: cropOverlayEnabled, cropId: cropIds[cropIndex] }),
     buildState: () => ({ enabled: buildMode, selectedBuilding }),
     clearBuildingSelection() {
@@ -680,7 +764,6 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
       activeLoadout = { ...nextVehicle.loadout };
       draftLoadout = { ...activeLoadout };
       toolEnabled = Boolean(nextVehicle.toolEnabled);
-      storageAction = { kind: activeVehicle.type === 'harvester' ? 'unavailable' : 'hidden', enabled: false };
       renderTool();
       renderGrainMeter();
       renderSecondaryAction();
@@ -692,9 +775,79 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
       grainLabel = nextLabel;
       renderGrainMeter();
     },
-    setStorageAction(nextAction) {
-      storageAction = { kind: nextAction.kind, enabled: Boolean(nextAction.enabled) };
-      renderSecondaryAction();
+    animate(dt) {
+      const changedViews = new Set();
+      for (const ticker of amountTickers.values()) {
+        const difference = ticker.target - ticker.value;
+        if (Math.abs(difference) < TICKER_STEP_LITRES) {
+          if (ticker.value !== ticker.target) {
+            ticker.value = ticker.target;
+            changedViews.add(ticker.view);
+          }
+          continue;
+        }
+        ticker.elapsed += Math.max(0, dt);
+        const ticks = Math.floor(ticker.elapsed * ticker.ticksPerSecond);
+        if (!ticks) continue;
+        ticker.elapsed -= ticks / ticker.ticksPerSecond;
+        const step = Math.min(Math.abs(difference), ticks * TICKER_STEP_LITRES);
+        ticker.value = Math.round((ticker.value + Math.sign(difference) * step) * 100) / 100;
+        changedViews.add(ticker.view);
+      }
+      if (changedViews.has('grain')) renderGrainMeter();
+      if (changedViews.has('silo')) renderSiloInventory();
+      if (changedViews.has('milestone') && milestoneState) renderMilestone(milestoneState);
+    },
+    setStoragePopup(nextInventory) {
+      if (!nextInventory) {
+        if (!siloInventory) return;
+        siloInventory = null;
+        renderSiloInventory();
+        return;
+      }
+      const cropsInSilo = Array.isArray(nextInventory.items)
+        ? nextInventory.items.flatMap(item => {
+          const cropId = item?.id;
+          const amount = Math.max(0, Math.floor(Number(item?.amount) || 0));
+          const target = Math.max(0, Math.floor(Number(item?.target) || 0));
+          return crops[cropId] ? [{ id: cropId, amount, target }] : [];
+        })
+        : cropIds.flatMap(cropId => {
+        const amount = Math.max(0, Math.floor(Number(nextInventory.contents?.[cropId]) || 0));
+        return amount ? [{ id: cropId, amount }] : [];
+      });
+      const samePopup = siloInventory?.id === nextInventory.id && siloInventory?.kind === nextInventory.kind;
+      const machine = {
+        type: nextInventory.machine?.type || 'tractor',
+        capacity: Math.max(0, Number(nextInventory.machine?.capacity) || 0),
+        contents: { ...nextInventory.machine?.contents },
+      };
+      const signature = [
+        nextInventory.kind,
+        cropsInSilo.map(crop => `${crop.id}:${crop.amount}:${crop.target || ''}`).join('|'),
+        machine.type,
+        machine.capacity,
+        cropIds.map(cropId => `${cropId}:${machine.contents[cropId] || 0}`).join('|'),
+      ].join(';');
+      const changed = siloInventory?.id !== nextInventory.id || siloInventory?.signature !== signature;
+      for (const crop of cropsInSilo) {
+        const previousAmount = samePopup
+          ? siloInventory.crops.find(previous => previous.id === crop.id)?.amount || 0
+          : crop.amount;
+        const key = `${nextInventory.kind === 'cargo' ? 'cargo' : 'silo'}:${nextInventory.id}:${crop.id}`;
+        const ticker = amountTickers.get(key);
+        if (samePopup && changed && ticker) {
+          ticker.value = previousAmount;
+          ticker.target = crop.amount;
+          ticker.elapsed = 0;
+        }
+        else tickerValue(key, crop.amount, previousAmount, TRANSFER_TICKS_PER_SECOND, 'silo');
+      }
+      siloInventory = { id: nextInventory.id, kind: nextInventory.kind, crops: cropsInSilo, machine, signature };
+      siloInventoryElement.style.left = `${Math.max(86, Math.min(innerWidth - 86, nextInventory.x))}px`;
+      siloInventoryElement.style.top = `${Math.max(104, Math.min(innerHeight - 54, nextInventory.y))}px`;
+      if (changed) renderSiloInventory();
+      else siloInventoryElement.hidden = false;
     },
     setMilestone: renderMilestone,
     isGameplayBlocked: () => overlayState !== null,
@@ -710,7 +863,6 @@ export function createUi({ onRegenerate, onLoadoutChange, onToolChange, onCycleV
       toolEnabled = false;
       grainFill = 0;
       grainLabel = 'Storage';
-      storageAction = { kind: activeVehicle.type === 'harvester' ? 'unavailable' : 'hidden', enabled: false };
       renderTool();
       renderGrainMeter();
       renderSecondaryAction();

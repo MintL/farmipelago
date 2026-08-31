@@ -13,7 +13,7 @@ export const VEHICLE_TYPES = {
     icon: 'harvester',
     slots: [],
     defaultLoadout: {},
-    storageCapacity: 36,
+    storageCapacity: 3600,
   },
 };
 

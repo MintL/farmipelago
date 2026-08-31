@@ -1,5 +1,7 @@
-import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTractorAsset } from './farm-assets.js?v=crop-diversity-20260831-1';
+import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTractorAsset } from './farm-assets.js?v=animations-20260831-1';
 import { THREE } from './shared.js?v=crop-diversity-20260831-1';
+
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function createVehicle(scene, vehicle) {
   const root = new THREE.Group();
@@ -14,6 +16,18 @@ export function createVehicle(scene, vehicle) {
   const toolDownY = .3;
   const toolUpY = .78;
   let toolTargetY = toolUpY;
+  let toolY = toolUpY;
+  let toolVelocity = 0;
+  let headerY = .42;
+  let headerVelocity = 0;
+  let selectionPulse = 0;
+  let selectionDirection = 0;
+  let sprayCooldown = 0;
+  let unload = null;
+  let augerYaw = 0;
+  let augerExtension = 0;
+  const worldPoint = new THREE.Vector3();
+  const localPoint = new THREE.Vector3();
   const attachments = tractor ? Object.fromEntries(['plough', 'seeder', 'sprayer'].map(type => {
     const attachment = createRearToolAsset(type);
     attachment.position.set(0, toolUpY, 1.38);
@@ -23,6 +37,63 @@ export function createVehicle(scene, vehicle) {
   let loadout = 'plough';
   Object.entries(attachments).forEach(([name, attachment]) => { attachment.visible = name === loadout; });
 
+  const effectGroup = new THREE.Group();
+  effectGroup.name = `${vehicle}-effects`;
+  scene.add(effectGroup);
+  const createPool = (name, geometry, material, capacity) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    const transform = new THREE.Object3D();
+    mesh.name = name;
+    mesh.count = capacity;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    effectGroup.add(mesh);
+    const slots = Array.from({ length: capacity }, () => ({ active: false }));
+    for (let index = 0; index < capacity; index++) {
+      transform.scale.setScalar(0);
+      transform.updateMatrix();
+      mesh.setMatrixAt(index, transform.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    return { mesh, slots, cursor: 0, transform };
+  };
+  const spray = createPool('spray-droplets', new THREE.BoxGeometry(.06, .06, .06), new THREE.MeshBasicMaterial({ color: 0xa6ddff, transparent: true, opacity: .82, depthWrite: false }), 64);
+  const claim = (pool, data) => {
+    const available = pool.slots.findIndex(slot => !slot.active);
+    const index = available === -1 ? pool.cursor++ % pool.slots.length : available;
+    Object.assign(pool.slots[index], data, { active: true });
+  };
+  const hide = (pool, index) => {
+    pool.transform.scale.setScalar(0);
+    pool.transform.updateMatrix();
+    pool.mesh.setMatrixAt(index, pool.transform.matrix);
+    pool.slots[index].active = false;
+  };
+  const updatePool = (pool, elapsed, update) => {
+    let changed = false;
+    pool.slots.forEach((slot, index) => {
+      if (!slot.active || elapsed < slot.born) return;
+      const progress = (elapsed - slot.born) / slot.life;
+      if (progress >= 1) {
+        hide(pool, index);
+        changed = true;
+        return;
+      }
+      update(slot, progress, pool.transform);
+      pool.transform.updateMatrix();
+      pool.mesh.setMatrixAt(index, pool.transform.matrix);
+      changed = true;
+    });
+    if (changed) pool.mesh.instanceMatrix.needsUpdate = true;
+  };
+  const spring = (value, velocity, target, dt, stiffness = 185, damping = 24) => {
+    velocity += (target - value) * stiffness * dt;
+    velocity *= Math.exp(-damping * dt);
+    return { value: value + velocity * dt, velocity };
+  };
+
   return {
     setLoadout(nextLoadout) {
       const nextTool = nextLoadout.tool || loadout;
@@ -31,7 +102,38 @@ export function createVehicle(scene, vehicle) {
         attachment.visible = name === loadout;
       });
     },
-    setToolEnabled(enabled) { toolTargetY = enabled ? toolDownY : toolUpY; },
+    setToolEnabled(enabled, immediate = false) {
+      toolTargetY = enabled ? toolDownY : toolUpY;
+      if (!immediate && !reducedMotion) return;
+      toolY = toolTargetY;
+      toolVelocity = 0;
+      headerY = enabled ? .24 : .42;
+      headerVelocity = 0;
+    },
+    setSelected(selected) {
+      if (reducedMotion) return;
+      selectionDirection = selected ? 1 : -1;
+      selectionPulse = 1;
+    },
+    playUnload(target, _cropId, elapsed) {
+      if (reducedMotion || !combine || !target) return false;
+      root.updateMatrixWorld(true);
+      localPoint.set(target.x, target.y, target.z);
+      root.worldToLocal(localPoint);
+      if (unload) {
+        unload.targetYaw = Math.atan2(-localPoint.z, localPoint.x);
+        unload.activeUntil = elapsed + 1.15;
+      }
+      else unload = {
+        started: elapsed,
+        targetYaw: Math.atan2(-localPoint.z, localPoint.x),
+        activeUntil: elapsed + 1.15,
+      };
+      return true;
+    },
+    stopUnload() {
+      unload = null;
+    },
     sync(state, heading, steer, driveAmount, dt, elapsed) {
       root.position.set(state.x, state.y, state.z);
       root.rotation.y = heading;
@@ -41,11 +143,21 @@ export function createVehicle(scene, vehicle) {
       landingSquash *= Math.exp(-7 * dt);
       wasGrounded = state.grounded;
       lastVerticalSpeed = state.verticalSpeed;
+      const toolSpring = spring(toolY, toolVelocity, toolTargetY, dt);
+      toolY = toolSpring.value;
+      toolVelocity = toolSpring.velocity;
       const attachment = attachments[loadout];
-      if (attachment) attachment.position.y += (toolTargetY - attachment.position.y) * (1 - Math.exp(-10 * dt));
+      if (attachment) {
+        attachment.position.y = toolY;
+        attachment.rotation.x = toolVelocity * .035;
+      }
       if (combine) {
         const headerTargetY = toolTargetY === toolDownY ? .24 : .42;
-        combine.header.position.y += (headerTargetY - combine.header.position.y) * (1 - Math.exp(-10 * dt));
+        const headerSpring = spring(headerY, headerVelocity, headerTargetY, dt);
+        headerY = headerSpring.value;
+        headerVelocity = headerSpring.velocity;
+        combine.header.position.y = headerY;
+        combine.header.rotation.x = headerVelocity * .035;
       }
 
       const speedFactor = Math.min(1, state.speed / 5.5);
@@ -59,13 +171,45 @@ export function createVehicle(scene, vehicle) {
       });
       const engineBob = state.grounded ? Math.sin(elapsed * (8 + Math.min(1, state.speed / 4) * 5)) * .04 * Math.min(1, state.speed / 4) : 0;
       const airStretch = state.grounded ? 0 : .14;
-      const squash = landingSquash - airStretch;
+      selectionPulse *= Math.exp(-7 * dt);
+      const selection = selectionDirection * selectionPulse;
+      const squash = landingSquash - airStretch + selection * .09 + Math.abs(toolVelocity) * .006;
       const visual = combine ? combine.group : tractor.group;
       visual.position.y = engineBob;
       visual.scale.set(1 + squash * .9, 1 - squash, 1 + squash * .9);
       visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .1;
       visual.rotation.x = state.grounded ? -driveAmount * .035 : THREE.MathUtils.clamp(-state.verticalSpeed * .045, -.28, .28);
       if (combine) combine.reel.rotation.x -= (toolTargetY === toolDownY ? Math.max(.7, state.speed * 3.2) : 0) * dt;
+      root.updateMatrixWorld(true);
+      sprayCooldown -= dt;
+      if (!reducedMotion && tractor && loadout === 'sprayer' && toolTargetY === toolDownY && state.grounded && state.speed >= .4 && sprayCooldown <= 0) {
+        sprayCooldown = .1;
+        for (const x of [-1.15, -.77, -.38, 0, .38, .77, 1.15]) {
+          worldPoint.set(x, -.25, .58);
+          attachment.localToWorld(worldPoint);
+          claim(spray, {
+            born: elapsed, life: .35, x: worldPoint.x, y: worldPoint.y, z: worldPoint.z,
+            dx: Math.sin(heading) * .2, dz: Math.cos(heading) * .2, phase: x,
+          });
+        }
+      }
+      updatePool(spray, elapsed, (slot, progress, transform) => {
+        const scale = 1 + progress * .55;
+        transform.position.set(slot.x + slot.dx * progress, slot.y - progress * .48 - progress * progress * .12, slot.z + slot.dz * progress);
+        transform.rotation.set(progress * 5, slot.phase + progress * 3, progress * 4);
+        transform.scale.set(scale, Math.max(.18, 1 - progress), scale);
+      });
+      if (combine) {
+        const activeUnload = unload && elapsed < unload.activeUntil;
+        const targetYaw = activeUnload ? unload.targetYaw : 0;
+        augerYaw += (targetYaw - augerYaw) * (1 - Math.exp(-12 * dt));
+        const targetExtension = activeUnload ? 1 : 0;
+        augerExtension += (targetExtension - augerExtension) * (1 - Math.exp(-9 * dt));
+        combine.auger.rotation.y = augerYaw;
+        const pulse = activeUnload ? 1 + Math.sin((elapsed - unload.started) * 12) * .025 : 1;
+        combine.auger.scale.x = Math.max(.04, augerExtension * pulse);
+        if (unload && !activeUnload) unload = null;
+      }
     },
   };
 }

@@ -1,16 +1,24 @@
-import { THREE } from './shared.js?v=crop-diversity-20260831-1';
-import { crops } from './crops.js?v=crop-diversity-20260831-1';
-import { createPhysics } from './physics.js?v=vehicle-fleet-20260831-1';
-import { createLoadoutPreview, createVehicle } from './tractor.js?v=vehicle-fleet-20260831-1';
-import { createUi } from './ui.js?v=vehicle-fleet-20260831-1';
-import { createBuildingManager } from './buildings.js?v=crop-diversity-20260831-1';
-import { generateFarm } from './world-generator.js?v=vehicle-fleet-20260831-1';
-import { createMilestoneProgression } from './progression.js?v=crop-diversity-20260831-1';
-import { OWNED_VEHICLES, vehicleType } from './vehicles.js?v=vehicle-fleet-20260831-1';
+import { THREE } from './shared.js?v=persistence-20260831-1';
+import { crops } from './crops.js?v=cargo-litres-20260831-1';
+import { createPhysics } from './physics.js?v=persistence-20260831-1';
+import { createLoadoutPreview, createVehicle } from './tractor.js?v=unload-auger-extension-20260831-1';
+import { createUi } from './ui.js?v=unload-hud-performance-20260831-1';
+import { createBuildingManager } from './buildings.js?v=transfer-batching-20260831-1';
+import { generateFarm } from './world-generator.js?v=cargo-litres-20260831-1';
+import { createMilestoneProgression } from './progression.js?v=cargo-litres-20260831-1';
+import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=cargo-litres-20260831-1';
+import { OWNED_VEHICLES, vehicleType } from './vehicles.js?v=combine-3600-20260831-1';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
 const fpsSampleInterval = 500;
+const poseCheckpointInterval = 2;
+const saveDebounceMs = 250;
+const vehicleSwitchSeconds = .6;
+const transferLitresPerTick = 10;
+const transferTicksPerSecond = 120;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const loadResult = loadGameState();
 document.body.dataset.renderQuality = 'high';
 const fpsValue = document.querySelector('#fpsValue');
 
@@ -123,11 +131,24 @@ let fpsFrameCount = 0;
 let gameplayWasBlocked = false;
 let renderRequested = true;
 let viewMode = 'drive';
-let progression = createMilestoneProgression();
+let progression;
+let saveTimer = null;
+let persistenceEnabled = !loadResult.unavailable;
+let persistenceReady = false;
+let saveWarningShown = false;
+let lastPoseCheckpoint = 0;
+let vehicleTransition = null;
+let visualDriveAmount = 0;
+let visualSteer = 0;
+let activeTransfer = null;
 const buildRaycaster = new THREE.Raycaster();
 const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const buildWorldPoint = new THREE.Vector3();
+const siloPopupWorld = new THREE.Vector3();
+const formatLitres = amount => `${Math.max(0, Number(amount) || 0).toLocaleString(undefined, {
+  maximumFractionDigits: 0,
+})} L`;
 
 function activeVehicle() {
   return fleet[activeVehicleIndex];
@@ -135,6 +156,65 @@ function activeVehicle() {
 
 function activeVehicleState() {
   return physics.vehicleState(activeVehicle().id);
+}
+
+function persistentState() {
+  return {
+    world: farm.persistentState(elapsed),
+    buildings: buildings.persistentState(),
+    progression: progression.persistentState(),
+    vehicles: fleet.map(vehicle => {
+      const state = physics.vehicleState(vehicle.id);
+      return {
+        id: vehicle.id,
+        type: vehicle.type,
+        position: { x: state.x, y: state.y, z: state.z },
+        grounded: state.grounded,
+        heading: vehicle.heading,
+        loadout: { ...vehicle.loadout },
+        toolEnabled: vehicle.toolEnabled,
+        storage: { ...vehicle.storage.contents },
+      };
+    }),
+    activeVehicleId: activeVehicle().id,
+    ui: ui.persistentState(),
+  };
+}
+
+function writeSave() {
+  if (saveTimer !== null) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (!persistenceEnabled || !persistenceReady) return true;
+  const saved = saveGameState(persistentState());
+  if (!saved && !saveWarningShown) {
+    persistenceEnabled = false;
+    saveWarningShown = true;
+    ui.toast('Farm progress could not be saved');
+  }
+  return saved;
+}
+
+function scheduleSave(delay = saveDebounceMs) {
+  if (!persistenceEnabled || !persistenceReady) return;
+  if (saveTimer !== null) clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(writeSave, delay);
+}
+
+function restartGame() {
+  const wasPersistenceEnabled = persistenceEnabled;
+  persistenceEnabled = false;
+  if (saveTimer !== null) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (!deleteGameState()) {
+    persistenceEnabled = wasPersistenceEnabled;
+    return false;
+  }
+  location.reload();
+  return true;
 }
 
 function resetFpsMeter(now) {
@@ -157,6 +237,20 @@ function updateDriveCamera(state, dt, snap = false) {
   driveCameraTarget.lerp(goal, snap ? 1 : 1 - Math.exp(-2.2 * dt));
   camera.position.copy(driveCameraTarget).add(driveCameraOffset);
   camera.lookAt(driveCameraTarget);
+}
+
+function syncFleetVisuals(dt) {
+  for (const vehicle of fleet) {
+    const state = physics.vehicleState(vehicle.id);
+    vehicle.visual.sync(
+      state,
+      vehicle.heading,
+      vehicle === activeVehicle() ? visualSteer : 0,
+      vehicle === activeVehicle() ? visualDriveAmount : 0,
+      dt,
+      elapsed,
+    );
+  }
 }
 
 function updateMapCamera() {
@@ -249,6 +343,7 @@ function resetActiveVehicle(showMessage = false) {
     else updateMapCamera();
   }
   else updateDriveCamera(state, 0, true);
+  scheduleSave();
   if (showMessage) ui.toast(`${vehicle.definition.name} rescued`);
 }
 
@@ -260,7 +355,7 @@ function resetFleet() {
     vehicle.toolEnabled = false;
     vehicle.storage.contents = {};
     vehicle.visual.setLoadout(vehicle.loadout);
-    vehicle.visual.setToolEnabled(false);
+    vehicle.visual.setToolEnabled(false, true);
     if (physics.hasVehicle(vehicle.id)) physics.resetVehicle(vehicle.id, spawn);
     else physics.createVehicle(vehicle.id, spawn);
   });
@@ -271,22 +366,85 @@ function resetFleet() {
   });
 }
 
-function regenerateFarm() {
-  if (farm) {
-    farm.dispose();
-    buildings?.clear();
-    scene.remove(farm.group);
-  }
-  farm = generateFarm(scene, physics);
-  buildings?.setParent(farm.group);
+function validSavedPosition(position) {
+  if (![position?.x, position?.y, position?.z].every(Number.isFinite) || position.y < -11) return false;
+  const tiles = [...farm.terrain.values()];
+  const minX = Math.min(...tiles.map(tile => tile.x)) - 6;
+  const maxX = Math.max(...tiles.map(tile => tile.x)) + 6;
+  const minZ = Math.min(...tiles.map(tile => tile.z)) - 6;
+  const maxZ = Math.max(...tiles.map(tile => tile.z)) + 6;
+  const maxY = Math.max(...tiles.map(tile => tile.topY)) + 7;
+  return position.x >= minX && position.x <= maxX
+    && position.z >= minZ && position.z <= maxZ
+    && position.y <= maxY;
+}
+
+function restoreFleet(savedVehicles, savedActiveVehicleId) {
   resetFleet();
-  progression = createMilestoneProgression();
-  ui?.resetFarm();
+  const savedById = new Map(Array.isArray(savedVehicles)
+    ? savedVehicles.filter(saved => typeof saved?.id === 'string').map(saved => [saved.id, saved])
+    : []);
+  for (const vehicle of fleet) {
+    const saved = savedById.get(vehicle.id);
+    if (!saved || saved.type !== vehicle.type) continue;
+    const loadout = { ...vehicle.definition.defaultLoadout };
+    if (vehicle.definition.slots.includes('tool') && ['plough', 'seeder', 'sprayer'].includes(saved.loadout?.tool)) {
+      loadout.tool = saved.loadout.tool;
+    }
+    if (vehicle.definition.slots.includes('frontTool') && saved.loadout?.frontTool === 'loader') {
+      loadout.frontTool = saved.loadout.frontTool;
+    }
+    vehicle.loadout = loadout;
+    vehicle.heading = Number.isFinite(saved.heading)
+      ? Math.atan2(Math.sin(saved.heading), Math.cos(saved.heading))
+      : 0;
+    vehicle.toolEnabled = Boolean(saved.toolEnabled);
+    vehicle.storage.contents = {};
+    let remaining = vehicle.storage.capacity;
+    for (const [cropId, savedAmount] of Object.entries(saved.storage || {})) {
+      if (!crops[cropId] || remaining <= 0) continue;
+      const amount = Math.min(remaining, Math.max(0, Math.floor(Number(savedAmount) || 0)));
+      if (!amount) continue;
+      vehicle.storage.contents[cropId] = amount;
+      remaining -= amount;
+    }
+    vehicle.visual.setLoadout(vehicle.loadout);
+    vehicle.visual.setToolEnabled(vehicle.toolEnabled, true);
+    if (validSavedPosition(saved.position)) physics.placeVehicle(vehicle.id, saved.position, saved.grounded);
+  }
+  const savedActiveIndex = fleet.findIndex(vehicle => vehicle.id === savedActiveVehicleId);
+  activeVehicleIndex = savedActiveIndex === -1 ? 0 : savedActiveIndex;
+  physics.setActiveVehicle(activeVehicle().id);
+  for (const vehicle of fleet) {
+    const state = physics.vehicleState(vehicle.id);
+    vehicle.visual.sync(state, vehicle.heading, 0, 0, 0, elapsed);
+  }
+}
+
+function initializeFarm(savedState) {
+  farm = generateFarm(scene, physics, savedState?.world?.seed, 0, scheduleSave);
+  buildings.setParent(farm.group);
+  progression = createMilestoneProgression(savedState?.progression);
+  if (savedState) {
+    farm.restorePersistentState(savedState.world, elapsed);
+    buildings.restorePersistentState(savedState.buildings);
+    ui.restorePersistentState(savedState.ui);
+    restoreFleet(savedState.vehicles, savedState.activeVehicleId);
+  }
+  else resetFleet();
   syncActiveVehicleUi();
-  ui?.setMilestone(progression.state());
+  ui.setMilestone(progression.state());
   syncStorageUi();
-  farm.cargoPort.setLoadRatio(0);
+  farm.cargoPort.setLoadRatio(milestoneLoadRatio());
   applyCropOverlay();
+  updateDriveCamera(activeVehicleState(), 0, true);
+  persistenceReady = true;
+  writeSave();
+  if (loadResult.invalid) {
+    ui.toast(loadResult.unavailable
+      ? 'Browser storage is unavailable · progress will not persist'
+      : 'Saved farm was invalid · started a new farm');
+  }
 }
 
 function storageAmount() {
@@ -324,15 +482,32 @@ function syncActiveVehicleUi() {
 }
 
 function cycleVehicle() {
+  if (vehicleTransition || activeTransfer) {
+    if (activeTransfer) ui.toast('Finish the current transfer first');
+    return;
+  }
+  const previous = activeVehicle();
+  const from = driveCameraTarget.clone();
   ui.setBarnAvailable(false);
   activeVehicleIndex = (activeVehicleIndex + 1) % fleet.length;
   const vehicle = activeVehicle();
   physics.setActiveVehicle(vehicle.id);
+  previous.visual.setSelected(false);
+  vehicle.visual.setSelected(true);
   syncActiveVehicleUi();
   const state = activeVehicleState();
-  vehicle.visual.sync(state, vehicle.heading, 0, 0, 0, elapsed);
-  updateDriveCamera(state, 0, true);
-  farm.updateOcclusion(camera.position, state, 0);
+  if (reducedMotion) {
+    updateDriveCamera(state, 0, true);
+    farm.updateOcclusion(camera.position, state, 0);
+  }
+  else {
+    vehicleTransition = {
+      elapsed: 0,
+      from,
+      destination: new THREE.Vector3(state.x, state.y + .75, state.z),
+    };
+  }
+  scheduleSave();
   ui.toast(vehicle.definition.name);
 }
 
@@ -343,21 +518,163 @@ function milestoneLoadRatio() {
   return target ? delivered / target : 0;
 }
 
-function emptyIntoSilo() {
+function startTransfer(transfer) {
+  if (activeTransfer) {
+    ui.toast('Transfer already in progress');
+    return false;
+  }
+  activeTransfer = { ...transfer, remaining: transfer.amount, moved: 0, tickElapsed: 0, lastVisual: -Infinity };
+  if (transfer.kind === 'load') ui.toast(`Loading ${crops[transfer.cropId].name}…`);
+  else if (transfer.kind === 'unload') ui.toast(`Unloading ${crops[transfer.cropId].name}…`);
+  else ui.toast(`Delivering ${crops[transfer.cropId].name}…`);
+  return true;
+}
+
+function transferVehicle() {
+  return activeTransfer ? fleet.find(vehicle => vehicle.id === activeTransfer.vehicleId) || null : null;
+}
+
+function transferIsInRange(transfer, vehicle) {
+  const state = physics.vehicleState(vehicle.id);
+  if (transfer.kind === 'cargo') return farm.cargoPort.isNear(state.x, state.z);
+  return buildings?.siloAt(state.x, state.z)?.id === transfer.siloId;
+}
+
+function finishTransfer() {
+  const transfer = activeTransfer;
+  if (!transfer) return;
+  const vehicle = transferVehicle();
+  activeTransfer = null;
+  vehicle?.visual.stopUnload();
+  if (vehicle?.id === activeVehicle().id) syncStorageUi();
+  if (transfer.kind === 'cargo') {
+    const nextState = progression.state();
+    ui.setMilestone(nextState);
+    farm.cargoPort.setLoadRatio(milestoneLoadRatio());
+    ui.toast(nextState.complete
+      ? `Milestone ${nextState.number} complete · awaiting VTOL`
+      : `${formatLitres(transfer.moved)} Corn delivered`);
+  }
+  else {
+    ui.toast(transfer.kind === 'load'
+      ? `Loaded ${formatLitres(transfer.moved)} ${crops[transfer.cropId].name}`
+      : `Stored ${formatLitres(transfer.moved)} ${crops[transfer.cropId].name} in silo`);
+  }
+  scheduleSave();
+}
+
+function transferTick() {
+  const transfer = activeTransfer;
+  const vehicle = transferVehicle();
+  if (!transfer || !vehicle || vehicle.id !== activeVehicle().id || !transferIsInRange(transfer, vehicle)) return false;
+  const amount = Math.min(transferLitresPerTick, transfer.remaining);
+  let moved = 0;
+  if (transfer.kind === 'load') {
+    moved = buildings.takeFrom(transfer.siloId, transfer.cropId, amount, false);
+    if (moved) vehicle.storage.contents[transfer.cropId] = (vehicle.storage.contents[transfer.cropId] || 0) + moved;
+  }
+  else if (transfer.kind === 'unload') {
+    const available = Math.max(0, vehicle.storage.contents[transfer.cropId] || 0);
+    moved = Math.min(amount, available);
+    if (moved && buildings.storeIn(transfer.siloId, transfer.cropId, moved, elapsed, false)) {
+      vehicle.storage.contents[transfer.cropId] -= moved;
+      if (!vehicle.storage.contents[transfer.cropId]) delete vehicle.storage.contents[transfer.cropId];
+    }
+    else moved = 0;
+  }
+  else {
+    const accepted = progression.accept({ [transfer.cropId]: amount });
+    moved = accepted[transfer.cropId] || 0;
+    if (moved) {
+      vehicle.storage.contents[transfer.cropId] -= moved;
+      if (!vehicle.storage.contents[transfer.cropId]) delete vehicle.storage.contents[transfer.cropId];
+    }
+  }
+  if (!moved) {
+    finishTransfer();
+    return false;
+  }
+  transfer.remaining -= moved;
+  transfer.moved += moved;
+  if ((transfer.kind === 'unload' || transfer.kind === 'cargo') && elapsed - transfer.lastVisual >= .42) {
+    vehicle.visual.playUnload(transfer.target, transfer.cropId, elapsed);
+    transfer.lastVisual = elapsed;
+  }
+  if (transfer.remaining <= 0) finishTransfer();
+  return true;
+}
+
+function updateTransfer(dt) {
+  if (!activeTransfer) return;
+  activeTransfer.tickElapsed += dt;
+  const ticks = Math.floor(activeTransfer.tickElapsed * transferTicksPerSecond);
+  if (!ticks) return;
+  activeTransfer.tickElapsed -= ticks / transferTicksPerSecond;
+  let changed = false;
+  let cargoChanged = false;
+  for (let index = 0; index < ticks && activeTransfer; index++) {
+    const kind = activeTransfer.kind;
+    if (transferTick()) {
+      changed = true;
+      cargoChanged ||= kind === 'cargo';
+    }
+  }
+  if (!changed) return;
+  syncStorageUi();
+  if (cargoChanged) {
+    ui.setMilestone(progression.state());
+    farm.cargoPort.setLoadRatio(milestoneLoadRatio());
+  }
+  scheduleSave();
+}
+
+function emptyIntoSilo(siloId) {
   if (activeVehicle().type !== 'harvester') return;
   const vehicle = activeVehicle();
   const state = activeVehicleState();
-  if (!storageAmount()) {
+  const amount = storageAmount();
+  if (!amount) {
     ui.toast('Grain tank is already empty');
     return;
   }
-  if (!buildings?.isNearSilo(state.x, state.z)) {
-    ui.toast('Move beside a silo to unload');
+  const cropId = storageCropId();
+  const silo = buildings?.siloAt(state.x, state.z);
+  if (silo?.id !== siloId) {
+    ui.toast('Move beside this silo to unload');
     return;
   }
-  vehicle.storage.contents = {};
-  syncStorageUi();
-  ui.toast('Combine emptied into silo');
+  startTransfer({
+    kind: 'unload', vehicleId: vehicle.id, siloId, cropId, amount,
+    target: { x: silo.site.x, y: silo.site.y + 3.58, z: silo.site.z },
+  });
+}
+
+function loadFromSilo(siloId, cropId) {
+  if (activeVehicle().type !== 'harvester' || !crops[cropId]) return;
+  const vehicle = activeVehicle();
+  const state = activeVehicleState();
+  const silo = buildings?.siloAt(state.x, state.z);
+  if (silo?.id !== siloId) {
+    ui.toast('Move beside this silo to load');
+    return;
+  }
+  const storedCropId = storageCropId();
+  if (storedCropId && storedCropId !== cropId) {
+    ui.toast(`Empty the ${crops[storedCropId].name} tank first`);
+    return;
+  }
+  const space = vehicle.storage.capacity - storageAmount();
+  if (space <= 0) {
+    ui.toast('Grain tank is full');
+    return;
+  }
+  const available = Math.max(0, Math.floor(Number(silo.contents[cropId]) || 0));
+  const amount = Math.min(available, space);
+  if (!amount) {
+    ui.toast('That crop is no longer in this silo');
+    return;
+  }
+  startTransfer({ kind: 'load', vehicleId: vehicle.id, siloId, cropId, amount });
 }
 
 function dropOffCargo() {
@@ -377,64 +694,39 @@ function dropOffCargo() {
     ui.toast('Internal storage is empty');
     return;
   }
-  const accepted = progression.accept(storage.contents);
-  const acceptedAmount = Object.values(accepted).reduce((sum, amount) => sum + amount, 0);
-  if (!acceptedAmount) {
+  const cropId = storageCropId();
+  const requirement = milestone.requirements.find(entry => entry.cropId === cropId);
+  const amount = Math.min(storage.contents[cropId] || 0, Math.max(0, (requirement?.target || 0) - (requirement?.delivered || 0)));
+  if (!amount) {
     ui.toast(`Milestone ${milestone.number} only needs Corn`);
     return;
   }
-  for (const [cropId, amount] of Object.entries(accepted)) {
-    storage.contents[cropId] -= amount;
-    if (storage.contents[cropId] <= 0) delete storage.contents[cropId];
-  }
-  const nextState = progression.state();
-  syncStorageUi();
-  ui.setMilestone(nextState);
-  farm.cargoPort.setLoadRatio(milestoneLoadRatio());
-  ui.toast(nextState.complete
-    ? `Milestone ${nextState.number} complete · awaiting VTOL`
-    : `${acceptedAmount} Corn delivered`);
-}
-
-function useStorageAction() {
-  if (activeVehicle().type !== 'harvester') return;
-  const state = activeVehicleState();
-  if (farm.cargoPort.isNear(state.x, state.z)) dropOffCargo();
-  else if (buildings?.isNearSilo(state.x, state.z)) emptyIntoSilo();
-  else ui.toast('Move beside a silo or cargo pad');
-}
-
-function storageActionAt(state) {
-  if (activeVehicle().type !== 'harvester') return { kind: 'hidden', enabled: false };
-  const storage = activeVehicle().storage;
-  const amount = storageAmount();
-  if (farm.cargoPort.isNear(state.x, state.z)) {
-    const milestone = progression.state();
-    const accepted = milestone.requirements.some(requirement =>
-      requirement.delivered < requirement.target && (storage.contents[requirement.cropId] || 0) > 0
-    );
-    return { kind: 'cargo', enabled: amount > 0 && accepted && !milestone.complete };
-  }
-  if (buildings?.isNearSilo(state.x, state.z)) return { kind: 'silo', enabled: amount > 0 };
-  return { kind: 'unavailable', enabled: false };
+  startTransfer({
+    kind: 'cargo', vehicleId: activeVehicle().id, cropId, amount,
+    target: farm.cargoPort.unloadTarget(),
+  });
 }
 
 ui = createUi({
-  onRegenerate: regenerateFarm,
+  onRestart: restartGame,
   onLoadoutChange: loadout => {
     const vehicle = activeVehicle();
     vehicle.loadout = { ...vehicle.loadout, ...loadout };
     vehicle.visual.setLoadout(vehicle.loadout);
     syncActiveVehicleUi();
+    scheduleSave();
   },
   onLoadoutPreview: loadout => loadoutPreviews?.setLoadout(loadout),
   onToolChange: enabled => {
     const vehicle = activeVehicle();
     vehicle.toolEnabled = enabled;
     vehicle.visual.setToolEnabled(enabled);
+    scheduleSave();
   },
   onCycleVehicle: cycleVehicle,
-  onStorageAction: useStorageAction,
+  onSiloLoad: loadFromSilo,
+  onSiloUnload: emptyIntoSilo,
+  onCargoDropOff: dropOffCargo,
   onCropOverlayChange: applyCropOverlay,
   onBuildModeChange: applyBuildMode,
   onBuildPointerStart: beginBuildingDrag,
@@ -449,14 +741,15 @@ ui = createUi({
     }
   },
   onBuildPointerCancel: () => buildings?.cancelDrag(),
+  onPersistentStateChange: scheduleSave,
   panSurface: renderer.domElement,
 });
-regenerateFarm();
 buildings = createBuildingManager({
   getSiteAt: (x, z, radius) => farm?.buildingSiteAt(x, z, radius),
   setCollider: (id, obstacle) => farm?.setBuildingCollider(id, obstacle),
+  onChange: scheduleSave,
 });
-buildings.setParent(farm.group);
+initializeFarm(loadResult.state);
 
 function createLoadoutPreviews() {
   const vehicle = createLoadoutPreview(document.querySelector('#vehiclePreview'), 'vehicles');
@@ -512,7 +805,7 @@ function applyTool(state) {
   }
   if (tool === 'plough') {
     forToolRows(state, [-.6, -.2, .2, .6], 1.58, (x, z) => {
-      farm.ploughAt(x, z, levelY);
+      farm.ploughAt(x, z, levelY, vehicle.heading);
     });
   }
   else if (tool === 'seeder') {
@@ -532,6 +825,7 @@ function updateDrive(dt) {
   const input = ui.driveInput();
   const rawDrive = Math.hypot(input.x, input.y);
   const driveAmount = THREE.MathUtils.clamp((rawDrive - .08) / .92, 0, 1);
+  visualDriveAmount = driveAmount;
   const before = activeVehicleState();
   let driveDirection = { x: -Math.sin(vehicle.heading), z: -Math.cos(vehicle.heading) };
   let steer = 0;
@@ -548,6 +842,7 @@ function updateDrive(dt) {
     steer = THREE.MathUtils.clamp(turnDelta * 1.35, -1, 1);
     driveDirection = { x: desiredX, z: desiredZ };
   }
+  visualSteer = steer;
 
   physics.drive(dt, driveDirection, driveAmount, ui.consumeJump(), vehicle.toolEnabled);
   physics.step(dt);
@@ -562,10 +857,28 @@ function updateDrive(dt) {
 
   ui.setBarnAvailable(farm.insideBarn(state.x, state.z));
   applyTool(state);
-  ui.setStorageAction(storageActionAt(state));
-  vehicle.visual.sync(state, vehicle.heading, steer, driveAmount, dt, elapsed);
   updateDriveCamera(state, dt);
   farm.updateOcclusion(camera.position, state, dt);
+}
+
+function updateVehicleTransition(dt) {
+  visualDriveAmount = 0;
+  visualSteer = 0;
+  physics.drive(dt, { x: 0, z: 0 }, 0, ui.consumeJump(), false);
+  physics.step(dt);
+  const state = activeVehicleState();
+  vehicleTransition.elapsed += dt;
+  vehicleTransition.destination.set(state.x, state.y + .75, state.z);
+  const amount = THREE.MathUtils.smoothstep(vehicleTransition.elapsed / vehicleSwitchSeconds, 0, 1);
+  driveCameraTarget.lerpVectors(vehicleTransition.from, vehicleTransition.destination, amount);
+  camera.position.copy(driveCameraTarget).add(driveCameraOffset);
+  camera.position.y += Math.sin(amount * Math.PI) * 4;
+  camera.lookAt(driveCameraTarget);
+  farm.updateOcclusion(camera.position, state, dt);
+  if (vehicleTransition.elapsed >= vehicleSwitchSeconds) {
+    vehicleTransition = null;
+    updateDriveCamera(state, 0, true);
+  }
 }
 
 function updateMap(dt) {
@@ -576,11 +889,70 @@ function updateMap(dt) {
   else updateMapCamera();
 }
 
+function updateStoragePopup() {
+  if (viewMode !== 'drive' || vehicleTransition) {
+    ui.setStoragePopup(null);
+    return;
+  }
+  const state = activeVehicleState();
+  const machine = {
+    type: activeVehicle().type,
+    capacity: activeVehicle().storage.capacity,
+    contents: activeVehicle().storage.contents,
+  };
+  if (farm.cargoPort.isNear(state.x, state.z)) {
+    const milestone = progression.state();
+    const target = farm.cargoPort.unloadTarget();
+    siloPopupWorld.set(target.x, target.y + 1.8, target.z).project(camera);
+    if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
+      ui.setStoragePopup(null);
+      return;
+    }
+    ui.setStoragePopup({
+      kind: 'cargo',
+      items: milestone.requirements.map(requirement => ({
+        id: requirement.cropId,
+        amount: requirement.delivered,
+        target: requirement.target,
+      })),
+      machine,
+      x: (siloPopupWorld.x * .5 + .5) * innerWidth,
+      y: (-siloPopupWorld.y * .5 + .5) * innerHeight,
+    });
+    return;
+  }
+  const silo = buildings?.siloAt(state.x, state.z);
+  if (!silo) {
+    ui.setStoragePopup(null);
+    return;
+  }
+  siloPopupWorld.set(silo.site.x, silo.site.y + 4.05, silo.site.z).project(camera);
+  if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
+    ui.setStoragePopup(null);
+    return;
+  }
+  ui.setStoragePopup({
+    kind: 'silo',
+    id: silo.id,
+    contents: silo.contents,
+    machine,
+    x: (siloPopupWorld.x * .5 + .5) * innerWidth,
+    y: (-siloPopupWorld.y * .5 + .5) * innerHeight,
+  });
+}
+
 function update(dt) {
+  ui.animate(dt);
   if (ui.isGameplayBlocked()) return;
   elapsed += dt;
-  if (viewMode === 'overlay' || viewMode === 'build') updateMap(dt);
+  if (vehicleTransition) updateVehicleTransition(dt);
+  else if (viewMode === 'overlay' || viewMode === 'build') {
+    visualDriveAmount = 0;
+    visualSteer = 0;
+    updateMap(dt);
+  }
   else updateDrive(dt);
+  updateTransfer(dt);
   const cargoEvent = farm?.cargoPort.update(dt, camera, progression.state().complete);
   if (cargoEvent?.pickedUp) {
     const shipped = progression.state().number;
@@ -588,12 +960,19 @@ function update(dt) {
       const nextState = progression.state();
       ui.setMilestone(nextState);
       farm.cargoPort.setLoadRatio(0);
+      scheduleSave();
       ui.toast(`Milestone ${shipped} shipped · Milestone ${nextState.number} ready`);
     }
   }
+  syncFleetVisuals(dt);
   farm?.animate(elapsed);
   buildings?.animate(elapsed);
+  updateStoragePopup();
   clouds.animate(elapsed);
+  if (elapsed - lastPoseCheckpoint >= poseCheckpointInterval) {
+    lastPoseCheckpoint = elapsed;
+    scheduleSave();
+  }
 }
 
 function animate(now) {
@@ -641,6 +1020,10 @@ window.addEventListener('resize', () => {
   renderRequested = true;
 });
 
-document.addEventListener('visibilitychange', () => resetFpsMeter(performance.now()));
+document.addEventListener('visibilitychange', () => {
+  resetFpsMeter(performance.now());
+  if (document.visibilityState === 'hidden') writeSave();
+});
+window.addEventListener('pagehide', writeSave);
 
 requestAnimationFrame(animate);

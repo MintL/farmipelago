@@ -185,7 +185,7 @@ export function createCombineAsset() {
   addCombineWheel(.86, .58, -.16, .61, .34);
   addCombineWheel(-.72, .4, .92, .37, .25, true);
   addCombineWheel(.72, .4, .92, .37, .25, true);
-  return { group, wheels, header, reel };
+  return { group, wheels, header, reel, auger, augerTip };
 }
 
 export function createVehicleAsset(type) {

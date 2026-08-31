@@ -174,6 +174,23 @@ class FarmPhysics {
     }
   }
 
+  placeVehicle(id, position, grounded = false) {
+    const vehicle = this.vehicles.get(id);
+    if (!vehicle || ![position?.x, position?.y, position?.z].every(Number.isFinite)) return false;
+    const next = { x: position.x, y: position.y, z: position.z };
+    vehicle.body.setTranslation(next, true);
+    vehicle.body.setNextKinematicTranslation(next);
+    vehicle.grounded = Boolean(grounded);
+    vehicle.touchingWall = false;
+    this.world.propagateModifiedBodyPositionsToColliders();
+    if (id === this.activeVehicleId) {
+      this.clearMotion();
+      this.grounded = vehicle.grounded;
+      if (this.grounded) this.groundGrace = CONTACT_GRACE_TIME;
+    }
+    return true;
+  }
+
   clearMotion() {
     this.accumulator = 0;
     this.velocity = { x: 0, y: 0, z: 0 };

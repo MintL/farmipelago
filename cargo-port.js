@@ -10,7 +10,9 @@ const REPEAT_VISIT_DELAY = 60;
 const APPROACH_SECONDS = 6;
 const DESCEND_SECONDS = 3;
 const DWELL_SECONDS = 4;
+const PICKUP_SECONDS = 1.2;
 const DEPART_SECONDS = 7;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ease = value => value * value * (3 - 2 * value);
 
@@ -118,6 +120,8 @@ export function createCargoPort(site) {
     bandZ.rotation.y = Math.PI * .5;
     crate.add(body, bandX, bandZ);
     crate.position.set(...position);
+    crate.userData.basePosition = new THREE.Vector3(...position);
+    crate.userData.pop = 0;
     crate.visible = false;
     cargoGroup.add(crate);
     crates[index] = crate;
@@ -154,9 +158,17 @@ export function createCargoPort(site) {
     isNear(x, z, range = 3.15) {
       return Math.hypot(x - site.x, z - site.z) <= range;
     },
+    unloadTarget() {
+      const target = localToWorld(-1.5, -.14);
+      return { x: target.x, y: deckBaseY + .72, z: target.z };
+    },
     setLoadRatio(nextRatio) {
       loadRatio = THREE.MathUtils.clamp(nextRatio, 0, 1);
-      crates.forEach((crate, index) => { crate.visible = loadRatio > index / crates.length + .001; });
+      crates.forEach((crate, index) => {
+        const visible = loadRatio > index / crates.length + .001;
+        if (visible && !crate.visible) crate.userData.pop = 1;
+        crate.visible = visible;
+      });
     },
     update(dt, camera, pickupReady) {
       let pickedUp = false;
@@ -182,10 +194,32 @@ export function createCargoPort(site) {
         craftRoot.position.copy(landing);
         pickupQueued ||= pickupReady;
         if (phaseTime >= DWELL_SECONDS) {
-          if (pickupQueued) {
+          if (pickupQueued && reducedMotion) {
             pickedUp = true;
             this.setLoadRatio(0);
           }
+          phase = pickupQueued && !reducedMotion ? 'pickup' : 'depart';
+          phaseTime = 0;
+        }
+      }
+      else if (phase === 'pickup') {
+        craftRoot.position.copy(landing);
+        craftRoot.updateMatrixWorld(true);
+        const target = craft.group.localToWorld(craft.cargoTarget.clone());
+        cargoGroup.worldToLocal(target);
+        crates.forEach((crate, index) => {
+          if (!crate.visible) return;
+          const progress = THREE.MathUtils.clamp((phaseTime / PICKUP_SECONDS - index * .16) / .68, 0, 1);
+          const amount = ease(progress);
+          crate.position.lerpVectors(crate.userData.basePosition, target, amount);
+          crate.position.y += Math.sin(progress * Math.PI) * .72;
+          const scale = 1 + Math.sin(progress * Math.PI) * .24 - amount * .72;
+          crate.scale.set(scale, scale * (1 + Math.sin(progress * Math.PI) * .28), scale);
+          if (progress >= 1) crate.visible = false;
+        });
+        if (phaseTime >= PICKUP_SECONDS) {
+          pickedUp = true;
+          this.setLoadRatio(0);
           phase = 'depart';
           phaseTime = 0;
         }
@@ -203,8 +237,16 @@ export function createCargoPort(site) {
           craftRoot.rotation.y = 0;
         }
       }
-      const flightPower = phase === 'dwell' ? .48 : 1;
-      craft.animate(dt, flightPower, phase === 'dwell');
+      crates.forEach(crate => {
+        if (!crate.visible || phase === 'pickup') return;
+        crate.userData.pop = Math.max(0, crate.userData.pop - dt * 4.5);
+        const pop = crate.userData.pop;
+        crate.position.copy(crate.userData.basePosition);
+        crate.position.y += pop * .08;
+        crate.scale.set(1 + pop * .14, 1 - pop * .12, 1 + pop * .14);
+      });
+      const flightPower = phase === 'dwell' || phase === 'pickup' ? .48 : 1;
+      craft.animate(dt, flightPower, phase === 'dwell' || phase === 'pickup', phase === 'pickup' ? phaseTime / PICKUP_SECONDS : 0);
       for (const [index, beacon] of staticGroup.children.filter(child => child.geometry?.type === 'CylinderGeometry').entries()) {
         beacon.scale.y = .88 + Math.sin(phaseTime * 4 + index) * .12;
       }
@@ -223,7 +265,8 @@ function createVtol(mats) {
   const belly = box(1.82, .5, 2.5, mats.cargoDarkMaterial); belly.position.set(0, .58, .2); group.add(belly);
   const roof = box(1.72, .32, 1.7, mats.markingMaterial); roof.position.set(0, 2.05, .15); group.add(roof);
   const cockpit = box(1.72, .72, .12, mats.glassMaterial); cockpit.position.set(0, 1.5, -1.68); cockpit.rotation.x = -.18; group.add(cockpit);
-  const hatch = box(1.35, .76, .08, mats.cargoDarkMaterial); hatch.position.set(0, 1.15, 1.66); group.add(hatch);
+  const hatchPivot = new THREE.Group(); hatchPivot.position.set(0, 1.53, 1.66); group.add(hatchPivot);
+  const hatch = box(1.35, .76, .08, mats.cargoDarkMaterial); hatch.position.y = -.38; hatchPivot.add(hatch);
   const tail = box(.72, .72, 1.05, mats.cargoMaterial); tail.position.set(0, 1.36, 2.08); group.add(tail);
   const tailFin = box(.15, .88, .72, mats.markingMaterial); tailFin.position.set(0, 2.0, 2.14); group.add(tailFin);
 
@@ -263,10 +306,14 @@ function createVtol(mats) {
 
   return {
     group,
-    animate(dt, power, landed) {
+    cargoTarget: new THREE.Vector3(0, 1.13, 1.38),
+    animate(dt, power, landed, pickupProgress = 0) {
       for (const rotor of rotors) rotor.rotation.y += dt * (18 + power * 42);
       group.position.y = landed ? Math.sin(performance.now() * .003) * .025 : 0;
       group.rotation.z = landed ? 0 : Math.sin(performance.now() * .0018) * .025;
+      hatchPivot.rotation.x = -ease(THREE.MathUtils.clamp(pickupProgress * 2.2, 0, 1)) * 1.3;
+      const loadBounce = pickupProgress > 0 ? Math.sin(pickupProgress * Math.PI * 3) * .035 : 0;
+      group.scale.setScalar(.92 * (1 - loadBounce));
     },
   };
 }

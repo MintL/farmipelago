@@ -1,19 +1,29 @@
 import { THREE, box } from './shared.js?v=crop-diversity-20260831-1';
+import { cropIds } from './crops.js?v=crop-diversity-20260831-1';
 
 const SILO_RADIUS = 1.05;
 const SILO_HEIGHT = 3.7;
 
-export function createBuildingManager({ getSiteAt, setCollider }) {
+function normalizedContents(contents) {
+  return Object.fromEntries(cropIds.flatMap(cropId => {
+    const amount = Math.max(0, Math.floor(Number(contents?.[cropId]) || 0));
+    return amount ? [[cropId, amount]] : [];
+  }));
+}
+
+export function createBuildingManager({ getSiteAt, setCollider, onChange = () => {} }) {
   let parent = null;
   let active = null;
   let selected = null;
   let nextId = 1;
   const buildings = new Map();
 
-  const addSilo = () => {
-    const id = `silo-${nextId++}`;
+  const addSilo = savedId => {
+    const id = typeof savedId === 'string' && !buildings.has(savedId) ? savedId : `silo-${nextId++}`;
+    const savedNumber = Number(id.match(/^silo-(\d+)$/)?.[1]);
+    if (Number.isInteger(savedNumber)) nextId = Math.max(nextId, savedNumber + 1);
     const visual = createSilo();
-    const building = { id, type: 'silo', visual, placed: false, site: null };
+    const building = { id, type: 'silo', visual, placed: false, site: null, contents: {} };
     visual.group.userData.building = building;
     parent?.add(visual.group);
     buildings.set(id, building);
@@ -87,6 +97,7 @@ export function createBuildingManager({ getSiteAt, setCollider }) {
         radius: SILO_RADIUS,
         height: SILO_HEIGHT,
       });
+      onChange();
       return true;
     },
     cancelDrag() {
@@ -120,10 +131,43 @@ export function createBuildingManager({ getSiteAt, setCollider }) {
       return null;
     },
     clear() {
-      for (const building of buildings.values()) parent?.remove(building.visual.group);
+      for (const building of buildings.values()) {
+        if (building.placed) setCollider(building.id, null);
+        parent?.remove(building.visual.group);
+      }
       buildings.clear();
       active = null;
       selected = null;
+      nextId = 1;
+    },
+    persistentState() {
+      return [...buildings.values()]
+        .filter(building => building.placed)
+        .map(building => ({
+          id: building.id,
+          type: building.type,
+          x: building.site.x,
+          z: building.site.z,
+          contents: { ...building.contents },
+        }));
+    },
+    restorePersistentState(savedBuildings) {
+      if (!Array.isArray(savedBuildings)) return;
+      for (const saved of savedBuildings) {
+        if (saved?.type !== 'silo' || !Number.isFinite(saved.x) || !Number.isFinite(saved.z)) continue;
+        const site = placementFor(saved);
+        if (!site.valid) continue;
+        const building = addSilo(saved.id);
+        building.site = site;
+        building.placed = true;
+        building.contents = normalizedContents(saved.contents);
+        building.visual.group.position.set(site.x, site.y, site.z);
+        building.visual.settle();
+        setCollider(building.id, {
+          shape: 'cylinder', x: site.x, y: site.y, z: site.z,
+          radius: SILO_RADIUS, height: SILO_HEIGHT,
+        });
+      }
     },
     animate(elapsed) {
       for (const building of buildings.values()) {
@@ -132,10 +176,59 @@ export function createBuildingManager({ getSiteAt, setCollider }) {
       }
     },
     isNearSilo(x, z, range = 2.45) {
+      return Boolean(this.siloAt(x, z, range));
+    },
+    siloAt(x, z, range = 2.45) {
+      let closest = null;
       for (const building of buildings.values()) {
-        if (building.type === 'silo' && building.placed && Math.hypot(x - building.site.x, z - building.site.z) <= range) return true;
+        if (building.type !== 'silo' || !building.placed) continue;
+        const distance = Math.hypot(x - building.site.x, z - building.site.z);
+        if (distance > range || (closest && distance >= closest.distance)) continue;
+        closest = { building, distance };
       }
-      return false;
+      return closest?.building || null;
+    },
+    storeAt(x, z, contents, elapsed = 0, range = 2.45) {
+      const building = this.siloAt(x, z, range);
+      if (!building) return null;
+      for (const [cropId, amount] of Object.entries(normalizedContents(contents))) {
+        building.contents[cropId] = (building.contents[cropId] || 0) + amount;
+      }
+      building.visual.receive(elapsed);
+      onChange();
+      return {
+        building,
+        target: { x: building.site.x, y: building.site.y + 3.58, z: building.site.z },
+      };
+    },
+    storeIn(siloId, cropId, amount, elapsed = 0, notify = true) {
+      const building = buildings.get(siloId);
+      const storedAmount = cropIds.includes(cropId)
+        ? Math.max(0, Math.floor(Number(amount) || 0))
+        : 0;
+      if (!building || building.type !== 'silo' || !building.placed || !storedAmount) return null;
+      building.contents[cropId] = (building.contents[cropId] || 0) + storedAmount;
+      building.visual.receive(elapsed);
+      if (notify) onChange();
+      return { x: building.site.x, y: building.site.y + 3.58, z: building.site.z };
+    },
+    takeFrom(siloId, cropId, requestedAmount, notify = true) {
+      const building = buildings.get(siloId);
+      const available = building?.type === 'silo' && building.placed
+        ? Math.max(0, Math.floor(Number(building.contents[cropId]) || 0))
+        : 0;
+      const amount = Math.min(available, Math.max(0, Math.floor(Number(requestedAmount) || 0)));
+      if (!amount) return 0;
+      building.contents[cropId] -= amount;
+      if (!building.contents[cropId]) delete building.contents[cropId];
+      if (notify) onChange();
+      return amount;
+    },
+    unloadTargetAt(x, z, elapsed = 0, range = 2.45) {
+      const building = this.siloAt(x, z, range);
+      if (!building) return null;
+      building.visual.receive(elapsed);
+      return { x: building.site.x, y: building.site.y + 3.58, z: building.site.z };
     },
     isDragging: () => active !== null,
   };
@@ -156,6 +249,7 @@ export function createSilo() {
   let dragging = false;
   let valid = true;
   let droppedAt = -10;
+  let receivedAt = -10;
 
   group.name = 'silo';
   group.add(spring);
@@ -252,6 +346,7 @@ export function createSilo() {
       ring.visible = true;
       setAppearance();
     },
+    receive(elapsed) { receivedAt = elapsed; },
     animate(elapsed, active) {
       if (dragging || active) {
         const wobble = Math.sin(elapsed * 14) * .035;
@@ -262,7 +357,10 @@ export function createSilo() {
       }
       if (droppedAt === null) droppedAt = elapsed;
       const age = Math.max(0, elapsed - droppedAt);
-      const bounce = age < .78 ? Math.sin(age * 20) * Math.exp(-age * 5.2) : 0;
+      const placementBounce = age < .78 ? Math.sin(age * 20) * Math.exp(-age * 5.2) : 0;
+      const receivedAge = Math.max(0, elapsed - receivedAt);
+      const receiptBounce = receivedAge < .55 ? Math.sin(receivedAge * 22) * Math.exp(-receivedAge * 6.8) * .6 : 0;
+      const bounce = placementBounce + receiptBounce;
       spring.position.y = 0;
       spring.rotation.z = 0;
       spring.scale.set(1 - bounce * .11, 1 + bounce * .24, 1 - bounce * .11);

@@ -113,9 +113,7 @@ then eventually
 
 **crops + milk**
 
-The exact progression is not yet defined.
-
-For the current prototype, the first main-progression objective is a repeatable delivery of 3,600 L of Corn. This repeated objective exists to exercise the complete harvest, transport, delivery and pickup loop while a broader sequence is still being designed. It should eventually be replaced by increasingly varied requirements rather than treated as the final progression structure.
+For the current prototype, the farm starts with Wheat only. **Getting started** requires 3,600 L of Wheat and unlocks Barley, Canola, and Soybeans. It is followed by **Crop diversity**, where the player chooses two of Wheat, Barley, Canola, and Soybeans and delivers 3,600 L of each; completing it unlocks Corn. Corn currently uses the existing seeder, while its specialized equipment remains future work. These objectives exercise the complete harvest, transport, delivery and pickup loop while establishing the intended shift from a simple crop delivery to a varied requirement.
 
 There is no time limit on these objectives and no macro-level failure state.
 

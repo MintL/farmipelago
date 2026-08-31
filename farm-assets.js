@@ -122,8 +122,31 @@ function createSprayerAsset() {
   return group;
 }
 
+export function createTrailerAsset() {
+  const group = new THREE.Group();
+  group.name = 'attachment-trailer';
+  const drawbar = box(.14, .12, .82, mats.tractorDark); drawbar.position.set(0, .29, .29); group.add(drawbar);
+  const hitch = box(.32, .16, .24, mats.metal); hitch.position.set(0, .29, -.24); group.add(hitch);
+  const chassis = box(1.52, .18, 2.56, mats.tractorDark); chassis.position.set(0, .4, 1.58); group.add(chassis);
+  const bed = new THREE.Group(); bed.position.set(0, .5, 1.58); group.add(bed);
+  const floor = box(1.42, .12, 2.42, mats.tractorAccent); floor.position.set(0, 0, .12); bed.add(floor);
+  const front = box(1.42, .66, .1, mats.tractorAccent); front.position.set(0, .36, -1.04); bed.add(front);
+  const sideLeft = box(.1, .66, 2.42, mats.tractorAccent); sideLeft.position.set(-.66, .36, .12); bed.add(sideLeft);
+  const sideRight = sideLeft.clone(); sideRight.position.x = .66; bed.add(sideRight);
+  const tailgate = new THREE.Group(); tailgate.position.set(0, .33, 1.39); bed.add(tailgate);
+  const tailgatePanel = box(1.36, .58, .1, mats.tractorAccent); tailgatePanel.position.y = .02; tailgate.add(tailgatePanel);
+  const grain = box(1.16, .12, 2.02, previewMats.cream); grain.position.set(0, .14, .1); grain.visible = false; bed.add(grain);
+  const wheels = [];
+  const wheelMaterials = { hub: mats.hub, cap: mats.tractorCream, tread: mats.tractorDark };
+  for (const x of [-.78, .78]) {
+    wheels.push({ ...addWheel(group, x, .31, 2.04, .31, .2, wheelMaterials, true), spin: 0, phase: Math.random() * Math.PI * 2 });
+  }
+  return { group, wheels, bed, tailgate, grain };
+}
+
 export function createRearToolAsset(type) {
   const factories = { plough: createPloughAsset, seeder: createSeederAsset, sprayer: createSprayerAsset };
+  if (type === 'trailer') return createTrailerAsset().group;
   return factories[type]?.() || null;
 }
 

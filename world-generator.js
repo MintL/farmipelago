@@ -40,6 +40,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const waterMotion = [];
   const waterfalls = [];
   const waterParticles = [];
+  const grainSplashMaterials = Object.fromEntries([
+    ['corn', 0xf2c84b], ['wheat', 0xd9b65a], ['barley', 0xc9a552], ['canola', 0xf0ce32], ['soybean', 0xb78e48],
+  ].map(([cropId, color]) => [cropId, new THREE.MeshBasicMaterial({ color, depthTest: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })]));
   let tallGrassGeometry = null;
   let barnArea = null;
   let plantedCount = 0;
@@ -56,6 +59,32 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   scene.add(group);
   group.add(tallGrass);
   group.add(water);
+
+  const emitSplash = (x, y, z, impact, material, countScale = 1, sizeScale = 1) => {
+    const count = Math.max(2, Math.round((10 + Math.min(8, impact * 1.2)) * countScale));
+    for (let index = 0; index < count; index++) {
+      const size = (.13 + random() * .13) * sizeScale;
+      const mesh = box(size, size, size, material, false, false);
+      mesh.position.set(x, y + .32, z);
+      mesh.renderOrder = 10;
+      group.add(mesh);
+      const angle = random() * Math.PI * 2;
+      const velocityScale = .42 + countScale * .58;
+      const speed = (.65 + random() * (1.1 + impact * .07)) * velocityScale;
+      waterParticles.push({
+        mesh,
+        x: x + (random() - .5) * .14,
+        y: y + .28 + random() * .18,
+        z: z + (random() - .5) * .14,
+        vx: Math.cos(angle) * speed,
+        vy: (3.15 + random() * 1.65 + impact * .18) * velocityScale,
+        vz: Math.sin(angle) * speed,
+        spinX: (random() - .5) * 18,
+        spinZ: (random() - .5) * 18,
+        born: waterElapsed,
+      });
+    }
+  };
 
   const addTile = (gx, gz, topY, islandId, radial, baseY = topY) => {
     const x = gx * TILE;
@@ -541,6 +570,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     spawn: vehicleSpawns[0],
     vehicleSpawns,
     dispose() {
+      Object.values(grainSplashMaterials).forEach(material => material.dispose());
       disposeObjectResources(group);
     },
     animate(elapsed) {
@@ -571,7 +601,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         const particle = waterParticles[index];
         const age = elapsed - particle.born;
         if (age > 1.15) {
-          water.remove(particle.mesh);
+          particle.mesh.removeFromParent();
           particle.mesh.geometry.dispose();
           waterParticles.splice(index, 1);
           continue;
@@ -777,28 +807,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     splashAt(x, z, impact) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
       if (!tile?.water) return false;
-      const count = 10 + Math.round(Math.min(8, impact * 1.2));
-      for (let index = 0; index < count; index++) {
-        const size = .13 + random() * .13;
-        const mesh = box(size, size, size, mats.waterSplash, false, false);
-        mesh.position.set(x, tile.topY + WATER_DEPTH + .32, z);
-        mesh.renderOrder = 10;
-        water.add(mesh);
-        const angle = random() * Math.PI * 2;
-        const speed = .65 + random() * (1.1 + impact * .07);
-        waterParticles.push({
-          mesh,
-          x: x + (random() - .5) * .14,
-          y: tile.topY + WATER_DEPTH + .28 + random() * .18,
-          z: z + (random() - .5) * .14,
-          vx: Math.cos(angle) * speed,
-          vy: 3.15 + random() * 1.65 + impact * .18,
-          vz: Math.sin(angle) * speed,
-          spinX: (random() - .5) * 18,
-          spinZ: (random() - .5) * 18,
-          born: waterElapsed,
-        });
-      }
+      emitSplash(x, tile.topY + WATER_DEPTH, z, impact, mats.waterSplash);
+      return true;
+    },
+    grainSplashAt(x, y, z, impact, cropId, countScale = 1, sizeScale = 1) {
+      const material = grainSplashMaterials[cropId];
+      if (!material || reducedMotion) return false;
+      emitSplash(x, y, z, impact, material, countScale, sizeScale);
       return true;
     },
   };

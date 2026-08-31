@@ -1,4 +1,4 @@
-import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTractorAsset } from './farm-assets.js?v=animations-20260831-1';
+import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=trailer-coupling-20260831-1';
 import { THREE } from './shared.js?v=crop-diversity-20260831-1';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -28,9 +28,10 @@ export function createVehicle(scene, vehicle) {
   let augerExtension = 0;
   const worldPoint = new THREE.Vector3();
   const localPoint = new THREE.Vector3();
-  const attachments = tractor ? Object.fromEntries(['plough', 'seeder', 'sprayer'].map(type => {
-    const attachment = createRearToolAsset(type);
-    attachment.position.set(0, toolUpY, 1.38);
+  const trailer = tractor ? createTrailerAsset() : null;
+  const attachments = tractor ? Object.fromEntries(['plough', 'seeder', 'sprayer', 'trailer'].map(type => {
+    const attachment = type === 'trailer' ? trailer.group : createRearToolAsset(type);
+    attachment.position.set(0, type === 'trailer' ? 0 : toolUpY, type === 'trailer' ? 1.18 : 1.38);
     tractor.group.add(attachment);
     return [type, attachment];
   })) : {};
@@ -102,6 +103,13 @@ export function createVehicle(scene, vehicle) {
         attachment.visible = name === loadout;
       });
     },
+    setStorageAmount(amount, capacity) {
+      if (!trailer) return;
+      const ratio = capacity ? THREE.MathUtils.clamp(amount / capacity, 0, 1) : 0;
+      trailer.grain.visible = ratio > 0;
+      trailer.grain.scale.set(1, Math.max(.12, ratio * 3.6), 1);
+      trailer.grain.position.y = .08 + ratio * .19;
+    },
     setToolEnabled(enabled, immediate = false) {
       toolTargetY = enabled ? toolDownY : toolUpY;
       if (!immediate && !reducedMotion) return;
@@ -116,17 +124,19 @@ export function createVehicle(scene, vehicle) {
       selectionPulse = 1;
     },
     playUnload(target, _cropId, elapsed) {
-      if (reducedMotion || !combine || !target) return false;
-      root.updateMatrixWorld(true);
-      localPoint.set(target.x, target.y, target.z);
-      root.worldToLocal(localPoint);
+      if (reducedMotion || (!combine && !trailer) || !target) return false;
+      if (combine) {
+        root.updateMatrixWorld(true);
+        localPoint.set(target.x, target.y, target.z);
+        root.worldToLocal(localPoint);
+      }
       if (unload) {
-        unload.targetYaw = Math.atan2(-localPoint.z, localPoint.x);
+        if (combine) unload.targetYaw = Math.atan2(-localPoint.z, localPoint.x);
         unload.activeUntil = elapsed + 1.15;
       }
       else unload = {
         started: elapsed,
-        targetYaw: Math.atan2(-localPoint.z, localPoint.x),
+        targetYaw: combine ? Math.atan2(-localPoint.z, localPoint.x) : 0,
         activeUntil: elapsed + 1.15,
       };
       return true;
@@ -147,7 +157,7 @@ export function createVehicle(scene, vehicle) {
       toolY = toolSpring.value;
       toolVelocity = toolSpring.velocity;
       const attachment = attachments[loadout];
-      if (attachment) {
+      if (attachment && loadout !== 'trailer') {
         attachment.position.y = toolY;
         attachment.rotation.x = toolVelocity * .035;
       }
@@ -161,7 +171,7 @@ export function createVehicle(scene, vehicle) {
       }
 
       const speedFactor = Math.min(1, state.speed / 5.5);
-      const activeWheels = combine ? combine.wheels : tractor.wheels;
+      const activeWheels = combine ? combine.wheels : [...tractor.wheels, ...(loadout === 'trailer' ? trailer.wheels : [])];
       activeWheels.forEach(wheel => {
         wheel.spin += state.speed * dt / wheel.radius;
         wheel.roller.rotation.x = wheel.spin;
@@ -199,8 +209,8 @@ export function createVehicle(scene, vehicle) {
         transform.rotation.set(progress * 5, slot.phase + progress * 3, progress * 4);
         transform.scale.set(scale, Math.max(.18, 1 - progress), scale);
       });
+      const activeUnload = unload && elapsed < unload.activeUntil;
       if (combine) {
-        const activeUnload = unload && elapsed < unload.activeUntil;
         const targetYaw = activeUnload ? unload.targetYaw : 0;
         augerYaw += (targetYaw - augerYaw) * (1 - Math.exp(-12 * dt));
         const targetExtension = activeUnload ? 1 : 0;
@@ -208,8 +218,13 @@ export function createVehicle(scene, vehicle) {
         combine.auger.rotation.y = augerYaw;
         const pulse = activeUnload ? 1 + Math.sin((elapsed - unload.started) * 12) * .025 : 1;
         combine.auger.scale.x = Math.max(.04, augerExtension * pulse);
-        if (unload && !activeUnload) unload = null;
       }
+      if (trailer) {
+        const tilt = activeUnload && loadout === 'trailer' ? .56 : 0;
+        trailer.bed.rotation.x += (tilt - trailer.bed.rotation.x) * (1 - Math.exp(-10 * dt));
+        trailer.tailgate.rotation.x = activeUnload && loadout === 'trailer' ? .82 : 0;
+      }
+      if (unload && !activeUnload) unload = null;
     },
   };
 }
@@ -236,7 +251,7 @@ export function createLoadoutPreview(canvas, category) {
   const ids = category === 'vehicles'
     ? ['tractor', 'harvester']
     : category === 'equipment'
-      ? ['plough', 'seeder', 'sprayer']
+      ? ['plough', 'seeder', 'sprayer', 'trailer']
       : ['loader', 'forks', 'weight'];
   const models = Object.fromEntries(ids.map(id => {
     const presentation = new THREE.Group();

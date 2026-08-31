@@ -1,3 +1,5 @@
+export const TRAILER_STORAGE_CAPACITY = 20000;
+
 export const VEHICLE_TYPES = {
   tractor: {
     id: 'tractor',

@@ -17,6 +17,35 @@ python3 -m http.server 8080
 Open `http://localhost:8080`. Test both desktop keyboard input and a narrow,
 touch-sized viewport when changing interaction or layout.
 
+### Browser automation workaround
+
+If the in-app browser client fails during setup with `Cannot redefine property:
+process` or `global.process.on is not a function`, patch its installed
+`scripts/browser-client.mjs` before retrying. In the versioned browser-plugin
+directory under `~/.codex/plugins/cache/openai-bundled/browser/`, keep the
+`processShim`, then replace its direct global-process assignments with this
+safe local shim setup:
+
+```js
+const process = processShim;
+const global = Object.create(globalThis);
+Object.defineProperty(global, 'process', { value: processShim, configurable: true, writable: true });
+const hasProcessApi = candidate => candidate?.versions?.node && typeof candidate.on === 'function' && typeof candidate.listeners === 'function';
+if (!hasProcessApi(globalThis.process)) {
+  try { globalThis.process = processShim; }
+  catch { try { Object.assign(globalThis.process ?? {}, processShim); } catch {} }
+}
+globalThis.global = globalThis.global ?? globalThis;
+if (!hasProcessApi(globalThis.global.process)) {
+  try { globalThis.global.process = globalThis.process ?? processShim; }
+  catch { try { Object.assign(globalThis.global.process ?? {}, processShim); } catch {} }
+}
+```
+
+This preserves the host runtime's locked globals while giving the bundled
+client the Node-style `process` API it expects. The patch is local to Codex's
+plugin cache and must be reapplied when that browser plugin version changes.
+
 ## Game design direction
 
 Read [`docs/Farmipelago_GDD.md`](docs/Farmipelago_GDD.md) in full before

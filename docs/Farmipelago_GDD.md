@@ -115,6 +115,8 @@ then eventually
 
 The exact progression is not yet defined.
 
+For the current prototype, the first main-progression objective is a repeatable delivery of 36 Corn. This repeated objective exists to exercise the complete harvest, transport, delivery and pickup loop while a broader sequence is still being designed. It should eventually be replaced by increasingly varied requirements rather than treated as the final progression structure.
+
 There is no time limit on these objectives and no macro-level failure state.
 
 A player can ignore the next objective and continue farming freely for as long as they want.
@@ -289,13 +291,13 @@ The exact animal and building systems remain unresolved.
 
 ## 12. Vehicles and Equipment
 
-Vehicles are central to interaction.
+Vehicles are central to interaction and exist persistently as physical objects in the Farmipelago.
 
-The player selects a vehicle and equips compatible farming equipment.
+The player owns a fleet and cycles control directly between its vehicles. Parked vehicles remain where they were left, keep their individual loadouts and storage, and continue to occupy physical space in the world.
 
-The current planned loadout concept separates:
+The current planned vehicle concept separates:
 
-- vehicle
+- owned vehicle instance
 - rear attachment
 - front attachment
 
@@ -305,7 +307,7 @@ A larger tractor should not automatically replace a smaller tractor in every sit
 
 Island size, maneuverability, terrain and the job being performed should influence equipment choice.
 
-The barn is currently envisioned as the primary location for configuring vehicles.
+The barn is the primary location for configuring the currently controlled vehicle's compatible equipment. It does not select, spawn or relocate the vehicle being used.
 
 ---
 
@@ -315,7 +317,7 @@ Buildings should have clear gameplay functions.
 
 The game should avoid filling the Farmipelago with buildings simply for decoration or because farming games conventionally contain them.
 
-The barn currently has a clear role as the vehicle and attachment location.
+The barn currently has a clear role as the workshop where a vehicle's individual attachment loadout is changed.
 
 Future buildings may support:
 
@@ -332,15 +334,13 @@ How buildings are placed and how much physical space they require remains an ope
 
 ## 14. Deliveries
 
-The player needs some connection between the Farmipelago and the progression system.
+The Farmipelago's cargo pad connects the physical farm to the main progression system. It is a permanent facility on the edge of the second island, with a receiving area for vehicle drop-offs and a landing deck for visiting cargo craft.
 
-A harbor, depot, cooperative or similar location could receive agricultural products.
+Vehicles with internal storage can transfer only produce requested by the current objective. Produce counts toward progression as soon as it is delivered to the pad; surplus and unrelated produce remain in the vehicle.
 
-This provides an in-world explanation for progression requirements without requiring a detailed market economy.
+A chunky VTOL cargo craft periodically approaches from outside the Farmipelago, lands for a short collection window, then departs in the direction from which it arrived. Completed cargo remains staged at the pad until one of these visits collects it. This makes deliveries and shipment visible in the world without introducing a detailed market economy.
 
-The exact fiction is intentionally undecided.
-
-The important mechanical function is:
+The important mechanical function remains:
 
 **The player sends agricultural products away from the Farmipelago in order to fulfill main progression objectives.**
 
@@ -360,6 +360,7 @@ Current basic controls include:
 
 - movement stick on the left
 - jump button
+- a lower-left action for cycling between owned vehicles
 - context-specific farming controls as required
 
 Controls should remain simple despite the increasing number of farming systems.
@@ -438,9 +439,9 @@ Automation may support the player, but personally operating agricultural machine
 
 ## 20. Major Open Questions
 
-### What exactly receives deliveries?
+### How should the cargo connection expand?
 
-Harbor, cooperative, agricultural program, mainland depot or something else.
+The cargo pad and VTOL establish the physical delivery point. The identity of the outside organization, later cargo handling upgrades and whether other islands gain specialized logistics links remain open.
 
 ### What does the main progression sequence look like?
 

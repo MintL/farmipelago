@@ -17,6 +17,30 @@ python3 -m http.server 8080
 Open `http://localhost:8080`. Test both desktop keyboard input and a narrow,
 touch-sized viewport when changing interaction or layout.
 
+## Game design direction
+
+Read [`docs/Farmipelago_GDD.md`](docs/Farmipelago_GDD.md) in full before
+planning or implementing player-visible gameplay, progression, world, UI, or
+art changes. It is the living source of truth for the intended game direction.
+
+In particular, preserve these foundations unless a change deliberately updates
+the GDD as well:
+
+- The Farmipelago is a single persistent, procedurally generated voxel world;
+  regeneration is a development/debug action, not the intended player loop.
+- Direct operation of vehicles and compatible front/rear attachments is central
+  to farming. Keep the game compact, playful, mobile-first, and readable rather
+  than simulating agriculture in excessive detail.
+- Progression should add capabilities and meaningful choices: main progression
+  comes from increasingly varied delivery requirements, while optional
+  milestones reward broad farm development. Do not introduce pressured timers,
+  mandatory grinding, or a primarily money-driven equipment ladder.
+- Island shape, elevation, and generated dry/wet and sunny/shady conditions
+  should make land use meaningful. Prefer features that visibly improve or make
+  new use of the physical Farmipelago.
+- Keep the world visually dominant. Use modern, minimal, labeled controls and
+  avoid free-to-play-style currencies, reward clutter, and decorative panels.
+
 ## Code map
 
 - `index.html` contains the complete HUD markup and CSS.

@@ -1,5 +1,6 @@
-import { createCombineAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=trailer-coupling-20260831-1';
-import { THREE } from './shared.js?v=crop-diversity-20260831-1';
+import { createCombineAsset, createFrontToolAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=hay-simple-20260901-1';
+import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './equipment.js?v=hay-simple-20260901-1';
+import { THREE } from './shared.js?v=hay-simple-20260901-1';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -15,9 +16,12 @@ export function createVehicle(scene, vehicle) {
   scene.add(root);
   const toolDownY = .3;
   const toolUpY = .78;
-  let toolTargetY = toolUpY;
-  let toolY = toolUpY;
-  let toolVelocity = 0;
+  let rearToolTargetY = toolUpY;
+  let rearToolY = toolUpY;
+  let rearToolVelocity = 0;
+  let frontToolTargetY = toolUpY;
+  let frontToolY = toolUpY;
+  let frontToolVelocity = 0;
   let headerY = .42;
   let headerVelocity = 0;
   let selectionPulse = 0;
@@ -26,17 +30,27 @@ export function createVehicle(scene, vehicle) {
   let unload = null;
   let augerYaw = 0;
   let augerExtension = 0;
+  let baleKick = 0;
   const worldPoint = new THREE.Vector3();
   const localPoint = new THREE.Vector3();
   const trailer = tractor ? createTrailerAsset() : null;
-  const attachments = tractor ? Object.fromEntries(['plough', 'seeder', 'sprayer', 'trailer'].map(type => {
+  const attachments = tractor ? Object.fromEntries(REAR_EQUIPMENT_IDS.map(type => {
     const attachment = type === 'trailer' ? trailer.group : createRearToolAsset(type);
-    attachment.position.set(0, type === 'trailer' ? 0 : toolUpY, type === 'trailer' ? 1.18 : 1.38);
+    attachment.position.set(0, type === 'trailer' || type === 'baler' ? 0 : toolUpY, type === 'trailer' ? 1.18 : 1.38);
+    tractor.group.add(attachment);
+    return [type, attachment];
+  })) : {};
+  const frontAttachments = tractor ? Object.fromEntries(FRONT_EQUIPMENT_IDS.map(type => {
+    const attachment = createFrontToolAsset(type);
+    attachment.position.set(0, type === 'front-mower' ? toolUpY : 0, -1.02);
+    attachment.rotation.y = Math.PI;
     tractor.group.add(attachment);
     return [type, attachment];
   })) : {};
   let loadout = 'plough';
+  let frontLoadout = 'loader';
   Object.entries(attachments).forEach(([name, attachment]) => { attachment.visible = name === loadout; });
+  Object.entries(frontAttachments).forEach(([name, attachment]) => { attachment.visible = name === frontLoadout; });
 
   const effectGroup = new THREE.Group();
   effectGroup.name = `${vehicle}-effects`;
@@ -98,9 +112,14 @@ export function createVehicle(scene, vehicle) {
   return {
     setLoadout(nextLoadout) {
       const nextTool = nextLoadout.tool || loadout;
+      const nextFrontTool = nextLoadout.frontTool || frontLoadout;
       if (attachments[nextTool]) loadout = nextTool;
+      if (frontAttachments[nextFrontTool]) frontLoadout = nextFrontTool;
       Object.entries(attachments).forEach(([name, attachment]) => {
         attachment.visible = name === loadout;
+      });
+      Object.entries(frontAttachments).forEach(([name, attachment]) => {
+        attachment.visible = name === frontLoadout;
       });
     },
     setStorageAmount(amount, capacity) {
@@ -110,13 +129,20 @@ export function createVehicle(scene, vehicle) {
       trailer.grain.scale.set(1, Math.max(.12, ratio * 3.6), 1);
       trailer.grain.position.y = .08 + ratio * .19;
     },
-    setToolEnabled(enabled, immediate = false) {
-      toolTargetY = enabled ? toolDownY : toolUpY;
+    setToolEnabled(slot, enabled, immediate = false) {
+      if (slot === 'front') frontToolTargetY = enabled ? toolDownY : toolUpY;
+      else rearToolTargetY = enabled ? toolDownY : toolUpY;
       if (!immediate && !reducedMotion) return;
-      toolY = toolTargetY;
-      toolVelocity = 0;
-      headerY = enabled ? .24 : .42;
-      headerVelocity = 0;
+      if (slot === 'front') {
+        frontToolY = frontToolTargetY;
+        frontToolVelocity = 0;
+        headerY = enabled ? .24 : .42;
+        headerVelocity = 0;
+      }
+      else {
+        rearToolY = rearToolTargetY;
+        rearToolVelocity = 0;
+      }
     },
     setSelected(selected) {
       if (reducedMotion) return;
@@ -144,6 +170,9 @@ export function createVehicle(scene, vehicle) {
     stopUnload() {
       unload = null;
     },
+    playBale() {
+      if (!reducedMotion) baleKick = 1;
+    },
     sync(state, heading, steer, driveAmount, dt, elapsed) {
       root.position.set(state.x, state.y, state.z);
       root.rotation.y = heading;
@@ -153,16 +182,24 @@ export function createVehicle(scene, vehicle) {
       landingSquash *= Math.exp(-7 * dt);
       wasGrounded = state.grounded;
       lastVerticalSpeed = state.verticalSpeed;
-      const toolSpring = spring(toolY, toolVelocity, toolTargetY, dt);
-      toolY = toolSpring.value;
-      toolVelocity = toolSpring.velocity;
+      const rearToolSpring = spring(rearToolY, rearToolVelocity, rearToolTargetY, dt);
+      rearToolY = rearToolSpring.value;
+      rearToolVelocity = rearToolSpring.velocity;
+      const frontToolSpring = spring(frontToolY, frontToolVelocity, frontToolTargetY, dt);
+      frontToolY = frontToolSpring.value;
+      frontToolVelocity = frontToolSpring.velocity;
       const attachment = attachments[loadout];
-      if (attachment && loadout !== 'trailer') {
-        attachment.position.y = toolY;
-        attachment.rotation.x = toolVelocity * .035;
+      if (attachment && loadout !== 'trailer' && loadout !== 'baler') {
+        attachment.position.y = rearToolY;
+        attachment.rotation.x = rearToolVelocity * .035;
+      }
+      const frontAttachment = frontAttachments[frontLoadout];
+      if (frontAttachment && equipmentDefinition(frontLoadout)?.working) {
+        frontAttachment.position.y = frontToolY;
+        frontAttachment.rotation.x = frontToolVelocity * .035;
       }
       if (combine) {
-        const headerTargetY = toolTargetY === toolDownY ? .24 : .42;
+        const headerTargetY = frontToolTargetY === toolDownY ? .24 : .42;
         const headerSpring = spring(headerY, headerVelocity, headerTargetY, dt);
         headerY = headerSpring.value;
         headerVelocity = headerSpring.velocity;
@@ -183,16 +220,28 @@ export function createVehicle(scene, vehicle) {
       const airStretch = state.grounded ? 0 : .14;
       selectionPulse *= Math.exp(-7 * dt);
       const selection = selectionDirection * selectionPulse;
-      const squash = landingSquash - airStretch + selection * .09 + Math.abs(toolVelocity) * .006;
+      const squash = landingSquash - airStretch + selection * .09 + Math.max(Math.abs(rearToolVelocity), Math.abs(frontToolVelocity)) * .006;
       const visual = combine ? combine.group : tractor.group;
       visual.position.y = engineBob;
       visual.scale.set(1 + squash * .9, 1 - squash, 1 + squash * .9);
       visual.rotation.z = -steer * Math.min(1, state.speed / 4) * .1;
       visual.rotation.x = state.grounded ? -driveAmount * .035 : THREE.MathUtils.clamp(-state.verticalSpeed * .045, -.28, .28);
-      if (combine) combine.reel.rotation.x -= (toolTargetY === toolDownY ? Math.max(.7, state.speed * 3.2) : 0) * dt;
+      const rearImplementSpeed = rearToolTargetY === toolDownY && state.grounded ? Math.max(.7, state.speed * 3.2) : 0;
+      const frontImplementSpeed = frontToolTargetY === toolDownY && state.grounded ? Math.max(.7, state.speed * 3.2) : 0;
+      if (combine) combine.reel.rotation.x -= frontImplementSpeed * dt;
+      for (const [mower, implementSpeed] of [[attachment, rearImplementSpeed], [frontAttachment, frontImplementSpeed]]) {
+        const rotors = mower?.getObjectByName('mower-rotors');
+        if (!rotors) continue;
+        for (const rotor of rotors.children) rotor.rotation.y += implementSpeed * dt * 2.4 * (rotor.userData.spinDirection || 1);
+      }
+      const pickup = attachment?.getObjectByName('baler-pickup');
+      if (pickup) pickup.rotation.x -= rearImplementSpeed * dt * 1.8;
+      baleKick *= Math.exp(-7 * dt);
+      const balerChute = attachment?.getObjectByName('baler-chute');
+      if (balerChute) balerChute.rotation.x = -.12 - baleKick * .32;
       root.updateMatrixWorld(true);
       sprayCooldown -= dt;
-      if (!reducedMotion && tractor && loadout === 'sprayer' && toolTargetY === toolDownY && state.grounded && state.speed >= .4 && sprayCooldown <= 0) {
+      if (!reducedMotion && tractor && loadout === 'sprayer' && rearToolTargetY === toolDownY && state.grounded && state.speed >= .4 && sprayCooldown <= 0) {
         sprayCooldown = .1;
         for (const x of [-1.15, -.77, -.38, 0, .38, .77, 1.15]) {
           worldPoint.set(x, -.25, .58);
@@ -234,25 +283,25 @@ export function createLoadoutPreview(canvas, category) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = .86;
   renderer.setClearColor(0x000000, 0);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(34, 1, .1, 50);
   camera.position.set(0, 2.7, 5.5);
-  scene.add(new THREE.HemisphereLight(0xfff5df, 0x25231a, 2.8));
-  const key = new THREE.DirectionalLight(0xffd89b, 2.5);
+  scene.add(new THREE.HemisphereLight(0xfff5df, 0x25231a, 1.45));
+  const key = new THREE.DirectionalLight(0xffd89b, 1.55);
   key.position.set(-3, 5, 4);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xa1cfff, 1.3);
+  const rim = new THREE.DirectionalLight(0xa1cfff, .65);
   rim.position.set(4, 2, -4);
   scene.add(rim);
 
   const ids = category === 'vehicles'
     ? ['tractor', 'harvester']
     : category === 'equipment'
-      ? ['plough', 'seeder', 'sprayer', 'trailer']
-      : ['loader', 'forks', 'weight'];
+      ? REAR_EQUIPMENT_IDS
+      : FRONT_EQUIPMENT_IDS;
   const models = Object.fromEntries(ids.map(id => {
     const presentation = new THREE.Group();
     const model = createLoadoutAsset(category, id);
@@ -311,19 +360,26 @@ export function createLoadoutPreview(canvas, category) {
       renderer.setScissor(0, 0, width, height);
       renderer.clear();
       stage.rotation.y = Math.sin(time * .45) * .045;
-      stage.position.y = Math.sin(time * 1.2) * .025;
-      const visibleEntries = category === 'vehicles'
-        ? modelEntries.filter(([name]) => name === current)
-        : modelEntries;
-      const viewportWidth = width / visibleEntries.length;
+      const previewLift = category === 'vehicles' ? .16 : .3;
+      stage.position.y = previewLift + Math.sin(time * 1.2) * .025;
+      const visibleEntries = category === 'vehicles' ? modelEntries.filter(([name]) => name === current) : modelEntries;
+      const canvasRect = canvas.getBoundingClientRect();
+      const optionRects = category === 'vehicles'
+        ? [canvasRect]
+        : [...canvas.parentElement.querySelectorAll('.loadoutOption')].map(option => option.getBoundingClientRect());
       visibleEntries.forEach(([, model], index) => {
+        const rect = optionRects[index];
+        if (!rect) return;
+        const viewportWidth = Math.max(1, rect.width);
+        const viewportHeight = Math.max(1, rect.height);
+        const x = Math.max(0, rect.left - canvasRect.left);
+        const y = Math.max(0, height - (rect.bottom - canvasRect.top));
         model.visible = true;
-        camera.aspect = viewportWidth / height;
+        camera.aspect = viewportWidth / viewportHeight;
         camera.updateProjectionMatrix();
         camera.lookAt(0, .65, 0);
-        const x = index * viewportWidth;
-        renderer.setViewport(x, 0, viewportWidth, height);
-        renderer.setScissor(x, 0, viewportWidth, height);
+        renderer.setViewport(x, y, viewportWidth, viewportHeight);
+        renderer.setScissor(x, y, viewportWidth, viewportHeight);
         shadow.visible = true;
         renderer.render(scene, camera);
         model.visible = false;

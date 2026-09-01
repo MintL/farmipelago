@@ -6,6 +6,8 @@ const UNLOCKABLES = [
   { id: 'crop:canola', name: 'Canola', category: 'Crops' },
   { id: 'crop:soybean', name: 'Soybeans', category: 'Crops' },
   { id: 'crop:corn', name: 'Corn', category: 'Crops' },
+  { id: 'crop:grass', name: 'Grass', category: 'Crops' },
+  { id: 'equipment:hay', name: 'Hay equipment', category: 'Equipment' },
 ];
 const unlockableIds = new Set(UNLOCKABLES.map(unlockable => unlockable.id));
 
@@ -29,7 +31,7 @@ const MILESTONES = [
       { cropId: 'canola', name: 'Canola', target: 3600 },
       { cropId: 'soybean', name: 'Soybeans', target: 3600 },
     ],
-    unlocks: ['crop:corn'],
+    unlocks: ['crop:corn', 'crop:grass', 'equipment:hay'],
   },
 ];
 

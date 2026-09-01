@@ -113,7 +113,7 @@ then eventually
 
 **crops + milk**
 
-For the current prototype, the farm starts with Wheat only. **Getting started** requires 3,600 L of Wheat and unlocks Barley, Canola, and Soybeans. It is followed by **Crop diversity**, where the player chooses two of Wheat, Barley, Canola, and Soybeans and delivers 3,600 L of each; completing it unlocks Corn. Corn currently uses the existing seeder, while its specialized equipment remains future work. These objectives exercise the complete harvest, transport, delivery and pickup loop while establishing the intended shift from a simple crop delivery to a varied requirement.
+For the current prototype, the farm starts with Wheat only. **Getting started** requires 3,600 L of Wheat and unlocks Barley, Canola, and Soybeans. It is followed by **Crop diversity**, where the player chooses two of Wheat, Barley, Canola, and Soybeans and delivers 3,600 L of each; completing it unlocks Corn, Grass seed, and the hay-equipment set. Corn currently uses the existing seeder, while its specialized equipment remains future work. These objectives exercise the complete harvest, transport, delivery and pickup loop while establishing the intended shift from a simple crop delivery to a varied requirement.
 
 There is no time limit on these objectives and no macro-level failure state.
 
@@ -266,6 +266,18 @@ Each cultivated tile represents a compact farm plot and yields 50–200 L at har
 
 Exact crop lists and growth times are not yet defined.
 
+### Grass and Hay
+
+Grass is a perennial seeded crop planted on prepared soil with the existing seeder. It does not develop weeds. Once mature, it is cut with a front or rear mower and automatically regrows without reseeding.
+
+The hay-production machinery forms a compact physical sequence:
+
+**mow grass → bale the loose cut grass**
+
+The front mower covers a centered strip, while the side-mounted rear mower expands the cutting width. The baler picks loose grass up directly across its intake. A front mower and rear baler can work together so grass is cut ahead of the tractor and collected behind it in one pass.
+
+Grass suitability determines a tile's 50–200 L cutting yield, and the baler conserves that volume as it gathers loose grass. It emits one rectangular bale for every 3,600 L processed. Bales remain visible and persistent in the Farmipelago. Bale handling, storage, delivery, and use as livestock feed remain future work.
+
 ---
 
 ## 11. Livestock
@@ -308,6 +320,8 @@ A larger tractor should not automatically replace a smaller tractor in every sit
 Island size, maneuverability, terrain and the job being performed should influence equipment choice.
 
 The barn is the primary location for configuring the currently controlled vehicle's compatible equipment. It does not select, spawn or relocate the vehicle being used.
+
+Grass seed and the front mower, rear mower, and baler unlock together after the current Crop diversity objective. Grass seed and the hay-equipment set remain separate capability gates so development overrides can test planting and machinery independently.
 
 ---
 
@@ -358,10 +372,13 @@ The camera uses a relatively high fixed angle and should remain mostly stable ra
 
 Current basic controls include:
 
-- movement stick on the left
+- fixed movement stick on the lower left
 - jump button
-- a lower-left action for cycling between owned vehicles
-- context-specific farming controls as required
+- a cycle-vehicle action above the movement stick on the left edge
+- separate general front-tool and rear-tool actions, allowing compatible attachments to be raised and lowered independently
+- context-specific secondary farming controls as required
+
+The controlled machine's active inventory uses one compact HUD treatment regardless of source. The combine tank, grain trailer, and baler chamber share the same litre meter, label, and fill bar rather than introducing equipment-specific inventory panels.
 
 Controls should remain simple despite the increasing number of farming systems.
 

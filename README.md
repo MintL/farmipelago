@@ -4,7 +4,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 
 ## Included
 
-- modern phone-first HUD with safe-area support, a dynamic touch joystick, input-aware desktop hints, and a discreet build/FPS readout
+- modern phone-first HUD with safe-area support, a fixed touch joystick, input-aware desktop hints, a shared machine-inventory meter, and a discreet build/FPS readout below the pause button
 - smooth high-angle follow camera that keeps the controlled vehicle framed
 - generated archipelago with an expanded two-island starter area: a level farmyard with a walk-in 3×3 barn and a separate roomy cargo-hub island, linked by a bridge; the remaining lobed islands use the roughly 1.5× layout scale, stepped height levels, and bridges across wide gaps
 - permanent cargo hub cantilevered from the second starter island, with a marked landing deck, staged delivery crates, and a chunky four-fan VTOL that makes a rapid curved arrival and departure while keeping its rotors fixed; completing a delivery milestone summons it straight to the pad for a short celebration flight and an explicit unlock reveal
@@ -19,19 +19,21 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - blue hero tractor with a glazed cab, treaded wheels, lamps, beacon, and squash-and-stretch jumps
 - a persistent owned Farm Tractor and Combine Harvester: both remain parked as solid world objects, keep their positions, loadouts, and storage, and cycle with a short lift-and-glide camera handoff
 - barn-style loadout workshop with live 3D previews for the controlled vehicle and its compatible rear/front equipment; equip the Farm Tractor's 20,000 L Grain Trailer to carry one crop from silos to the cargo hub, while the combine's built-in header leaves its attachment bays unavailable
-- progression gates start the farm with Wheat only; Getting started requires 3,600 L Wheat and unlocks Barley, Canola, and Soybeans, then Crop diversity asks the player to choose two of those four crops at 3,600 L each and unlocks Corn. Once both crops are chosen, its tracker and cargo pad show only those two requirements; silo loading, unloading, and cargo delivery move real inventory in rapid 10 L steps, while a completed milestone immediately calls the VTOL to collect the staged cargo and reveal its rewards; the final available milestone instead ends with a clear Farmipelago-complete screen before returning the player to free farming
+- progression gates start the farm with Wheat only; Getting started requires 3,600 L Wheat and unlocks Barley, Canola, and Soybeans, then Crop diversity asks the player to choose two of those four crops at 3,600 L each and unlocks Corn, Grass seed, and hay equipment. Once both crops are chosen, its tracker and cargo pad show only those two requirements; silo loading, unloading, and cargo delivery move real inventory in rapid 10 L steps, while a completed milestone immediately calls the VTOL to collect the staged cargo and reveal its rewards; the final available milestone instead ends with a clear Farmipelago-complete screen before returning the player to free farming
 - automatic browser-local saving of the generated Farmipelago, field and crop state, buildings, delivery progress, vehicle positions, loadouts, storage, and active seed; refreshing restores the same playable state
 - visible four-share plough that changes grass tiles into ploughed soil with rolling voxel soil feedback
-- the seeder plants selectable Corn, Wheat, Barley, Canola, or Soybeans seed; crops sprout and grow with squash-and-stretch transitions, then all harvest-ready crops pulse in synchronized world time
-- input-aware tool control that springs rear attachments and the combine header into position, starts and stops the combine header, or cycles seed with the secondary action; illustrated crop icons use multiple crop colors throughout compact HUD controls and vehicle inventories, while a brief seed-cycle label appears above the control; each ready crop tile yields 50–200 L according to suitability and fills the combine's 3,600 L tank with a 10 L-step ticker
+- the seeder plants selectable Corn, Wheat, Barley, Canola, Soybeans, or Grass seed; crops sprout and grow with squash-and-stretch transitions, then all harvest-ready crops pulse in synchronized world time
+- completing Crop diversity also unlocks perennial Grass seed and the hay-equipment set: use the existing seeder to establish grass, mow it with the centered front mower or offset rear mower, then pick up loose cut grass directly with the baler; each 3,600 L becomes a persistent rectangular world bale
+- grass yield remains tied to local moisture and sunlight suitability, grass regrows without reseeding or weeds, and loose grass, partial baler fill, and dynamically instanced bales all persist across refreshes
+- independent front and rear equipment controls with general slot icons; each attachment can be raised or lowered separately, the combine header uses the front control, and the secondary action cycles seed; illustrated crop icons use multiple crop colors throughout compact HUD controls and vehicle inventories, while a brief seed-cycle label appears above the control; each ready crop tile yields 50–200 L according to suitability and fills the combine's 3,600 L tank with a 10 L-step ticker
 - lowered sprayers emit nozzle droplets and collapse cleared weeds; combines animate crop-colored unloading streams into silos and the cargo pad, whose crates later lift into the visiting VTOL
 - two larger toy-like tree silhouettes—forked orchard and umbrella—that sway in the wind, plus voxel stones
-- camera-relative dynamic virtual stick: touch anywhere in the lower-left drive zone and point where the vehicle should move on screen
-- lower-left cycle-vehicle button that briefly pauses driving while the camera lifts and glides to the next owned vehicle
+- camera-relative fixed virtual stick in the lower-left: press and drag the visible control toward the vehicle's intended screen-space direction
+- cycle-vehicle button above the fixed movement control on the left edge that briefly pauses driving while the camera lifts and glides to the next owned vehicle
 - jump button; no ramps required
 - falling and automatic tractor rescue
 - pause menu with a controls reference, saved debug unlock overrides for the current crop progression gates, and a confirmed restart action that deletes the saved farm before generating a new one
-- keyboard fallback: WASD/arrows to drive, Space to jump, E to raise/lower the tool, V to cycle vehicles, F to cycle seed with the seeder, B for the build menu, Escape to leave building/suitability view or open the menu, and 1–4 for rear equipment inside the barn workshop; use nearby silo and cargo-pad popups to transfer or deliver combine or trailer cargo. Both popups select the carried crop by default; the silo shows 0 L for a new crop, while the cargo pad selects it only when it is eligible for delivery.
+- keyboard fallback: WASD/arrows to drive, Space to jump, Q to raise/lower the front tool, E to raise/lower the rear tool, V to cycle vehicles, F to cycle seed with the seeder, B for the build menu, Escape to leave building/suitability view or open the menu, and 1–7 for rear equipment inside the barn workshop; use nearby silo and cargo-pad popups to transfer or deliver combine or trailer cargo. Both popups select the carried crop by default; the silo shows 0 L for a new crop, while the cargo pad selects it only when it is eligible for delivery.
 - Rapier kinematic capsule controller with ground snapping, wall-contact jumping, and fixed 60 Hz simulation
 - seamless terrain collision meshes with solid plateau walls and lower island layers
 
@@ -44,6 +46,8 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - `progression.js` — delivery milestone requirements, acceptance, completion, and pickup rollover
 - `persistence.js` — versioned browser-local save loading, writing, validation, and deletion
 - `crops.js` — crop environmental profiles and pure suitability/growth/yield calculations
+- `equipment.js` — shared rear/front attachment catalog, gates, and loadout validation
+- `forage.js` — loose cut-grass state plus persistent instanced hay bales
 - `buildings.js` — detailed procedural silo, placement animation/audio feedback, and placed-building state
 - `tractor.js` — persistent vehicle and swappable attachment visuals
 - `vehicles.js` — owned fleet order, vehicle capabilities, and default per-instance loadouts

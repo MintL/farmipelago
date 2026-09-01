@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'farmipelago.gameState';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 4;
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -29,7 +29,7 @@ function litresContents(contents) {
 function migrateVersion1(state) {
   return {
     ...state,
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: 2,
     progression: {
       ...state.progression,
       delivered: litresContents(state.progression.delivered),
@@ -45,13 +45,42 @@ function migrateVersion1(state) {
   };
 }
 
+function migrateVersion2(state) {
+  return {
+    ...state,
+    schemaVersion: 3,
+    world: {
+      ...state.world,
+      forage: state.world?.forage || { tiles: [], bales: [] },
+    },
+    vehicles: state.vehicles.map(vehicle => ({
+      ...vehicle,
+      equipmentState: vehicle.equipmentState || { balerLitres: 0 },
+    })),
+  };
+}
+
+function migrateVersion3(state) {
+  return {
+    ...state,
+    schemaVersion: SCHEMA_VERSION,
+    vehicles: state.vehicles.map(vehicle => ({
+      ...vehicle,
+      frontToolEnabled: Boolean(vehicle.frontToolEnabled ?? vehicle.toolEnabled),
+      rearToolEnabled: Boolean(vehicle.rearToolEnabled ?? vehicle.toolEnabled),
+    })),
+  };
+}
+
 export function loadGameState() {
   try {
     const serialized = localStorage.getItem(STORAGE_KEY);
     if (!serialized) return { state: null, invalid: false, unavailable: false };
     const state = JSON.parse(serialized);
     if (validState(state)) return { state, invalid: false, unavailable: false };
-    if (validState(state, 1)) return { state: migrateVersion1(state), invalid: false, unavailable: false };
+    if (validState(state, 3)) return { state: migrateVersion3(state), invalid: false, unavailable: false };
+    if (validState(state, 2)) return { state: migrateVersion3(migrateVersion2(state)), invalid: false, unavailable: false };
+    if (validState(state, 1)) return { state: migrateVersion3(migrateVersion2(migrateVersion1(state))), invalid: false, unavailable: false };
     localStorage.removeItem(STORAGE_KEY);
     return { state: null, invalid: true, unavailable: false };
   }

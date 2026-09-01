@@ -49,8 +49,8 @@
     body[data-cinematic="true"] #hud > :not(#overlay) { opacity: 0; visibility: hidden; }
     #performanceBadge {
       position: absolute;
-      left: var(--safe-left);
-      bottom: calc(var(--safe-bottom) + 58px);
+      top: calc(var(--safe-top) + 56px);
+      right: var(--safe-right);
       display: flex;
       align-items: center;
       gap: 6px;
@@ -134,7 +134,7 @@
     #buildingToggle .icon { width: 21px; height: 21px; }
     #buildingToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
     #buildingToggle:active { transform: scale(.95); }
-    #grainMeter {
+    #inventoryMeter {
       position: absolute;
       right: 0;
       bottom: 126px;
@@ -325,29 +325,29 @@
     #stickZone {
       pointer-events: auto;
       position: absolute;
-      left: 0;
-      bottom: 0;
-      width: 62vw;
-      height: 47vh;
-      min-height: 210px;
+      left: var(--safe-left);
+      bottom: var(--safe-bottom);
+      width: 136px;
+      height: 136px;
+      min-height: 0;
+      --stick-travel: 43px;
     }
     #stickBase {
       position: absolute;
-      left: calc(var(--safe-left) + 72px);
-      top: calc(100% - var(--safe-bottom) - 72px);
-      width: 136px;
-      height: 136px;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       border: 1px solid rgba(43, 47, 38, .28);
       border-radius: 50%;
       background: rgba(234, 224, 200, .68);
       box-shadow: inset 0 0 0 9px rgba(49, 56, 43, .04), 0 12px 34px rgba(5, 10, 9, .14);
-      opacity: 0;
-      transform: translate(-50%, -50%) scale(.88);
+      opacity: 1;
+      transform: scale(1);
       transition: opacity .12s ease, transform .12s ease;
       backdrop-filter: blur(9px);
       -webkit-backdrop-filter: blur(9px);
     }
-    #stickBase.active { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    #stickBase.active { transform: scale(1.025); }
     #stickBase::before, #stickBase::after {
       content: "";
       position: absolute;
@@ -392,7 +392,7 @@
       pointer-events: auto;
       position: absolute;
       left: var(--safe-left);
-      bottom: var(--safe-bottom);
+      bottom: calc(var(--safe-bottom) + 148px);
       width: 48px;
       height: 48px;
       border-radius: 50%;
@@ -401,17 +401,23 @@
     #cycleVehicle .icon { width: 27px; height: 27px; stroke-width: 1.65; }
     #jump { position: absolute; right: 0; bottom: 0; width: 76px; height: 76px; border-radius: 50%; }
     #jump .icon { width: 30px; height: 30px; }
-    #toolToggle {
+    #equipmentActions {
       position: absolute;
-      right: 94px;
-      bottom: 14px;
+      inset: 0;
+      pointer-events: none;
+    }
+    .equipmentAction {
+      pointer-events: auto;
+      position: absolute;
       width: 42px;
       height: 42px;
       border-radius: 50%;
       transition: border-color .16s, background .16s, transform .1s;
     }
-    #toolToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); }
-    #toolToggle[aria-pressed="true"]::after {
+    #frontToolToggle { left: 108.7px; bottom: 69.3px; }
+    #rearToolToggle { left: 87px; bottom: 17px; }
+    .equipmentAction[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); }
+    .equipmentAction[aria-pressed="true"]::after {
       content: "";
       position: absolute;
       top: 4px; right: 4px;
@@ -420,11 +426,11 @@
       background: var(--accent-strong);
       box-shadow: 0 0 0 2px rgba(53, 67, 47, .16);
     }
-    #toolToggle .icon { width: 20px; height: 20px; }
+    .equipmentAction .icon { width: 20px; height: 20px; }
     #seedCycleControl {
       position: absolute;
-      right: 81px;
-      bottom: 60px;
+      right: 17px;
+      bottom: 91px;
     }
     #seedCropToast {
       position: absolute;
@@ -493,7 +499,7 @@
     body[data-input-mode="keyboard"] #stickZone,
     body[data-input-mode="keyboard"] #cycleVehicle,
     body[data-input-mode="keyboard"] #jump { display: none; }
-    body[data-input-mode="keyboard"] #performanceBadge { bottom: calc(var(--safe-bottom) + 48px); }
+    body[data-input-mode="keyboard"] #performanceBadge { bottom: auto; }
     body[data-input-mode="keyboard"] #desktopHints { display: block; }
     body[data-input-mode="keyboard"] #actionCluster {
       right: var(--safe-right);
@@ -505,10 +511,15 @@
       align-items: center;
       gap: 10px;
     }
-    body[data-input-mode="keyboard"] #toolToggle {
+    body[data-input-mode="keyboard"] #equipmentActions {
+      position: static;
+      display: flex;
+      gap: 10px;
+    }
+    body[data-input-mode="keyboard"] .equipmentAction {
       position: static;
       width: auto;
-      min-width: 178px;
+      min-width: 148px;
       height: 54px;
       padding: 0 10px 0 14px;
       grid-template-columns: 24px 1fr auto;
@@ -516,10 +527,10 @@
       border-radius: 15px;
       text-align: left;
     }
-    body[data-input-mode="keyboard"] #toolToggle .icon { width: 22px; height: 22px; }
+    body[data-input-mode="keyboard"] .equipmentAction .icon { width: 22px; height: 22px; }
     body[data-input-mode="keyboard"] #seedCycleControl { position: static; }
     body[data-input-mode="keyboard"] #unloadButton { width: 54px; height: 54px; }
-    body[data-input-mode="keyboard"] #grainMeter {
+    body[data-input-mode="keyboard"] #inventoryMeter {
       bottom: calc(100% + 10px);
       width: 190px;
     }
@@ -595,6 +606,7 @@
     #barnDialog .loadoutOption { color: #292b25; text-shadow: none; }
     #barnDialog .loadoutOption:hover { background: rgba(52, 60, 45, .06); }
     #barnDialog .loadoutOption[aria-pressed="true"] { border-color: #30372c; background: rgba(52, 65, 45, .12); }
+    #barnDialog .loadoutOption[aria-pressed="true"] { border-color: #30372c; background: rgba(52, 65, 45, .12); }
     #barnDialog .optionState { color: #405b34; }
     #barnDialog .loadoutOption.locked, #barnDialog .loadoutOption.locked .optionState { color: #74776c; }
     #barnDialog .loadoutBay.unavailable { opacity: .38; filter: grayscale(1); }
@@ -606,20 +618,22 @@
     #barnDialog .button.primary { border-color: #30372c; background: #3f4b38; color: #f4ecd8; }
     #barnDialog .button:disabled { opacity: .42; }
     #loadoutBays { min-height: 0; overflow-y: auto; padding: 0 16px; scrollbar-color: rgba(48, 55, 43, .35) transparent; }
-    .loadoutBay { display: grid; grid-template-rows: auto minmax(145px, 1fr); min-height: 174px; border-top: 1px solid var(--line-strong); }
+    .loadoutBay { display: grid; grid-template-rows: auto auto; min-height: 0; border-top: 1px solid var(--line-strong); }
     .loadoutBay:first-child { border-top: 0; }
     .bayLabel { grid-column: 1 / -1; margin: 10px 0 0 8px; color: var(--accent); font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em; text-transform: uppercase; }
-    .optionPresentation { position: relative; min-height: 145px; overflow: hidden; }
+    .optionPresentation { position: relative; min-height: 0; overflow: hidden; }
+    .loadoutBay[data-category="vehicles"] .optionPresentation { min-height: 145px; }
     .previewCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .optionGrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 100%; gap: 0; padding: 5px 0 7px; }
-    #equipmentOptions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .optionGrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 112px; gap: 0; padding: 5px 0 7px; }
+    #equipmentOptions, #frontToolOptions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     #vehicleOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #vehicleIdentity { position: absolute; inset: 0; z-index: 1; display: flex; align-items: flex-end; justify-content: center; padding: 10px; text-align: center; }
     #vehicleIdentity strong { font: 700 12px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .025em; text-transform: uppercase; }
     #vehicleIdentity small { display: block; margin-top: 3px; color: #405b34; font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-    .loadoutOption { position: relative; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 6px 4px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); text-align: center; text-shadow: 0 2px 14px #080907; }
+    .loadoutOption { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 6px 4px; border: 1px solid transparent; border-radius: 6px; background: linear-gradient(to bottom, transparent 45%, rgba(242, 234, 214, .76) 75%, rgba(242, 234, 214, .94)); color: var(--ink); text-align: center; text-shadow: none; }
     .loadoutOption:hover { background: rgba(48, 55, 43, .045); }
     .loadoutOption:focus-visible { outline: 0; }
+    .loadoutOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .12); }
     .loadoutOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .12); }
     .loadoutOption.locked { color: #a9ada7; }
     .optionName { position: relative; z-index: 1; display: block; font: 700 12px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .025em; text-transform: uppercase; }
@@ -807,7 +821,7 @@
 
     @media (max-width: 680px) {
       #topLeftGroup { width: 148px; }
-      #grainMeter, body[data-input-mode="keyboard"] #grainMeter { width: 148px; }
+      #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 148px; }
       .suitabilityLabel { display: none; }
       #suitabilityToggle { width: 48px; justify-content: center; padding: 0; }
       #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
@@ -818,7 +832,8 @@
       #barnDialog .dialogHeader { min-height: 40px; padding: 2px 4px; }
       #barnDialog .dialogTitle { font-size: 21px; }
       #loadoutBays { padding: 0 8px; }
-      .loadoutBay { min-height: 150px; }
+      .optionGrid { grid-auto-rows: 96px; }
+      .loadoutBay[data-category="vehicles"] .optionPresentation { min-height: 132px; }
       .bayLabel { margin: 8px 0 0 5px; font-size: 10px; }
       .optionName { font-size: 10px; }
       .optionState { font-size: 8px; }
@@ -840,8 +855,12 @@
       #milestoneTracker { padding: 8px 9px; }
       #milestoneTitle { font-size: 10px; }
       #suitabilityToggle, #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
-      #grainMeter, body[data-input-mode="keyboard"] #grainMeter { width: 136px; padding: 8px 9px; }
+      #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 136px; padding: 8px 9px; }
       #buildPalette { top: calc(var(--safe-top) + 50px); }
+      #performanceBadge { top: calc(var(--safe-top) + 48px); }
+      #stickZone { width: 108px; height: 108px; --stick-travel: 30px; }
+      #stickKnob { width: 48px; height: 48px; margin: -24px; }
+      #cycleVehicle { bottom: calc(var(--safe-bottom) + 120px); }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -856,7 +875,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.90</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.100</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -915,12 +934,19 @@
     </button>
 
     <div id="actionCluster">
-      <div id="grainMeter" hidden></div>
-      <button id="toolToggle" class="actionButton" type="button" aria-label="Lower Plough" aria-pressed="false" title="Lower Plough">
-        <svg class="icon" aria-hidden="true"><use id="toolIconUse" href="#icon-plough"></use></svg>
-        <span class="toolCopy"><span class="toolName" id="toolName">Plough</span><span class="toolState" id="toolState">Raised</span></span>
-        <span class="keycap" aria-hidden="true">E</span>
-      </button>
+      <div id="inventoryMeter" hidden></div>
+      <div id="equipmentActions">
+        <button id="frontToolToggle" class="actionButton equipmentAction" type="button" aria-label="Lower front tool" aria-pressed="false" title="Lower front tool">
+          <svg class="icon" aria-hidden="true"><use href="#icon-front-action"></use></svg>
+          <span class="toolCopy"><span class="toolName">Front</span><span class="toolState" id="frontToolState">Raised</span></span>
+          <span class="keycap" aria-hidden="true">Q</span>
+        </button>
+        <button id="rearToolToggle" class="actionButton equipmentAction" type="button" aria-label="Lower rear tool" aria-pressed="false" title="Lower rear tool">
+          <svg class="icon" aria-hidden="true"><use href="#icon-rear-action"></use></svg>
+          <span class="toolCopy"><span class="toolName">Rear</span><span class="toolState" id="rearToolState">Raised</span></span>
+          <span class="keycap" aria-hidden="true">E</span>
+        </button>
+      </div>
       <div id="seedCycleControl" hidden>
         <span id="seedCropToast" role="status" aria-live="polite"></span>
         <button id="unloadButton" class="actionButton" type="button" aria-label="Cycle seed" aria-disabled="true" title="Cycle seed">
@@ -933,7 +959,7 @@
     </div>
 
     <div id="desktopHints" aria-hidden="true">
-      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>E</kbd> Tool &nbsp; <kbd>V</kbd> Vehicle &nbsp; <span id="secondaryHint" hidden><kbd>F</kbd> <span id="secondaryHintLabel">Seed</span> &nbsp; </span><kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
+      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>Q</kbd> Front &nbsp; <kbd>E</kbd> Rear &nbsp; <kbd>V</kbd> Vehicle &nbsp; <span id="secondaryHint" hidden><kbd>F</kbd> <span id="secondaryHintLabel">Seed</span> &nbsp; </span><kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
     </div>
 
     <div id="overlay" hidden>
@@ -991,10 +1017,11 @@
               <span><strong>Controls</strong><small>Keyboard and touch reference</small></span>
             </button>
             <div id="controlsList" hidden>
-              <strong>Drive</strong><span>WASD, arrow keys, or touch joystick</span>
+              <strong>Drive</strong><span>WASD, arrow keys, or the fixed touch joystick</span>
               <strong>Jump</strong><span>Space or jump button</span>
-              <strong>Tool</strong><span>E or equipped-tool button</span>
-              <strong>Vehicle</strong><span>V or the lower-left vehicle button cycles between owned vehicles</span>
+              <strong>Front tool</strong><span>Q or the front action button</span>
+              <strong>Rear tool</strong><span>E or the rear action button</span>
+              <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
               <strong>Seed / storage</strong><span>With the seeder, use the crop button or F to cycle seed; with the combine, use it to transfer beside a silo or cargo pad</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
               <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
@@ -1056,10 +1083,15 @@
     <symbol id="icon-plough" viewBox="0 0 24 24"><path d="M5 5v8c0 4 3 6 7 6h7M5 9h8l3 3M9 19l2-5M15 19l2-5" /></symbol>
     <symbol id="icon-seeder" viewBox="0 0 24 24"><path d="M5 7h9l2 7H7L5 7ZM8 14v4M15 14v4M7 20h2M14 20h2M16 10h3v8" /></symbol>
     <symbol id="icon-sprayer" viewBox="0 0 24 24"><path d="M8 6h8v10H8zM10 3h4M4 12h4M16 12h4M4 12v4M20 12v4M3 19h2M11 19h2M19 19h2" /></symbol>
+    <symbol id="icon-mower" viewBox="0 0 24 24"><path d="M4 15h16M6 15l2-6h8l2 6M8 18h8M6 20l3-2M18 20l-3-2M10 9V6h4v3" /></symbol>
+    <symbol id="icon-baler" viewBox="0 0 24 24"><path d="M5 8h12l2 4v7H5zM8 11h7v5H8zM3 16h2M19 16h2M6 6h8" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
+    <symbol id="icon-grass" viewBox="0 0 24 24"><path d="M4 21c1-7 3-11 5-15M9 21c0-8 1-13 3-18M14 21c0-7 2-12 5-16M6 21c1-4 3-7 6-9M12 21c2-4 5-7 8-8" stroke="#4f8f45" /></symbol>
     <symbol id="icon-wheat" viewBox="0 0 24 24"><path d="M12 21V4" stroke="#69512d" /><path d="m12 8-3.8-2.9c-.7 2.2.6 3.6 3.8 4.2ZM12 11l4-3c.7 2.3-.8 3.7-4 4.2ZM12 14l-4-3c-.5 2.3 1.1 3.6 4 4.1ZM12 17l3.8-2.8c.6 2.2-.8 3.5-3.8 4" fill="#e8bf55" stroke="#80602d" /><path d="M12 7.8 9.8 6.1M12 12l2.4-1.8M12 15.1l-2.3-1.7" stroke="#d79635" /></symbol>
     <symbol id="icon-sunflower" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><path d="M12 5V3M12 13v8M9 8H7M17 8h-2M9.8 5.8 8.4 4.4M14.2 10.2l1.4 1.4M14.2 5.8l1.4-1.4M9.8 10.2l-1.4 1.4M12 17c-3 0-5-1-6-3 3 0 5 1 6 3Z" /></symbol>
     <symbol id="icon-tractor" viewBox="0 0 24 24"><path d="M4 16h2l2-7h6l2 4h3l2 3M9 9V5h4l2 4M3 16h18" /><circle cx="7" cy="17" r="3" /><circle cx="17" cy="17" r="2" /></symbol>
     <symbol id="icon-utility" viewBox="0 0 24 24"><path d="M3 15h18l-2-6h-5l-2-3H7L5 15M7 9h7M4 15v2h17v-2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></symbol>
+    <symbol id="icon-front-action" viewBox="0 0 24 24"><path d="M8 8h9l2 6H8zM8 11H5l-2 3v4h5M3 18h5" /><circle cx="10" cy="17" r="2" /><circle cx="18" cy="17" r="2" /></symbol>
+    <symbol id="icon-rear-action" viewBox="0 0 24 24"><path d="M6 8h9l2 6H6zM17 12h3l1 3v3h-4M17 18h4" /><circle cx="7" cy="17" r="2" /><circle cx="15" cy="17" r="2" /></symbol>
     <symbol id="icon-harvester" viewBox="0 0 24 24"><path d="M4 15h13V7H9l-3 4v4M17 11h3l1 4h-4M3 15h18M3 12l3 3" /><circle cx="8" cy="17" r="3" /><circle cx="18" cy="17" r="2" /></symbol>
     <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></symbol>
     <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
@@ -1068,6 +1100,6 @@
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=crop-diversity-display-20260901-1"></script>
+  <script type="module" src="./main.js?v=hay-simple-20260901-1"></script>
 </body>
 </html>

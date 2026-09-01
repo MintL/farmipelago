@@ -1,6 +1,7 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=crop-diversity-20260831-1';
-import { cropStats as environmentalCropStats, crops } from './crops.js?v=crop-diversity-20260831-1';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=hay-simple-20260901-1';
+import { cropStats as environmentalCropStats, crops } from './crops.js?v=hay-simple-20260901-1';
 import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=vtol-fast-flight-20260901-1';
+import { createForageSystem } from './forage.js?v=hay-simple-20260901-1';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;
@@ -18,6 +19,7 @@ const STARTER_FARMYARD_RADIUS = 7.4;
 const STARTER_CARGO_RADIUS = 5.2;
 const STARTER_CARGO_CENTER = { x: -9, z: -1 };
 const CROP_STAGE_SECONDS = 3;
+const GRASS_STAGE_SECONDS = 10;
 const WEED_CHANCE = .4;
 const READY_PULSE_SECONDS = 3.2;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -99,6 +101,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       environment, normalGrassColor: null, surfaceBatch: null, surfaceInstance: -1,
       tallGrass: null, stones: [], hasTree: false,
       ploughed: false, water: false, reserved: false, noDecoration: false, crop: null,
+      looseGrassLitres: 0,
     });
   };
 
@@ -558,6 +561,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     return true;
   };
 
+  const forage = createForageSystem(terrain, group, onChange);
   const occlusion = createOcclusionSystem(group);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const start = terrain.get(gridKey(backbone[0].cx, backbone[0].cz)) || terrain.values().next().value;
@@ -570,6 +574,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     spawn: vehicleSpawns[0],
     vehicleSpawns,
     dispose() {
+      forage.dispose();
       Object.values(grainSplashMaterials).forEach(material => material.dispose());
       disposeObjectResources(group);
     },
@@ -615,11 +620,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         particle.mesh.rotation.z = age * particle.spinZ;
       }
       for (const tile of growingCrops) {
-        if (elapsed - tile.crop.stageStarted < CROP_STAGE_SECONDS) continue;
-        tile.crop.stageStarted += CROP_STAGE_SECONDS;
+        const stageSeconds = tile.crop.cropId === 'grass' ? GRASS_STAGE_SECONDS : CROP_STAGE_SECONDS;
+        if (elapsed - tile.crop.stageStarted < stageSeconds) continue;
+        tile.crop.stageStarted += stageSeconds;
         tile.crop.stage++;
         tile.crop.animationStarted = elapsed;
-        if (tile.crop.stage === 2 && random() < WEED_CHANCE) {
+        if (tile.crop.cropId !== 'grass' && tile.crop.stage === 2 && random() < WEED_CHANCE) {
           tile.crop.weeds = true;
           weedCount++;
         }
@@ -728,9 +734,31 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       onChange();
       return true;
     },
+    mowAt(x, z, levelY, elapsed) {
+      const tile = tileAtLevel(x, z, levelY, terrain);
+      if (tile?.crop?.cropId !== 'grass' || tile.crop.stage !== 4 || forage.hasForage(tile)) return 0;
+      const { suitability } = environmentalCropStats(tile.environment, crops.grass);
+      const yieldAmount = Math.round(50 + suitability * 150);
+      tile.crop.stage = 1;
+      tile.crop.stageStarted = elapsed;
+      tile.crop.animationStarted = elapsed;
+      tile.crop.weeds = false;
+      readyCount = Math.max(0, readyCount - 1);
+      growingCrops.add(tile);
+      cropInstancesDirty = true;
+      forage.addLoose(tile, yieldAmount);
+      onChange();
+      return yieldAmount;
+    },
+    takeLooseGrassAt(x, z, levelY) {
+      return forage.takeLooseAt(x, z, levelY);
+    },
+    spawnBale(x, y, z, heading) {
+      return forage.spawnBale(x, y, z, heading);
+    },
     harvestAt(x, z, levelY, acceptedCropId = null) {
       const tile = tileAtLevel(x, z, levelY, terrain);
-      if (tile?.crop?.stage !== 4) return false;
+      if (tile?.crop?.stage !== 4 || tile.crop.cropId === 'grass') return false;
       const cropId = tile.crop.cropId;
       if (acceptedCropId && cropId !== acceptedCropId) return false;
       const crop = crops[tile.crop.cropId] || crops.corn;
@@ -756,14 +784,14 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
             cropId: tile.crop.cropId,
             stage: tile.crop.stage,
             stageElapsed: tile.crop.stage < 4
-              ? THREE.MathUtils.clamp(elapsed - tile.crop.stageStarted, 0, CROP_STAGE_SECONDS)
+              ? THREE.MathUtils.clamp(elapsed - tile.crop.stageStarted, 0, tile.crop.cropId === 'grass' ? GRASS_STAGE_SECONDS : CROP_STAGE_SECONDS)
               : 0,
             weeds: tile.crop.weeds,
           };
         }
         tiles.push(savedTile);
       }
-      return { seed, tiles };
+      return { seed, tiles, forage: forage.persistentState() };
     },
     restorePersistentState(savedState, elapsed) {
       if (!Array.isArray(savedState?.tiles)) return;
@@ -777,12 +805,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         const savedCrop = savedTile.crop;
         const stage = Math.floor(Number(savedCrop?.stage));
         if (!tile.ploughed || !crops[savedCrop?.cropId] || stage < 1 || stage > 4) continue;
-        const stageElapsed = THREE.MathUtils.clamp(Number(savedCrop.stageElapsed) || 0, 0, CROP_STAGE_SECONDS);
+        const stageSeconds = savedCrop.cropId === 'grass' ? GRASS_STAGE_SECONDS : CROP_STAGE_SECONDS;
+        const stageElapsed = THREE.MathUtils.clamp(Number(savedCrop.stageElapsed) || 0, 0, stageSeconds);
         tile.crop = {
           cropId: savedCrop.cropId,
           stage,
           stageStarted: elapsed - stageElapsed,
-          weeds: Boolean(savedCrop.weeds) && stage >= 2,
+          weeds: savedCrop.cropId !== 'grass' && Boolean(savedCrop.weeds) && stage >= 2,
         };
         plantedCount++;
         if (tile.crop.weeds) weedCount++;
@@ -792,6 +821,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       }
       if (furrowInstancesDirty) refreshFurrowInstances();
       if (cropInstancesDirty) refreshCropInstances();
+      forage.restorePersistentState(savedState.forage);
     },
     cropStats() {
       return { planted: plantedCount, ready: readyCount, weeds: weedCount };
@@ -843,6 +873,7 @@ function createCropInstances(tileCapacity, group) {
   };
   addInstances('shootStem', .07, .22, .07, mats.cropShoot, tileCapacity);
   addInstances('shootLeaf', .22, .04, .09, mats.cropShoot, tileCapacity * 4);
+  addInstances('grassBlade', .055, .72, .07, mats.grassCrop, tileCapacity * 12);
   addInstances('youngCerealStem', .08, .42, .08, mats.cerealGreen, tileCapacity);
   addInstances('youngCerealLeaf', .32, .045, .1, mats.cerealGreen, tileCapacity * 4);
   addInstances('youngBroadStem', .08, .34, .08, mats.cropShoot, tileCapacity);
@@ -1091,6 +1122,20 @@ function renderCropTile(instances, tile) {
     return;
   }
 
+  if (cropId === 'grass') {
+    const height = stage === 3 ? .42 : .64;
+    const offsets = [
+      [-.27, -.22], [0, -.25], [.27, -.2],
+      [-.3, .02], [-.08, 0], [.16, .04], [.31, .08],
+      [-.24, .25], [.03, .23], [.28, .27],
+    ];
+    offsets.forEach(([dx, dz], index) => {
+      const lean = ((index % 3) - 1) * .055;
+      place('grassBlade', dx, height * .5, dz, 0, index * .37, lean, 1, height / .72, 1);
+    });
+    return;
+  }
+
   if (cropId === 'corn') {
     const height = stage === 3 ? .78 : 1.04;
     place('cornStem', 0, height * .5, 0, 0, 0, 0, 1, height, 1);
@@ -1230,7 +1275,7 @@ function createOcclusionSystem(group) {
   const hitPoint = new THREE.Vector3();
   let refreshElapsed = Infinity;
   const entries = group.children
-    .filter(child => child.isGroup && child.name !== 'tall-grass' && child.name !== 'water' && child.name !== 'crop-overlay' && child.name !== 'field-effects')
+    .filter(child => child.isGroup && child.name !== 'tall-grass' && child.name !== 'water' && child.name !== 'crop-overlay' && child.name !== 'field-effects' && child.name !== 'forage')
     .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1, targetOpacity: 1 }));
 
   return {

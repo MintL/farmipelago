@@ -1,13 +1,14 @@
-import { THREE } from './shared.js?v=persistence-20260831-1';
-import { crops } from './crops.js?v=cargo-litres-20260831-1';
+import { THREE } from './shared.js?v=hay-simple-20260901-1';
+import { crops } from './crops.js?v=hay-simple-20260901-1';
 import { createPhysics } from './physics.js?v=persistence-20260831-1';
-import { createLoadoutPreview, createVehicle } from './tractor.js?v=trailer-grain-world-splash-20260831-1';
-import { createUi } from './ui.js?v=carried-crop-default-20260901-2';
-import { createBuildingManager } from './buildings.js?v=transfer-batching-20260831-1';
-import { generateFarm } from './world-generator.js?v=trailer-grain-size-20260831-1';
-import { createMilestoneProgression } from './progression.js?v=crop-diversity-display-20260901-1';
-import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=cargo-litres-20260831-1';
-import { OWNED_VEHICLES, TRAILER_STORAGE_CAPACITY, vehicleType } from './vehicles.js?v=trailer-capacity-20260831-1';
+import { createLoadoutPreview, createVehicle } from './tractor.js?v=hay-simple-20260901-1';
+import { createUi } from './ui.js?v=hay-simple-20260901-1';
+import { createBuildingManager } from './buildings.js?v=hay-simple-20260901-1';
+import { generateFarm } from './world-generator.js?v=hay-simple-20260901-1';
+import { createMilestoneProgression } from './progression.js?v=hay-simple-20260901-1';
+import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=hay-simple-20260901-1';
+import { OWNED_VEHICLES, vehicleType } from './vehicles.js?v=trailer-capacity-20260831-1';
+import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from './equipment.js?v=hay-simple-20260901-1';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
@@ -112,7 +113,9 @@ const fleet = OWNED_VEHICLES.map(owned => {
     visual,
     loadout,
     heading: 0,
-    toolEnabled: false,
+    frontToolEnabled: false,
+    rearToolEnabled: false,
+    equipmentState: { balerLitres: 0 },
     spawn: null,
     storage: { capacity: definition.storageCapacity, contents: {} },
   };
@@ -156,8 +159,9 @@ function activeVehicleState() {
 }
 
 function storageCapacityFor(vehicle) {
-  return vehicle.type === 'tractor' && vehicle.loadout.tool === 'trailer'
-    ? TRAILER_STORAGE_CAPACITY
+  const equipmentInventory = equipmentDefinition(vehicle.loadout.tool)?.inventory;
+  return equipmentInventory?.kind === 'crop'
+    ? equipmentInventory.capacity
     : vehicle.definition.storageCapacity;
 }
 
@@ -184,7 +188,9 @@ function persistentState() {
         grounded: state.grounded,
         heading: vehicle.heading,
         loadout: { ...vehicle.loadout },
-        toolEnabled: vehicle.toolEnabled,
+        frontToolEnabled: vehicle.frontToolEnabled,
+        rearToolEnabled: vehicle.rearToolEnabled,
+        equipmentState: { ...vehicle.equipmentState },
         storage: { ...vehicle.storage.contents },
       };
     }),
@@ -432,11 +438,14 @@ function resetFleet() {
     const spawn = farm.vehicleSpawns[index % farm.vehicleSpawns.length];
     vehicle.spawn = spawn;
     vehicle.heading = 0;
-    vehicle.toolEnabled = false;
+    vehicle.frontToolEnabled = false;
+    vehicle.rearToolEnabled = false;
+    vehicle.equipmentState.balerLitres = 0;
     vehicle.storage.contents = {};
     setStorageCapacity(vehicle);
     vehicle.visual.setLoadout(vehicle.loadout);
-    vehicle.visual.setToolEnabled(false, true);
+    vehicle.visual.setToolEnabled('front', false, true);
+    vehicle.visual.setToolEnabled('rear', false, true);
     if (physics.hasVehicle(vehicle.id)) physics.resetVehicle(vehicle.id, spawn);
     else physics.createVehicle(vehicle.id, spawn);
   });
@@ -468,19 +477,22 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
   for (const vehicle of fleet) {
     const saved = savedById.get(vehicle.id);
     if (!saved || saved.type !== vehicle.type) continue;
-    const loadout = { ...vehicle.definition.defaultLoadout };
-    if (vehicle.definition.slots.includes('tool') && ['plough', 'seeder', 'sprayer', 'trailer'].includes(saved.loadout?.tool)) {
-      loadout.tool = saved.loadout.tool;
-    }
-    if (vehicle.definition.slots.includes('frontTool') && saved.loadout?.frontTool === 'loader') {
-      loadout.frontTool = saved.loadout.frontTool;
-    }
+    const savedLoadout = saved.loadout || vehicle.definition.defaultLoadout;
+    const requestedLoadout = savedLoadout.tool === 'windrower'
+      ? { ...savedLoadout, tool: 'baler' }
+      : savedLoadout;
+    const loadout = vehicle.definition.slots.length
+      ? normalizeLoadout(requestedLoadout, progression.state().unlockedGates)
+      : { ...vehicle.definition.defaultLoadout };
     vehicle.loadout = loadout;
     setStorageCapacity(vehicle);
     vehicle.heading = Number.isFinite(saved.heading)
       ? Math.atan2(Math.sin(saved.heading), Math.cos(saved.heading))
       : 0;
-    vehicle.toolEnabled = Boolean(saved.toolEnabled);
+    const loadoutWasNormalized = loadout.tool !== requestedLoadout.tool || loadout.frontTool !== requestedLoadout.frontTool;
+    vehicle.frontToolEnabled = !loadoutWasNormalized && Boolean(saved.frontToolEnabled);
+    vehicle.rearToolEnabled = !loadoutWasNormalized && Boolean(saved.rearToolEnabled);
+    vehicle.equipmentState.balerLitres = THREE.MathUtils.clamp(Math.floor(Number(saved.equipmentState?.balerLitres) || 0), 0, BALER_STORAGE_CAPACITY - 1);
     vehicle.storage.contents = {};
     let remaining = vehicle.storage.capacity;
     for (const [cropId, savedAmount] of Object.entries(saved.storage || {})) {
@@ -492,7 +504,8 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
     }
     vehicle.visual.setLoadout(vehicle.loadout);
     vehicle.visual.setStorageAmount(storageAmount(vehicle), vehicle.storage.capacity);
-    vehicle.visual.setToolEnabled(vehicle.toolEnabled, true);
+    vehicle.visual.setToolEnabled('front', vehicle.frontToolEnabled, true);
+    vehicle.visual.setToolEnabled('rear', vehicle.rearToolEnabled, true);
     if (validSavedPosition(saved.position)) physics.placeVehicle(vehicle.id, saved.position, saved.grounded);
   }
   const savedActiveIndex = fleet.findIndex(vehicle => vehicle.id === savedActiveVehicleId);
@@ -518,7 +531,7 @@ function initializeFarm(savedState) {
   else resetFleet();
   syncActiveVehicleUi();
   syncProgressionUi();
-  syncStorageUi();
+  syncInventoryUi();
   farm.cargoPort.setLoadRatio(milestoneLoadRatio());
   applyCropOverlay();
   updateDriveCamera(activeVehicleState(), 0, true);
@@ -529,8 +542,21 @@ function initializeFarm(savedState) {
 
 function syncUnlockedProgressionUi() {
   const state = progression.state();
+  for (const vehicle of fleet) {
+    if (!vehicle.definition.slots.length) continue;
+    const normalized = normalizeLoadout(vehicle.loadout, state.unlockedGates);
+    if (normalized.tool === vehicle.loadout.tool && normalized.frontTool === vehicle.loadout.frontTool) continue;
+    vehicle.loadout = normalized;
+    vehicle.frontToolEnabled = false;
+    vehicle.rearToolEnabled = false;
+    setStorageCapacity(vehicle);
+    vehicle.visual.setLoadout(normalized);
+    vehicle.visual.setToolEnabled('front', false, true);
+    vehicle.visual.setToolEnabled('rear', false, true);
+  }
   ui.setUnlockedGates(state.unlockedGates);
   ui.setDebugUnlockables(state.unlockables);
+  syncActiveVehicleUi();
   return state;
 }
 
@@ -566,18 +592,40 @@ function storageCropId(vehicle = activeVehicle()) {
   return Object.keys(storage.contents).find(cropId => storage.contents[cropId] > 0) || null;
 }
 
-function storageLabel() {
-  const vehicle = activeVehicle();
+function storageLabel(vehicle = activeVehicle()) {
   const cropId = storageCropId(vehicle);
   if (vehicle.type === 'tractor' && vehicle.loadout.tool === 'trailer') return cropId ? crops[cropId]?.name || 'Trailer' : 'Trailer';
   return cropId ? crops[cropId]?.name || 'Storage' : 'Storage';
 }
 
-function syncStorageUi() {
+function activeInventoryHud(vehicle = activeVehicle()) {
+  const equipment = equipmentDefinition(vehicle.loadout.tool);
+  const equipmentInventory = equipment?.inventory;
+  if (equipmentInventory?.stateKey) {
+    return {
+      id: `${vehicle.id}:${equipment.id}`,
+      label: equipment.name,
+      iconId: equipmentInventory.icon,
+      amount: vehicle.equipmentState[equipmentInventory.stateKey] || 0,
+      capacity: equipmentInventory.capacity,
+    };
+  }
+  if (!vehicle.storage.capacity) return null;
+  const cropId = storageCropId(vehicle);
+  return {
+    id: `${vehicle.id}:${equipment?.id || 'storage'}`,
+    label: storageLabel(vehicle),
+    iconId: cropId || equipmentInventory?.icon || 'silo',
+    amount: storageAmount(vehicle),
+    capacity: vehicle.storage.capacity,
+  };
+}
+
+function syncInventoryUi() {
   const vehicle = activeVehicle();
   const storage = vehicle.storage;
   vehicle.visual.setStorageAmount(storageAmount(vehicle), storage.capacity);
-  ui?.setHarvestMeter(storageAmount(vehicle), storage.capacity, storageLabel(), storageCropId(vehicle));
+  ui?.setInventoryHud(activeInventoryHud(vehicle));
 }
 
 function syncActiveVehicleUi() {
@@ -590,9 +638,10 @@ function syncActiveVehicleUi() {
     icon: vehicle.definition.icon,
     slots: [...vehicle.definition.slots],
     loadout: { ...vehicle.loadout },
-    toolEnabled: vehicle.toolEnabled,
+    frontToolEnabled: vehicle.frontToolEnabled,
+    rearToolEnabled: vehicle.rearToolEnabled,
   });
-  syncStorageUi();
+  syncInventoryUi();
 }
 
 function cycleVehicle() {
@@ -656,7 +705,7 @@ function finishTransfer() {
   const vehicle = transferVehicle();
   activeTransfer = null;
   vehicle?.visual.stopUnload();
-  if (vehicle?.id === activeVehicle().id) syncStorageUi();
+  if (vehicle?.id === activeVehicle().id) syncInventoryUi();
   if (transfer.kind === 'cargo') {
     const nextState = progression.state();
     ui.setMilestone(nextState);
@@ -724,7 +773,7 @@ function updateTransfer(dt) {
     }
   }
   if (!changed) return;
-  syncStorageUi();
+  syncInventoryUi();
   if (cargoChanged) {
     ui.setMilestone(progression.state());
     farm.cargoPort.setLoadRatio(milestoneLoadRatio());
@@ -793,8 +842,11 @@ ui = createUi({
   onRestart: restartGame,
   onLoadoutChange: loadout => {
     const vehicle = activeVehicle();
-    if (vehicle.loadout.tool === 'trailer' && loadout.tool !== 'trailer' && storageAmount(vehicle)) return false;
-    vehicle.loadout = { ...vehicle.loadout, ...loadout };
+    const normalized = vehicle.definition.slots.length
+      ? normalizeLoadout(loadout, progression.state().unlockedGates)
+      : { ...vehicle.loadout };
+    if (vehicle.loadout.tool === 'trailer' && normalized.tool !== 'trailer' && storageAmount(vehicle)) return false;
+    vehicle.loadout = normalized;
     setStorageCapacity(vehicle);
     vehicle.visual.setLoadout(vehicle.loadout);
     syncActiveVehicleUi();
@@ -802,10 +854,11 @@ ui = createUi({
     return true;
   },
   onLoadoutPreview: loadout => loadoutPreviews?.setLoadout(loadout),
-  onToolChange: enabled => {
+  onEquipmentAction: (slot, enabled) => {
     const vehicle = activeVehicle();
-    vehicle.toolEnabled = enabled;
-    vehicle.visual.setToolEnabled(enabled);
+    if (slot === 'front') vehicle.frontToolEnabled = enabled;
+    else vehicle.rearToolEnabled = enabled;
+    vehicle.visual.setToolEnabled(slot, enabled);
     scheduleSave();
   },
   onCycleVehicle: cycleVehicle,
@@ -858,12 +911,22 @@ function forToolRows(state, rows, localZ, apply) {
   }
 }
 
+function toolPoint(state, localX, localZ) {
+  const heading = activeVehicle().heading;
+  const sine = Math.sin(heading), cosine = Math.cos(heading);
+  return {
+    x: state.x + localX * cosine + localZ * sine,
+    z: state.z - localX * sine + localZ * cosine,
+  };
+}
+
 function applyTool(state) {
   const vehicle = activeVehicle();
-  if (!vehicle.toolEnabled || !state.grounded || state.speed < .4) return;
+  if ((!vehicle.frontToolEnabled && !vehicle.rearToolEnabled) || !state.grounded || state.speed < .4) return;
   const levelY = farm.farmingLevelNear(state.x, state.z);
-  const { tool } = vehicle.loadout;
+  const { tool, frontTool } = vehicle.loadout;
   if (vehicle.type === 'harvester') {
+    if (!vehicle.frontToolEnabled) return;
     const available = vehicle.storage.capacity - storageAmount();
     if (available <= 0) return;
     const collected = {};
@@ -882,10 +945,16 @@ function applyTool(state) {
       for (const [cropId, amount] of Object.entries(collected)) {
         vehicle.storage.contents[cropId] = (vehicle.storage.contents[cropId] || 0) + amount;
       }
-      syncStorageUi();
+      syncInventoryUi();
     }
     return;
   }
+  if (vehicle.frontToolEnabled && frontTool === 'front-mower') {
+    forToolRows(state, [-.4, 0, .4], -1.28, (x, z) => {
+      farm.mowAt(x, z, levelY, elapsed);
+    });
+  }
+  if (!vehicle.rearToolEnabled) return;
   if (tool === 'plough') {
     forToolRows(state, [-.6, -.2, .2, .6], 1.58, (x, z) => {
       farm.ploughAt(x, z, levelY, vehicle.heading);
@@ -902,6 +971,30 @@ function applyTool(state) {
     forToolRows(state, [-1.15, -.77, -.38, 0, .38, .77, 1.15], 1.58, (x, z) => {
       farm.sprayAt(x, z, levelY);
     });
+  }
+  else if (tool === 'rear-mower') {
+    forToolRows(state, [.45, .85, 1.25, 1.65], 1.5, (x, z) => {
+      farm.mowAt(x, z, levelY, elapsed);
+    });
+  }
+  else if (tool === 'baler') {
+    let collected = 0;
+    forToolRows(state, [-.4, 0, .4], 1.68, (x, z) => {
+      collected += farm.takeLooseGrassAt(x, z, levelY);
+    });
+    if (!collected) return;
+    let balerLitres = vehicle.equipmentState.balerLitres + collected;
+    let emitted = 0;
+    while (balerLitres >= BALER_STORAGE_CAPACITY) {
+      const drop = toolPoint(state, 0, 2.52 + emitted * .34);
+      farm.spawnBale(drop.x, levelY, drop.z, vehicle.heading);
+      vehicle.visual.playBale();
+      balerLitres -= BALER_STORAGE_CAPACITY;
+      emitted++;
+    }
+    vehicle.equipmentState.balerLitres = balerLitres;
+    syncInventoryUi();
+    scheduleSave();
   }
 }
 
@@ -929,7 +1022,7 @@ function updateDrive(dt) {
   }
   visualSteer = steer;
 
-  physics.drive(dt, driveDirection, driveAmount, ui.consumeJump(), vehicle.toolEnabled);
+  physics.drive(dt, driveDirection, driveAmount, ui.consumeJump(), vehicle.frontToolEnabled || vehicle.rearToolEnabled);
   physics.step(dt);
   const state = activeVehicleState();
   if (!before.grounded && state.grounded && before.verticalSpeed < -.35) {

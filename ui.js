@@ -1,4 +1,5 @@
-import { cropIds, crops } from './crops.js?v=crop-diversity-20260831-1';
+import { cropIds, crops } from './crops.js?v=hay-simple-20260901-1';
+import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=hay-simple-20260901-1';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', icon: 'plough' },
@@ -6,32 +7,22 @@ const CATEGORIES = [
 ];
 
 const CATALOG = {
-  equipment: [
-    { id: 'plough', name: 'Plough', icon: 'plough', description: 'Turns grass tiles into prepared soil across four rows.', status: 'Available' },
-    { id: 'seeder', name: 'Seeder', icon: 'seeder', description: 'Plants the selected seed in two clean rows of prepared soil.', status: 'Available' },
-    { id: 'sprayer', name: 'Sprayer', icon: 'sprayer', description: 'Covers a wide strip and clears weeds from growing crops.', status: 'Available' },
-    { id: 'trailer', name: 'Grain Trailer', icon: 'silo', description: 'Carries up to 20,000 L between silos and the cargo pad.', status: 'Available' },
-  ],
-  frontTools: [
-    { id: 'loader', name: 'Front Loader', icon: 'utility', description: 'Move and lift heavy objects.', status: 'Available' },
-    { id: 'forks', name: 'Pallet Forks', icon: 'utility', description: 'Carry crates and stacked supplies.', status: 'Not yet available', locked: true },
-    { id: 'weight', name: 'Front Weight', icon: 'utility', description: 'Adds stability for heavy rear work.', status: 'Not yet available', locked: true },
-  ],
+  equipment: REAR_EQUIPMENT,
+  frontTools: FRONT_EQUIPMENT,
 };
 
-const TOOL_LABELS = { plough: 'Plough', seeder: 'Seeder', sprayer: 'Sprayer', trailer: 'Grain Trailer' };
 const DEFAULT_LOADOUT = { tool: 'plough', frontTool: 'loader' };
 const TICKER_STEP_LITRES = 10;
 const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 
-export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
   let draftLoadout = { ...activeLoadout };
   let activeVehicle = { id: 'tractor-1', type: 'tractor', name: 'Farm Tractor', icon: 'tractor', slots: ['tool', 'frontTool'] };
-  let toolEnabled = false;
+  let equipmentEnabled = { front: false, rear: false };
   let unlockedGates = new Set(['crop:wheat']);
   let cropIndex = 0;
   let seedIndex = 0;
@@ -51,10 +42,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   let buildPointer = null;
   let seedCropToastTimer = null;
   let restoreFocus = null;
-  let grainFill = 0;
-  let grainCapacity = 3600;
-  let grainLabel = 'Storage';
-  let grainCropId = null;
+  let inventoryHud = null;
   let siloInventory = null;
   let siloCropId = null;
   let milestoneState = null;
@@ -89,15 +77,15 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   const desktopHints = document.querySelector('#desktopHints');
   const secondaryHint = document.querySelector('#secondaryHint');
   const secondaryHintLabel = document.querySelector('#secondaryHintLabel');
-  const toolToggle = document.querySelector('#toolToggle');
+  const frontToolToggle = document.querySelector('#frontToolToggle');
+  const rearToolToggle = document.querySelector('#rearToolToggle');
   const seedCycleControl = document.querySelector('#seedCycleControl');
   const seedCropToast = document.querySelector('#seedCropToast');
   const unloadButton = document.querySelector('#unloadButton');
   const unloadIconUse = document.querySelector('#unloadIconUse');
-  const toolIconUse = document.querySelector('#toolIconUse');
-  const toolName = document.querySelector('#toolName');
-  const toolState = document.querySelector('#toolState');
-  const grainMeter = document.querySelector('#grainMeter');
+  const frontToolState = document.querySelector('#frontToolState');
+  const rearToolState = document.querySelector('#rearToolState');
+  const inventoryMeter = document.querySelector('#inventoryMeter');
   const siloInventoryElement = document.querySelector('#siloInventory');
   const siloCropIcon = document.querySelector('#siloCropIcon');
   const siloCropIconUse = document.querySelector('#siloCropIconUse');
@@ -123,7 +111,6 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   const vehicleIdentity = document.querySelector('#vehicleIdentity');
   const applyLoadout = document.querySelector('#applyLoadout');
   const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints, siloInventoryElement];
-  const stickRadius = 43;
 
   document.body.tabIndex = -1;
   const setInputMode = mode => { document.body.dataset.inputMode = mode; };
@@ -260,46 +247,40 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   };
 
   const inputLocked = () => overlayState !== null || cinematicActive;
+  const itemLocked = item => Boolean(item?.unavailable || (item?.gate && !unlockedGates.has(item.gate)));
 
-  const renderTool = () => {
-    if (activeVehicle.type === 'harvester') {
-      toolToggle.hidden = false;
-      const action = toolEnabled ? 'Stop' : 'Start';
-      toolToggle.setAttribute('aria-label', `${action} header`);
-      toolToggle.setAttribute('aria-pressed', String(toolEnabled));
-      toolToggle.title = `${action} header`;
-      toolIconUse.setAttribute('href', '#icon-harvester');
-      toolName.textContent = 'Harvest header';
-      toolState.textContent = toolEnabled ? 'Collecting · 2.9 speed' : 'Ready to harvest · 5.8 speed';
-      return;
-    }
-    if (activeLoadout.tool === 'trailer') {
-      toolToggle.hidden = true;
-      return;
-    }
-    toolToggle.hidden = false;
-    const label = TOOL_LABELS[activeLoadout.tool];
-    const action = toolEnabled ? 'Raise' : 'Lower';
-    toolToggle.setAttribute('aria-label', `${action} ${label}`);
-    toolToggle.setAttribute('aria-pressed', String(toolEnabled));
-    toolToggle.title = `${action} ${label}`;
-    toolIconUse.setAttribute('href', `#icon-${activeLoadout.tool}`);
-    toolName.textContent = label;
-    toolState.textContent = toolEnabled ? 'Lowered · 2.9 speed' : 'Raised · 5.8 speed';
+  const renderEquipmentAction = (slot, button, stateElement, item) => {
+    const enabled = equipmentEnabled[slot];
+    button.hidden = !item;
+    if (!item) return;
+    const action = enabled ? 'Raise' : 'Lower';
+    button.setAttribute('aria-label', `${action} ${slot} tool: ${item.name}`);
+    button.setAttribute('aria-pressed', String(enabled));
+    button.title = `${action} ${slot} tool: ${item.name}`;
+    stateElement.textContent = enabled ? `${item.name} · lowered` : `${item.name} · raised`;
   };
 
-  const renderGrainMeter = () => {
-    const visible = grainCapacity > 0;
-    grainMeter.hidden = !visible;
-    const displayFill = tickerValue('grain-tank', grainFill, grainFill, METER_TICKS_PER_SECOND, 'grain');
-    const percent = grainCapacity ? Math.round(displayFill / grainCapacity * 100) : 0;
-    renderCropMeter(grainMeter, {
-      cropId: grainCropId,
-      label: grainLabel,
-      value: `${formatLitres(displayFill)} / ${formatLitres(grainCapacity)}`,
+  const renderEquipmentActions = () => {
+    const frontItem = activeVehicle.type === 'harvester'
+      ? { id: 'header', name: 'Harvest header', working: true }
+      : equipmentDefinition(activeLoadout.frontTool);
+    const rearItem = activeVehicle.type === 'harvester' ? null : equipmentDefinition(activeLoadout.tool);
+    renderEquipmentAction('front', frontToolToggle, frontToolState, frontItem?.working ? frontItem : null);
+    renderEquipmentAction('rear', rearToolToggle, rearToolState, rearItem?.working ? rearItem : null);
+  };
+
+  const renderInventoryMeter = () => {
+    inventoryMeter.hidden = !inventoryHud;
+    if (!inventoryHud) return;
+    const displayAmount = tickerValue(`inventory:${inventoryHud.id}`, inventoryHud.amount, inventoryHud.amount, METER_TICKS_PER_SECOND, 'inventory');
+    const percent = inventoryHud.capacity ? Math.round(displayAmount / inventoryHud.capacity * 100) : 0;
+    renderCropMeter(inventoryMeter, {
+      cropId: inventoryHud.iconId,
+      label: inventoryHud.label,
+      value: `${formatLitres(displayAmount)} / ${formatLitres(inventoryHud.capacity)}`,
       percent,
-      ariaLabel: `${grainLabel} storage`,
-      ariaValueText: `${formatLitres(displayFill)} of ${formatLitres(grainCapacity)} ${grainLabel.toLowerCase()} stored`,
+      ariaLabel: `${inventoryHud.label} inventory`,
+      ariaValueText: `${formatLitres(displayAmount)} of ${formatLitres(inventoryHud.capacity)} in ${inventoryHud.label.toLowerCase()}`,
     });
   };
 
@@ -464,12 +445,15 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     onBuildModeChange(buildMode);
   };
 
-  const toggleTool = () => {
+  const toggleEquipment = slot => {
     if (inputLocked() || cropOverlayEnabled || buildMode) return;
-    if (activeVehicle.type !== 'harvester' && activeLoadout.tool === 'trailer') return;
-    toolEnabled = !toolEnabled;
-    renderTool();
-    onToolChange(toolEnabled);
+    const item = activeVehicle.type === 'harvester'
+      ? slot === 'front' ? { working: true } : null
+      : equipmentDefinition(slot === 'front' ? activeLoadout.frontTool : activeLoadout.tool);
+    if (!item?.working) return;
+    equipmentEnabled[slot] = !equipmentEnabled[slot];
+    renderEquipmentActions();
+    onEquipmentAction(slot, equipmentEnabled[slot]);
   };
 
   const cycleVehicle = () => {
@@ -513,14 +497,13 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
           const name = document.createElement('span');
           const state = document.createElement('span');
           button.type = 'button';
-          button.className = `loadoutOption${item.locked ? ' locked' : ''}`;
-          button.setAttribute('aria-label', `${item.name}${item.locked ? ', locked preview' : ''}`);
+          button.className = 'loadoutOption';
           name.className = 'optionName';
           name.textContent = item.name;
           state.className = 'optionState';
           button.append(name, state);
           button.addEventListener('click', () => {
-            if (item.locked || !activeVehicle.slots.includes(category.key)) return;
+            if (itemLocked(item) || !activeVehicle.slots.includes(category.key)) return;
             draftLoadout[category.key] = item.id;
             renderLoadoutBays();
           });
@@ -529,13 +512,16 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       }
       [...options.children].forEach((button, index) => {
         const item = CATALOG[category.id][index];
+        const locked = itemLocked(item);
         const selected = draftLoadout[category.key] === item.id;
         const unavailable = !activeVehicle.slots.includes(category.key);
+        button.classList.toggle('locked', locked);
         options.closest('.loadoutBay').classList.toggle('unavailable', unavailable);
         button.disabled = unavailable;
         button.setAttribute('aria-disabled', String(unavailable));
         button.setAttribute('aria-pressed', String(selected));
-        button.querySelector('.optionState').textContent = unavailable ? 'Unavailable' : item.locked ? 'Preview' : selected ? 'Selected' : 'Select';
+        button.setAttribute('aria-label', `${item.name}${locked ? ', locked preview' : ''}`);
+        button.querySelector('.optionState').textContent = unavailable ? 'Unavailable' : locked ? 'Locked' : selected ? 'Selected' : 'Select';
       });
     });
     renderVehicleIdentity();
@@ -634,16 +620,18 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     const nextLoadout = { ...draftLoadout };
     if (onLoadoutChange(nextLoadout) === false) return;
     activeLoadout = nextLoadout;
-    toolEnabled = false;
-    renderTool();
-    onToolChange(false);
+    equipmentEnabled = { front: false, rear: false };
+    renderEquipmentActions();
+    onEquipmentAction('front', false);
+    onEquipmentAction('rear', false);
     hideOverlay();
-    renderGrainMeter();
+    renderInventoryMeter();
     renderSecondaryAction();
   };
 
   const updateStick = event => {
     const rect = stickZone.getBoundingClientRect();
+    const stickRadius = parseFloat(getComputedStyle(stickZone).getPropertyValue('--stick-travel')) || 43;
     let dx = event.clientX - rect.left - stickOrigin.x;
     let dy = event.clientY - rect.top - stickOrigin.y;
     const length = Math.hypot(dx, dy) || 1;
@@ -670,10 +658,10 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       return;
     }
     if (overlayState === 'barn') {
-      const index = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[event.code];
+      const index = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5, Digit7: 6 }[event.code];
       if (index !== undefined) {
         const item = CATALOG.equipment[index];
-        if (!item.locked && activeVehicle.slots.includes('tool')) draftLoadout.tool = item.id;
+        if (item && !itemLocked(item) && activeVehicle.slots.includes('tool')) draftLoadout.tool = item.id;
         renderLoadoutBays();
       }
       return;
@@ -682,7 +670,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
     keys.add(event.code);
     if (!cropOverlayEnabled && !buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
-    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyE' && !event.repeat) toggleTool();
+    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyQ' && !event.repeat) toggleEquipment('front');
+    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyE' && !event.repeat) toggleEquipment('rear');
     if (!cropOverlayEnabled && !buildMode && event.code === 'KeyF' && !event.repeat) useSecondaryAction();
     if (!cropOverlayEnabled && !buildMode && event.code === 'KeyV' && !event.repeat) cycleVehicle();
     if (!cropOverlayEnabled && event.code === 'KeyB' && !event.repeat) setBuildMode(!buildMode);
@@ -735,11 +724,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     event.preventDefault();
     setInputMode('touch');
     const rect = stickZone.getBoundingClientRect();
-    const edge = 72;
-    stickOrigin.x = Math.max(edge, Math.min(rect.width - edge, event.clientX - rect.left));
-    stickOrigin.y = Math.max(edge, Math.min(rect.height - edge, event.clientY - rect.top));
-    stickBase.style.left = `${stickOrigin.x}px`;
-    stickBase.style.top = `${stickOrigin.y}px`;
+    stickOrigin.x = rect.width / 2;
+    stickOrigin.y = rect.height / 2;
     stickBase.classList.add('active');
     stickPointer = event.pointerId;
     stickZone.setPointerCapture(event.pointerId);
@@ -756,7 +742,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     input.jumpQueued = true;
   });
   cycleVehicleButton.addEventListener('click', cycleVehicle);
-  toolToggle.addEventListener('click', toggleTool);
+  frontToolToggle.addEventListener('click', () => toggleEquipment('front'));
+  rearToolToggle.addEventListener('click', () => toggleEquipment('rear'));
   unloadButton.addEventListener('click', useSecondaryAction);
   suitabilityToggle.addEventListener('click', () => setCropOverlay(!cropOverlayEnabled));
   buildingToggle.addEventListener('click', () => setBuildMode(!buildMode));
@@ -833,8 +820,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
 
-  renderTool();
-  renderGrainMeter();
+  renderEquipmentActions();
+  renderInventoryMeter();
   renderSecondaryAction();
   renderCropOverlay();
   renderBuildMode();
@@ -863,6 +850,17 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
         icon.setAttribute('aria-hidden', 'true');
         const label = document.createElement('strong');
         label.textContent = crops[cropId].name;
+        item.append(icon, label);
+      }
+      else if (gate === 'equipment:hay') {
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        const label = document.createElement('strong');
+        icon.setAttribute('class', 'icon unlockIcon');
+        icon.setAttribute('aria-hidden', 'true');
+        use.setAttribute('href', '#icon-baler');
+        icon.append(use);
+        label.textContent = 'Hay equipment';
         item.append(icon, label);
       }
       else {
@@ -917,7 +915,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       selectedBuilding = null;
       renderBuildMode();
     },
-    toolEnabled: () => toolEnabled,
+    equipmentEnabled: slot => Boolean(equipmentEnabled[slot]),
+    anyEquipmentEnabled: () => equipmentEnabled.front || equipmentEnabled.rear,
     setActiveVehicle(nextVehicle) {
       activeVehicle = {
         id: nextVehicle.id,
@@ -928,18 +927,29 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       };
       activeLoadout = { ...nextVehicle.loadout };
       draftLoadout = { ...activeLoadout };
-      toolEnabled = Boolean(nextVehicle.toolEnabled);
-      renderTool();
-      renderGrainMeter();
+      equipmentEnabled = {
+        front: Boolean(nextVehicle.frontToolEnabled),
+        rear: Boolean(nextVehicle.rearToolEnabled),
+      };
+      renderEquipmentActions();
+      inventoryHud = null;
+      renderInventoryMeter();
       renderSecondaryAction();
       renderLoadoutBays();
     },
-    setHarvestMeter(nextFill, nextCapacity, nextLabel = 'Storage', nextCropId = null) {
-      grainFill = Math.max(0, Math.min(nextCapacity, nextFill));
-      grainCapacity = nextCapacity;
-      grainLabel = nextLabel;
-      grainCropId = nextCropId;
-      renderGrainMeter();
+    setInventoryHud(nextInventory) {
+      if (!nextInventory) inventoryHud = null;
+      else {
+        const capacity = Math.max(1, Number(nextInventory.capacity) || 1);
+        inventoryHud = {
+          id: String(nextInventory.id || 'inventory'),
+          label: String(nextInventory.label || 'Storage'),
+          iconId: String(nextInventory.iconId || 'silo'),
+          amount: Math.max(0, Math.min(capacity, Number(nextInventory.amount) || 0)),
+          capacity,
+        };
+      }
+      renderInventoryMeter();
     },
     animate(dt) {
       const changedViews = new Set();
@@ -960,7 +970,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
         ticker.value = Math.round((ticker.value + Math.sign(difference) * step) * 100) / 100;
         changedViews.add(ticker.view);
       }
-      if (changedViews.has('grain')) renderGrainMeter();
+      if (changedViews.has('inventory')) renderInventoryMeter();
       if (changedViews.has('silo')) renderSiloInventory();
       if (changedViews.has('milestone') && milestoneState) renderMilestone(milestoneState);
     },
@@ -1051,6 +1061,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       cropIndex = Math.max(0, availableCrops.indexOf(previousOverlay));
       renderSecondaryAction();
       renderCropOverlay();
+      renderLoadoutBays();
+      renderEquipmentActions();
       if (cropOverlayEnabled) notifyCropOverlay();
     },
     isGameplayBlocked: () => overlayState !== null,
@@ -1064,14 +1076,13 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       cinematicActive = false;
       insideBarn = false;
       if (buildMode) setBuildMode(false);
-      toolEnabled = false;
-      grainFill = 0;
-      grainLabel = 'Storage';
-      grainCropId = null;
-      renderTool();
-      renderGrainMeter();
+      equipmentEnabled = { front: false, rear: false };
+      inventoryHud = null;
+      renderEquipmentActions();
+      renderInventoryMeter();
       renderSecondaryAction();
-      onToolChange(false);
+      onEquipmentAction('front', false);
+      onEquipmentAction('rear', false);
       if (overlayState) hideOverlay();
     },
   };

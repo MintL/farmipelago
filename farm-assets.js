@@ -1,4 +1,4 @@
-import { box, mats, THREE } from './shared.js?v=crop-diversity-20260831-1';
+import { box, mats, THREE } from './shared.js?v=hay-simple-20260901-1';
 
 const previewMats = {
   green: new THREE.MeshStandardMaterial({ color: 0x6eab37, roughness: .7 }),
@@ -122,6 +122,62 @@ function createSprayerAsset() {
   return group;
 }
 
+function createMowerDeckAsset(front = false) {
+  const group = new THREE.Group();
+  group.name = front ? 'attachment-front-mower' : 'attachment-rear-mower';
+  const width = front ? 1.32 : 1.72;
+  const centerX = front ? 0 : .8;
+  const hitch = box(.28, .16, .34, mats.tractorDark); hitch.position.z = front ? .22 : -.15; group.add(hitch);
+  const arm = box(front ? .22 : 1.18, .12, .14, mats.tractorDark);
+  arm.position.set(front ? 0 : .35, .08, front ? -.02 : .04); group.add(arm);
+  const deck = box(width, .16, .56, mats.tractorAccent); deck.position.set(centerX, -.08, .28); group.add(deck);
+  const guard = box(width + .08, .06, .64, mats.tractorCream); guard.position.set(centerX, .03, .28); group.add(guard);
+  const rotors = new THREE.Group();
+  rotors.name = 'mower-rotors';
+  group.add(rotors);
+  const count = front ? 3 : 4;
+  for (let index = 0; index < count; index++) {
+    const x = centerX + (index - (count - 1) * .5) * .4;
+    const rotor = new THREE.Group();
+    rotor.position.set(x, -.19, .28);
+    rotor.userData.spinDirection = index % 2 ? -1 : 1;
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, .055, 12), mats.metal);
+    disc.castShadow = true;
+    rotor.add(disc);
+    const knife = box(.48, .025, .055, mats.tractorDark); knife.position.y = -.035; rotor.add(knife);
+    rotors.add(rotor);
+  }
+  return group;
+}
+
+function createBalerAsset() {
+  const group = new THREE.Group();
+  group.name = 'attachment-baler';
+  const hitch = box(.24, .14, .68, mats.tractorDark); hitch.position.set(0, .18, .08); group.add(hitch);
+  const body = box(1.34, .92, 1.65, mats.tractorAccent); body.position.set(0, .48, .92); group.add(body);
+  const roof = box(1.42, .1, 1.72, mats.tractorCream); roof.position.set(0, .99, .92); group.add(roof);
+  const chamber = box(1.08, .62, 1.18, mats.tractorDark); chamber.position.set(0, .5, 1.02); group.add(chamber);
+  const pickup = new THREE.Group();
+  pickup.name = 'baler-pickup';
+  pickup.position.set(0, .06, .1);
+  group.add(pickup);
+  const roller = new THREE.Mesh(new THREE.CylinderGeometry(.24, .24, 1.22, 12), mats.metal);
+  roller.rotation.z = Math.PI / 2; roller.castShadow = true; pickup.add(roller);
+  for (let index = 0; index < 8; index++) {
+    const angle = index / 8 * Math.PI * 2;
+    const tine = box(1.3, .035, .07, mats.tractorCream);
+    tine.position.set(0, Math.cos(angle) * .25, Math.sin(angle) * .25);
+    tine.rotation.x = angle;
+    pickup.add(tine);
+  }
+  const chute = box(1.02, .1, .72, mats.tractorDark); chute.name = 'baler-chute'; chute.position.set(0, .18, 1.95); chute.rotation.x = -.12; group.add(chute);
+  for (const x of [-.73, .73]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(.27, .27, .18, 10), mats.tire);
+    wheel.position.set(x, .26, 1.16); wheel.rotation.z = Math.PI / 2; wheel.castShadow = true; group.add(wheel);
+  }
+  return group;
+}
+
 export function createTrailerAsset() {
   const group = new THREE.Group();
   group.name = 'attachment-trailer';
@@ -145,7 +201,13 @@ export function createTrailerAsset() {
 }
 
 export function createRearToolAsset(type) {
-  const factories = { plough: createPloughAsset, seeder: createSeederAsset, sprayer: createSprayerAsset };
+  const factories = {
+    plough: createPloughAsset,
+    seeder: createSeederAsset,
+    sprayer: createSprayerAsset,
+    'rear-mower': () => createMowerDeckAsset(false),
+    baler: createBalerAsset,
+  };
   if (type === 'trailer') return createTrailerAsset().group;
   return factories[type]?.() || null;
 }
@@ -247,7 +309,7 @@ function createFrontWeightAsset() {
 }
 
 export function createFrontToolAsset(type) {
-  const factories = { loader: createFrontLoaderAsset, forks: createForksAsset, weight: createFrontWeightAsset };
+  const factories = { loader: createFrontLoaderAsset, 'front-mower': () => createMowerDeckAsset(true), forks: createForksAsset, weight: createFrontWeightAsset };
   return factories[type]?.() || null;
 }
 

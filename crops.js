@@ -1,6 +1,6 @@
 const clamp = value => Math.max(0, Math.min(1, value));
 
-export const cropIds = ['corn', 'wheat', 'barley', 'canola', 'soybean'];
+export const cropIds = ['corn', 'wheat', 'barley', 'canola', 'soybean', 'grass'];
 
 export const crops = {
   corn: {
@@ -27,6 +27,11 @@ export const crops = {
     name: 'Soybeans',
     moisture: { preferred: .76, tolerance: .25 },
     sun: { preferred: .84, tolerance: .25 },
+  },
+  grass: {
+    name: 'Grass',
+    moisture: { preferred: .68, tolerance: .34 },
+    sun: { preferred: .62, tolerance: .36 },
   },
 };
 

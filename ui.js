@@ -25,7 +25,7 @@ const TICKER_STEP_LITRES = 10;
 const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 
-export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -37,6 +37,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   let seedIndex = 0;
   let cropOverlayEnabled = false;
   let buildMode = false;
+  let cinematicActive = false;
   let selectedBuilding = null;
   let insideBarn = false;
   let overlayState = null;
@@ -57,17 +58,29 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   let siloInventory = null;
   let siloCropId = null;
   let milestoneState = null;
+  let debugUnlockables = [];
   const amountTickers = new Map();
 
   const topBar = document.querySelector('#topBar');
   const overlay = document.querySelector('#overlay');
   const barnDialog = document.querySelector('#barnDialog');
   const pauseDialog = document.querySelector('#pauseDialog');
+  const celebrationDialog = document.querySelector('#celebrationDialog');
+  const celebrationEyebrow = document.querySelector('#celebrationEyebrow');
+  const celebrationHeading = document.querySelector('#celebrationHeading');
+  const celebrationTitle = document.querySelector('#celebrationTitle');
+  const celebrationCopy = document.querySelector('#celebrationCopy');
+  const celebrationUnlocks = document.querySelector('#celebrationUnlocks');
+  const celebrationContinue = document.querySelector('#celebrationContinue');
   const pauseBody = document.querySelector('#pauseBody');
   const confirmBody = document.querySelector('#confirmBody');
   const pauseTitle = document.querySelector('#pauseTitle');
   const controlsList = document.querySelector('#controlsList');
   const showControls = document.querySelector('#showControls');
+  const showDebug = document.querySelector('#showDebug');
+  const debugPanel = document.querySelector('#debugPanel');
+  const debugUnlockList = document.querySelector('#debugUnlockList');
+  const clearUnlockOverrides = document.querySelector('#clearUnlockOverrides');
   const stickZone = document.querySelector('#stickZone');
   const stickBase = document.querySelector('#stickBase');
   const stickKnob = document.querySelector('#stickKnob');
@@ -125,6 +138,33 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     use.setAttribute('href', `#icon-${cropId}`);
     icon.append(use);
     return icon;
+  };
+
+  const renderDebugUnlockables = () => {
+    debugUnlockList.replaceChildren();
+    for (const unlockable of debugUnlockables) {
+      const button = document.createElement('button');
+      const details = document.createElement('span');
+      const name = document.createElement('strong');
+      const category = document.createElement('small');
+      const state = document.createElement('small');
+      const canOverride = Boolean(unlockable.canOverride);
+      const overridden = Boolean(unlockable.overridden);
+      name.textContent = unlockable.name;
+      category.textContent = unlockable.category;
+      state.className = 'debugUnlockState';
+      state.textContent = overridden ? 'Override on' : unlockable.unlocked ? 'Unlocked' : 'Locked';
+      details.append(name, category);
+      button.className = 'debugUnlock';
+      button.type = 'button';
+      button.dataset.unlockId = unlockable.id;
+      button.setAttribute('aria-pressed', String(overridden));
+      button.setAttribute('aria-label', `${unlockable.name}: ${state.textContent}${canOverride ? '. Toggle override' : '. Unlocked by progression'}`);
+      button.disabled = !canOverride;
+      button.append(details, state);
+      debugUnlockList.append(button);
+    }
+    clearUnlockOverrides.hidden = !debugUnlockables.some(unlockable => unlockable.overridden);
   };
 
   const cropMeters = new WeakMap();
@@ -218,6 +258,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     clearBuildPointer();
     panDragX = panDragY = 0;
   };
+
+  const inputLocked = () => overlayState !== null || cinematicActive;
 
   const renderTool = () => {
     if (activeVehicle.type === 'harvester') {
@@ -335,7 +377,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   };
 
   const useSecondaryAction = () => {
-    if (overlayState || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || cropOverlayEnabled || buildMode) return;
     if (activeVehicle.type !== 'harvester' && activeLoadout.tool === 'seeder') {
       seedIndex = (seedIndex + 1) % availableCropIds().length;
       renderSecondaryAction();
@@ -399,6 +441,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   const notifyCropOverlay = () => onCropOverlayChange({ enabled: cropOverlayEnabled, cropId: selectedOverlayCropId() });
 
   const setCropOverlay = enabled => {
+    if (inputLocked()) return;
     if (overlayState || cropOverlayEnabled === enabled) return;
     if (enabled && buildMode) setBuildMode(false);
     cropOverlayEnabled = enabled;
@@ -408,6 +451,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   };
 
   const setBuildMode = enabled => {
+    if (inputLocked()) return;
     if (overlayState || buildMode === enabled) return;
     if (enabled && cropOverlayEnabled) {
       cropOverlayEnabled = false;
@@ -421,7 +465,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   };
 
   const toggleTool = () => {
-    if (overlayState || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || cropOverlayEnabled || buildMode) return;
     if (activeVehicle.type !== 'harvester' && activeLoadout.tool === 'trailer') return;
     toolEnabled = !toolEnabled;
     renderTool();
@@ -429,7 +473,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   };
 
   const cycleVehicle = () => {
-    if (overlayState || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || cropOverlayEnabled || buildMode) return;
     clearInput();
     onCycleVehicle();
   };
@@ -519,6 +563,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     overlay.hidden = false;
     barnDialog.hidden = dialog !== barnDialog;
     pauseDialog.hidden = dialog !== pauseDialog;
+    celebrationDialog.hidden = dialog !== celebrationDialog;
     setBackgroundInert(true);
     requestAnimationFrame(() => {
       if (dialog === barnDialog) return;
@@ -533,7 +578,8 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     overlay.hidden = true;
     barnDialog.hidden = true;
     pauseDialog.hidden = true;
-    setBackgroundInert(false);
+    celebrationDialog.hidden = true;
+    setBackgroundInert(cinematicActive);
     const target = restoreFocus?.isConnected ? restoreFocus : document.body;
     restoreFocus = null;
     requestAnimationFrame(() => target.focus({ preventScroll: true }));
@@ -545,10 +591,12 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     pauseTitle.textContent = 'Paused';
     controlsList.hidden = true;
     showControls.setAttribute('aria-expanded', 'false');
+    debugPanel.hidden = true;
+    showDebug.setAttribute('aria-expanded', 'false');
   };
 
   const openPause = () => {
-    if (overlayState) return;
+    if (inputLocked()) return;
     resetPausePanel();
     showOverlay('pause', pauseDialog);
   };
@@ -563,7 +611,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   };
 
   const openBarn = () => {
-    if (overlayState || cropOverlayEnabled) return;
+    if (inputLocked() || cropOverlayEnabled) return;
     draftLoadout = { ...activeLoadout };
     renderLoadoutBays();
     showOverlay('barn', barnDialog);
@@ -573,6 +621,12 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
     if (overlayState !== 'barn') return;
     draftLoadout = { ...activeLoadout };
     hideOverlay();
+  };
+
+  const closeCelebration = () => {
+    if (overlayState !== 'celebration') return;
+    hideOverlay();
+    onMilestoneCelebrationDismissed();
   };
 
   const equipDraft = () => {
@@ -601,9 +655,14 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
 
   window.addEventListener('keydown', event => {
     setInputMode('keyboard');
+    if (cinematicActive) {
+      event.preventDefault();
+      return;
+    }
     if (event.code === 'Escape') {
       event.preventDefault();
       if (overlayState === 'barn') closeBarn();
+      else if (overlayState === 'celebration') closeCelebration();
       else if (overlayState) closePause();
       else if (buildMode) setBuildMode(false);
       else if (cropOverlayEnabled) setCropOverlay(false);
@@ -672,7 +731,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   });
 
   stickZone.addEventListener('pointerdown', event => {
-    if (overlayState || cropOverlayEnabled || buildMode || stickPointer !== null) return;
+    if (inputLocked() || cropOverlayEnabled || buildMode || stickPointer !== null) return;
     event.preventDefault();
     setInputMode('touch');
     const rect = stickZone.getBoundingClientRect();
@@ -692,7 +751,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   stickZone.addEventListener('lostpointercapture', clearStick);
 
   document.querySelector('#jump').addEventListener('pointerdown', event => {
-    if (overlayState || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || cropOverlayEnabled || buildMode) return;
     event.preventDefault();
     input.jumpQueued = true;
   });
@@ -732,11 +791,24 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   applyLoadout.addEventListener('click', equipDraft);
   document.querySelector('#closePause').addEventListener('click', closePause);
   document.querySelector('#resumeGame').addEventListener('click', closePause);
+  celebrationContinue.addEventListener('click', closeCelebration);
   showControls.addEventListener('click', () => {
     const expanded = showControls.getAttribute('aria-expanded') === 'true';
     showControls.setAttribute('aria-expanded', String(!expanded));
     controlsList.hidden = expanded;
   });
+  showDebug.addEventListener('click', () => {
+    const expanded = showDebug.getAttribute('aria-expanded') === 'true';
+    showDebug.setAttribute('aria-expanded', String(!expanded));
+    debugPanel.hidden = expanded;
+  });
+  debugUnlockList.addEventListener('click', event => {
+    const button = event.target.closest('.debugUnlock');
+    if (!button || button.disabled) return;
+    const unlockable = debugUnlockables.find(item => item.id === button.dataset.unlockId);
+    if (unlockable) onUnlockOverride(unlockable.id, !unlockable.overridden);
+  });
+  clearUnlockOverrides.addEventListener('click', onClearUnlockOverrides);
   document.querySelector('#requestRegenerate').addEventListener('click', () => {
     overlayState = 'confirm';
     pauseBody.hidden = true;
@@ -753,7 +825,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
 
   overlay.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
-    const dialog = overlayState === 'barn' ? barnDialog : pauseDialog;
+    const dialog = overlayState === 'barn' ? barnDialog : overlayState === 'celebration' ? celebrationDialog : pauseDialog;
     const focusable = [...dialog.querySelectorAll('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')].filter(element => !element.closest('[hidden]'));
     if (!focusable.length) return;
     const first = focusable[0], last = focusable[focusable.length - 1];
@@ -768,9 +840,44 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
   renderBuildMode();
   renderLoadoutBays();
 
+  const showMilestoneCelebration = milestone => {
+    const completeGame = Boolean(milestone?.completeGame);
+    celebrationEyebrow.textContent = completeGame ? 'Current prototype complete' : 'Shipment complete';
+    celebrationHeading.textContent = completeGame ? 'Farmipelago complete' : 'Milestone complete';
+    celebrationTitle.textContent = milestone?.title || 'Milestone';
+    celebrationCopy.replaceChildren(
+      celebrationTitle,
+      document.createTextNode(completeGame
+        ? ' was the final available delivery. You have unlocked every current farming capability.'
+        : ' has expanded what this Farmipelago can grow.')
+    );
+    celebrationContinue.textContent = completeGame ? 'Keep farming' : 'Continue farming';
+    celebrationUnlocks.replaceChildren();
+    const unlocks = Array.isArray(milestone?.unlocks) ? milestone.unlocks : [];
+    for (const gate of unlocks) {
+      const cropId = typeof gate === 'string' && gate.startsWith('crop:') ? gate.slice(5) : null;
+      const item = document.createElement('li');
+      item.className = 'unlockItem';
+      if (cropId && crops[cropId]) {
+        const icon = cropIcon(cropId, '', 'icon unlockIcon');
+        icon.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('strong');
+        label.textContent = crops[cropId].name;
+        item.append(icon, label);
+      }
+      else {
+        const label = document.createElement('strong');
+        label.textContent = gate;
+        item.append(label);
+      }
+      celebrationUnlocks.append(item);
+    }
+    showOverlay('celebration', celebrationDialog);
+  };
+
   return {
     driveInput() {
-      if (overlayState || cropOverlayEnabled || buildMode) return { x: 0, y: 0 };
+      if (inputLocked() || cropOverlayEnabled || buildMode) return { x: 0, y: 0 };
       let x = 0, y = 0;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
       if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
@@ -780,7 +887,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       return { x: input.x, y: -input.y };
     },
     consumePan() {
-      if (overlayState || (!cropOverlayEnabled && !buildMode)) return { keyboardX: 0, keyboardZ: 0, dragX: 0, dragY: 0 };
+      if (inputLocked() || (!cropOverlayEnabled && !buildMode)) return { keyboardX: 0, keyboardZ: 0, dragX: 0, dragY: 0 };
       let keyboardX = 0, keyboardZ = 0;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) keyboardX -= 1;
       if (keys.has('KeyD') || keys.has('ArrowRight')) keyboardX += 1;
@@ -791,7 +898,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       return pan;
     },
     consumeJump() {
-      if (overlayState || cropOverlayEnabled || buildMode) return false;
+      if (inputLocked() || cropOverlayEnabled || buildMode) return false;
       const jump = input.jumpQueued;
       input.jumpQueued = false;
       return jump;
@@ -923,6 +1030,18 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       else siloInventoryElement.hidden = false;
     },
     setMilestone: renderMilestone,
+    setDebugUnlockables(nextUnlockables) {
+      debugUnlockables = Array.isArray(nextUnlockables) ? nextUnlockables.map(unlockable => ({ ...unlockable })) : [];
+      renderDebugUnlockables();
+    },
+    showMilestoneCelebration,
+    setCinematicActive(active) {
+      cinematicActive = Boolean(active);
+      if (cinematicActive) document.body.dataset.cinematic = 'true';
+      else delete document.body.dataset.cinematic;
+      clearInput();
+      setBackgroundInert(cinematicActive || overlayState !== null);
+    },
     setUnlockedGates(nextGates) {
       const previousSeed = selectedSeedCropId();
       const previousOverlay = selectedOverlayCropId();
@@ -942,6 +1061,7 @@ export function createUi({ onRestart, onLoadoutChange, onToolChange, onCycleVehi
       if (insideBarn) openBarn();
     },
     resetFarm() {
+      cinematicActive = false;
       insideBarn = false;
       if (buildMode) setBuildMode(false);
       toolEnabled = false;

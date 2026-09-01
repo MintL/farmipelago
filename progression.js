@@ -1,5 +1,14 @@
 const INITIAL_GATES = ['crop:wheat'];
 
+const UNLOCKABLES = [
+  { id: 'crop:wheat', name: 'Wheat', category: 'Crops' },
+  { id: 'crop:barley', name: 'Barley', category: 'Crops' },
+  { id: 'crop:canola', name: 'Canola', category: 'Crops' },
+  { id: 'crop:soybean', name: 'Soybeans', category: 'Crops' },
+  { id: 'crop:corn', name: 'Corn', category: 'Crops' },
+];
+const unlockableIds = new Set(UNLOCKABLES.map(unlockable => unlockable.id));
+
 const MILESTONES = [
   {
     id: 'getting-started',
@@ -34,6 +43,8 @@ export function createMilestoneProgression(savedState = null) {
   let collected = Boolean(savedState?.collected) && index === lastMilestoneIndex;
   let delivered = {};
   let selectedCropIds = [];
+  const overrideGates = new Set((Array.isArray(savedState?.overrideGates) ? savedState.overrideGates : [])
+    .filter(gateId => unlockableIds.has(gateId)));
 
   const current = () => MILESTONES[index];
 
@@ -67,7 +78,7 @@ export function createMilestoneProgression(savedState = null) {
   };
   if (collected && !complete()) collected = false;
 
-  const unlockedGates = () => {
+  const progressionGates = () => {
     const gates = new Set(INITIAL_GATES);
     for (let milestoneIndex = 0; milestoneIndex < index; milestoneIndex++) {
       for (const gate of MILESTONES[milestoneIndex].unlocks || []) gates.add(gate);
@@ -77,6 +88,8 @@ export function createMilestoneProgression(savedState = null) {
     }
     return [...gates];
   };
+
+  const unlockedGates = () => [...new Set([...progressionGates(), ...overrideGates])];
 
   const canAccept = requirement => {
     const milestone = current();
@@ -92,18 +105,28 @@ export function createMilestoneProgression(savedState = null) {
     state() {
       const milestone = current();
       const isComplete = complete();
-      const requirements = milestone.choiceLimit && selectedCropIds.length === milestone.choiceLimit
+      const gameComplete = collected && index === lastMilestoneIndex;
+      const naturalGates = new Set(progressionGates());
+      const requirements = gameComplete ? [] : milestone.choiceLimit && selectedCropIds.length === milestone.choiceLimit
         ? milestone.requirements.filter(requirement => selectedCropIds.includes(requirement.cropId))
         : milestone.requirements;
       return {
-        id: milestone.id,
-        title: milestone.title,
-        hint: milestone.hint || '',
-        choiceLimit: milestone.choiceLimit || 0,
-        selectedCropIds: [...selectedCropIds],
+        id: gameComplete ? 'no-milestone' : milestone.id,
+        title: gameComplete ? 'No milestone' : milestone.title,
+        hint: gameComplete ? 'All current deliveries are complete' : milestone.hint || '',
+        unlocks: gameComplete ? [] : [...(milestone.unlocks || [])],
+        isFinalMilestone: !gameComplete && index === lastMilestoneIndex,
+        choiceLimit: gameComplete ? 0 : milestone.choiceLimit || 0,
+        selectedCropIds: gameComplete ? [] : [...selectedCropIds],
         unlockedGates: unlockedGates(),
-        complete: isComplete,
-        pickupReady: isComplete && !collected,
+        unlockables: UNLOCKABLES.map(unlockable => ({
+          ...unlockable,
+          unlocked: naturalGates.has(unlockable.id) || overrideGates.has(unlockable.id),
+          overridden: overrideGates.has(unlockable.id),
+          canOverride: !naturalGates.has(unlockable.id),
+        })),
+        complete: gameComplete ? false : isComplete,
+        pickupReady: !gameComplete && isComplete && !collected,
         collected,
         requirements: requirements.map(requirement => ({
           ...requirement,
@@ -115,7 +138,21 @@ export function createMilestoneProgression(savedState = null) {
       };
     },
     persistentState() {
-      return { index, collected, delivered: { ...delivered }, selectedCropIds: [...selectedCropIds] };
+      return {
+        index,
+        collected,
+        delivered: { ...delivered },
+        selectedCropIds: [...selectedCropIds],
+        overrideGates: [...overrideGates],
+      };
+    },
+    setUnlockOverride(gateId, enabled) {
+      if (!unlockableIds.has(gateId)) return false;
+      const naturalGates = new Set(progressionGates());
+      if (naturalGates.has(gateId)) return overrideGates.delete(gateId);
+      if (enabled) overrideGates.add(gateId);
+      else overrideGates.delete(gateId);
+      return true;
     },
     accept(contents) {
       if (complete() || collected) return {};
@@ -139,6 +176,7 @@ export function createMilestoneProgression(savedState = null) {
         selectedCropIds = [];
       }
       else collected = true;
+      for (const gateId of progressionGates()) overrideGates.delete(gateId);
       return true;
     },
   };

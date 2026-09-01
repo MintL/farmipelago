@@ -141,6 +141,7 @@ let visualDriveAmount = 0;
 let visualSteer = 0;
 let activeTransfer = null;
 let lastTrailerGrainTrail = -Infinity;
+let milestoneCinematic = null;
 const buildRaycaster = new THREE.Raycaster();
 const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -246,6 +247,77 @@ function updateDriveCamera(state, dt, snap = false) {
   driveCameraTarget.lerp(goal, snap ? 1 : 1 - Math.exp(-2.2 * dt));
   camera.position.copy(driveCameraTarget).add(driveCameraOffset);
   camera.lookAt(driveCameraTarget);
+}
+
+function beginMilestoneCinematic(milestone) {
+  if (milestoneCinematic || !milestone?.pickupReady) return;
+  milestoneCinematic = {
+    milestone: {
+      id: milestone.id,
+      title: milestone.title,
+      unlocks: [...milestone.unlocks],
+      isFinalMilestone: milestone.isFinalMilestone,
+    },
+    previousView: viewMode,
+    target: farm.cargoPort.cinematicView().deck,
+    collected: false,
+  };
+  visualDriveAmount = 0;
+  visualSteer = 0;
+  ui.setStoragePopup(null);
+  ui.setCinematicActive(true);
+  farm.cargoPort.requestPickup(camera);
+}
+
+function updateMilestoneCinematic(dt) {
+  const cinematic = milestoneCinematic;
+  if (!cinematic) return;
+  const state = activeVehicleState();
+  physics.drive(dt, { x: 0, z: 0 }, 0, false, false);
+  physics.step(dt);
+  const view = farm.cargoPort.cinematicView();
+  const followCraft = view.craft && (view.phase === 'ascend' || view.phase === 'depart');
+  const target = followCraft ? view.craft : view.deck;
+  cinematic.target.lerp(target, 1 - Math.exp(-3.4 * dt));
+  const offset = followCraft ? target.clone().sub(view.deck).multiplyScalar(.4) : new THREE.Vector3();
+  const cameraGoal = view.camera.clone().add(offset);
+  camera.position.lerp(cameraGoal, 1 - Math.exp(-2.8 * dt));
+  camera.lookAt(cinematic.target);
+  farm.updateOcclusion(camera.position, state, dt);
+}
+
+function collectMilestoneShipment() {
+  const cinematic = milestoneCinematic;
+  if (!cinematic || cinematic.collected) return false;
+  if (!progression.collect()) return false;
+  cinematic.collected = true;
+  syncUnlockedProgressionUi();
+  farm.cargoPort.setLoadRatio(0);
+  ui.setStoragePopup(null);
+  scheduleSave();
+  return true;
+}
+
+function finishMilestoneCinematic() {
+  const cinematic = milestoneCinematic;
+  if (!cinematic) return;
+  milestoneCinematic = null;
+  if (!cinematic.collected && !progression.collect()) {
+    setCameraView(cinematic.previousView, true);
+    ui.setCinematicActive(false);
+    return;
+  }
+  if (!cinematic.collected) syncUnlockedProgressionUi();
+  farm.cargoPort.setLoadRatio(0);
+  ui.setStoragePopup(null);
+  setCameraView(cinematic.previousView, true);
+  ui.setCinematicActive(false);
+  ui.showMilestoneCelebration({
+    title: cinematic.milestone.title,
+    unlocks: cinematic.milestone.unlocks,
+    completeGame: cinematic.milestone.isFinalMilestone,
+  });
+  scheduleSave();
 }
 
 function syncFleetVisuals(dt) {
@@ -436,7 +508,7 @@ function initializeFarm(savedState) {
   farm = generateFarm(scene, physics, savedState?.world?.seed, 0, scheduleSave);
   buildings.setParent(farm.group);
   progression = createMilestoneProgression(savedState?.progression);
-  ui.setUnlockedGates(progression.state().unlockedGates);
+  syncProgressionUi();
   if (savedState) {
     farm.restorePersistentState(savedState.world, elapsed);
     buildings.restorePersistentState(savedState.buildings);
@@ -445,13 +517,44 @@ function initializeFarm(savedState) {
   }
   else resetFleet();
   syncActiveVehicleUi();
-  ui.setMilestone(progression.state());
+  syncProgressionUi();
   syncStorageUi();
   farm.cargoPort.setLoadRatio(milestoneLoadRatio());
   applyCropOverlay();
   updateDriveCamera(activeVehicleState(), 0, true);
+  if (progression.state().pickupReady) beginMilestoneCinematic(progression.state());
   persistenceReady = true;
   writeSave();
+}
+
+function syncUnlockedProgressionUi() {
+  const state = progression.state();
+  ui.setUnlockedGates(state.unlockedGates);
+  ui.setDebugUnlockables(state.unlockables);
+  return state;
+}
+
+function syncProgressionUi() {
+  const state = syncUnlockedProgressionUi();
+  ui.setMilestone(state);
+  return state;
+}
+
+function setUnlockOverride(gateId, enabled) {
+  if (!progression.setUnlockOverride(gateId, enabled)) return false;
+  syncProgressionUi();
+  scheduleSave();
+  return true;
+}
+
+function clearUnlockOverrides() {
+  const overrides = progression.state().unlockables.filter(unlockable => unlockable.overridden);
+  let changed = false;
+  for (const unlockable of overrides) changed = progression.setUnlockOverride(unlockable.id, false) || changed;
+  if (!changed) return false;
+  syncProgressionUi();
+  scheduleSave();
+  return true;
 }
 
 function storageAmount(vehicle = activeVehicle()) {
@@ -582,11 +685,13 @@ function transferTick() {
     else moved = 0;
   }
   else {
+    const wasComplete = progression.state().complete;
     const accepted = progression.accept({ [transfer.cropId]: amount });
     moved = accepted[transfer.cropId] || 0;
     if (moved) {
       vehicle.storage.contents[transfer.cropId] -= moved;
       if (!vehicle.storage.contents[transfer.cropId]) delete vehicle.storage.contents[transfer.cropId];
+      if (!wasComplete && progression.state().complete) beginMilestoneCinematic(progression.state());
     }
   }
   if (!moved) {
@@ -660,6 +765,7 @@ function loadFromSilo(siloId, cropId) {
 }
 
 function dropOffCargo(selectedCropId = null) {
+  if (milestoneCinematic) return;
   const vehicle = activeVehicle();
   if (!canTransferCargo(vehicle)) return;
   const storage = vehicle.storage;
@@ -715,6 +821,9 @@ ui = createUi({
   },
   onBuildPointerEnd: () => { if (buildings?.endDrag()) ui.clearBuildingSelection(); },
   onBuildPointerCancel: () => buildings?.cancelDrag(),
+  onUnlockOverride: setUnlockOverride,
+  onClearUnlockOverrides: clearUnlockOverrides,
+  onMilestoneCelebrationDismissed: syncProgressionUi,
   onPersistentStateChange: scheduleSave,
   panSurface: renderer.domElement,
 });
@@ -890,6 +999,10 @@ function updateMap(dt) {
 }
 
 function updateStoragePopup() {
+  if (milestoneCinematic) {
+    ui.setStoragePopup(null);
+    return;
+  }
   if (viewMode !== 'drive' || vehicleTransition) {
     ui.setStoragePopup(null);
     return;
@@ -903,6 +1016,10 @@ function updateStoragePopup() {
   };
   if (farm.cargoPort.isNear(state.x, state.z)) {
     const milestone = progression.state();
+    if (!milestone.requirements.length) {
+      ui.setStoragePopup(null);
+      return;
+    }
     const target = farm.cargoPort.unloadTarget();
     siloPopupWorld.set(target.x, target.y + 1.8, target.z).project(camera);
     if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
@@ -948,7 +1065,8 @@ function update(dt) {
   ui.animate(dt);
   if (ui.isGameplayBlocked()) return;
   elapsed += dt;
-  if (vehicleTransition) updateVehicleTransition(dt);
+  if (milestoneCinematic) updateMilestoneCinematic(dt);
+  else if (vehicleTransition) updateVehicleTransition(dt);
   else if (viewMode === 'overlay' || viewMode === 'build') {
     visualDriveAmount = 0;
     visualSteer = 0;
@@ -957,16 +1075,8 @@ function update(dt) {
   else updateDrive(dt);
   updateTransfer(dt);
   const cargoEvent = farm?.cargoPort.update(dt, camera, progression.state().pickupReady);
-  if (cargoEvent?.pickedUp) {
-    const shipped = progression.state();
-    if (progression.collect()) {
-      const nextState = progression.state();
-      ui.setMilestone(nextState);
-      ui.setUnlockedGates(nextState.unlockedGates);
-      farm.cargoPort.setLoadRatio(0);
-      scheduleSave();
-    }
-  }
+  if (cargoEvent?.shipmentPickedUp) collectMilestoneShipment();
+  if (cargoEvent?.departed) finishMilestoneCinematic();
   syncFleetVisuals(dt);
   farm?.animate(elapsed);
   buildings?.animate(elapsed);

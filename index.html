@@ -45,6 +45,8 @@
     .eyebrow { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 
     #hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+    #hud > :not(#overlay) { transition: opacity .22s ease; }
+    body[data-cinematic="true"] #hud > :not(#overlay) { opacity: 0; visibility: hidden; }
     #performanceBadge {
       position: absolute;
       left: var(--safe-left);
@@ -656,6 +658,39 @@
       box-shadow: none;
       color: #292b25;
     }
+    #celebrationDialog {
+      width: min(390px, 100%);
+      padding: 25px 22px 20px;
+      text-align: center;
+      background: linear-gradient(145deg, rgba(246, 239, 211, .98), rgba(218, 229, 190, .98));
+      border-color: rgba(82, 102, 72, .52);
+    }
+    #celebrationDialog .eyebrow { color: var(--accent); }
+    #celebrationDialog .dialogTitle { margin: 5px 0 8px; color: var(--accent-strong); }
+    .celebrationCopy { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    #celebrationUnlocks {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      gap: 8px;
+      margin: 18px 0;
+      padding: 0;
+      list-style: none;
+    }
+    .unlockItem {
+      min-height: 76px;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 4px;
+      padding: 8px;
+      border: 1px solid rgba(82, 102, 72, .28);
+      border-radius: 13px;
+      background: rgba(255, 252, 237, .58);
+      color: var(--accent-strong);
+      font-size: 11px;
+    }
+    .unlockIcon { width: 29px; height: 29px; }
+    #celebrationContinue { width: 100%; }
     #pauseDialog .dialogHeader { min-height: 58px; padding: 4px 10px 10px 14px; border: 0; }
     #pauseDialog .dialogHeader .eyebrow { color: var(--accent); }
     #pauseDialog .dialogHeader .eyebrow::before {
@@ -724,6 +759,35 @@
       line-height: 1.4;
     }
     #controlsList strong { color: var(--ink); }
+    #debugPanel {
+      display: grid;
+      gap: 10px;
+      padding: 14px 14px 16px 51px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(52, 60, 45, .035);
+    }
+    .debugIntro { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    #debugUnlockList { display: grid; gap: 6px; }
+    .debugUnlock {
+      width: 100%;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 252, 239, .45);
+      text-align: left;
+    }
+    .debugUnlock:active { background: rgba(82, 102, 72, .12); }
+    .debugUnlock[aria-pressed="true"] { border-color: rgba(82, 102, 72, .65); background: rgba(181, 195, 153, .42); }
+    .debugUnlock:disabled { color: var(--muted); opacity: 1; }
+    .debugUnlock strong { display: block; font-size: 12px; }
+    .debugUnlock small { color: var(--muted); font-size: 10px; }
+    .debugUnlockState { color: var(--accent-strong) !important; font-weight: 760; text-align: right; }
+    #clearUnlockOverrides { justify-self: start; }
     #confirmBody p {
       margin: 0 0 14px;
       padding: 20px 14px;
@@ -792,7 +856,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.83</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.90</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -936,6 +1000,15 @@
               <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
             </div>
+            <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
+              <svg class="icon" aria-hidden="true"><use href="#icon-field"></use></svg>
+              <span><strong>Debug</strong><small>Override progression unlocks for testing</small></span>
+            </button>
+            <div id="debugPanel" hidden>
+              <p class="debugIntro">Overrides unlock an option without completing its delivery. Normal progression unlocks remain unchanged.</p>
+              <div id="debugUnlockList" aria-label="Unlockable overrides"></div>
+              <button id="clearUnlockOverrides" class="button" type="button" hidden>Clear overrides</button>
+            </div>
             <button id="requestRegenerate" class="pauseAction" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
               <span><strong>Restart game</strong><small>Delete this farm and start over</small></span>
@@ -949,6 +1022,14 @@
             <button id="confirmRegenerate" class="button danger" type="button">Delete save &amp; restart</button>
           </div>
         </div>
+      </section>
+
+      <section id="celebrationDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="celebrationHeading" hidden>
+        <span class="eyebrow" id="celebrationEyebrow">Shipment complete</span>
+        <h1 class="dialogTitle" id="celebrationHeading">Milestone complete</h1>
+        <p class="celebrationCopy" id="celebrationCopy"><strong id="celebrationTitle"></strong> has expanded what this Farmipelago can grow.</p>
+        <ul id="celebrationUnlocks" aria-label="Unlocked crops"></ul>
+        <button id="celebrationContinue" class="button primary" type="button">Continue farming</button>
       </section>
     </div>
 

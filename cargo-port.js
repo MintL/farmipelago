@@ -42,6 +42,7 @@ export function createCargoPort(site) {
   let cooldown = FIRST_VISIT_DELAY;
   let startDistance = 34;
   let pickupQueued = false;
+  let shipmentCollected = false;
 
   group.name = 'cargo-port';
   const deckBaseY = site.y + DECK_CLEARANCE;
@@ -183,8 +184,30 @@ export function createCargoPort(site) {
         crate.visible = visible;
       });
     },
+    requestPickup(camera) {
+      pickupQueued = true;
+      if (phase === 'cooldown' || phase === 'ascend' || phase === 'depart') {
+        phase = 'approach';
+        phaseTime = 0;
+        craftRoot.rotation.y = 0;
+        chooseOffscreenStart(camera);
+        craftRoot.visible = true;
+      }
+    },
+    cinematicView() {
+      const deck = localToWorld(0, DECK_CENTER_Z);
+      const cameraPoint = localToWorld(-9.4, -7.8);
+      const craftPosition = craftRoot.visible ? craftRoot.getWorldPosition(new THREE.Vector3()) : null;
+      return {
+        deck: new THREE.Vector3(deck.x, deckBaseY + 1.1, deck.z),
+        camera: new THREE.Vector3(cameraPoint.x, deckBaseY + 9.7, cameraPoint.z),
+        craft: craftPosition,
+        phase,
+      };
+    },
     update(dt, camera, pickupReady) {
-      let pickedUp = false;
+      let departed = false;
+      let shipmentPickedUp = false;
       phaseTime += dt;
       if (phase === 'cooldown') {
         if (phaseTime >= cooldown) {
@@ -208,7 +231,8 @@ export function createCargoPort(site) {
         pickupQueued ||= pickupReady;
         if (phaseTime >= DWELL_SECONDS) {
           if (pickupQueued && reducedMotion) {
-            pickedUp = true;
+            shipmentCollected = true;
+            shipmentPickedUp = true;
             this.setLoadRatio(0);
           }
           phase = pickupQueued && !reducedMotion ? 'pickup' : 'ascend';
@@ -231,7 +255,8 @@ export function createCargoPort(site) {
           if (progress >= 1) crate.visible = false;
         });
         if (phaseTime >= PICKUP_SECONDS) {
-          pickedUp = true;
+          shipmentCollected = true;
+          shipmentPickedUp = true;
           this.setLoadRatio(0);
           phase = 'ascend';
           phaseTime = 0;
@@ -246,6 +271,8 @@ export function createCargoPort(site) {
       else if (phase === 'depart') {
         placeOnCurve(departCurve, easeInCubic(Math.min(1, phaseTime / DEPART_SECONDS)));
         if (phaseTime >= DEPART_SECONDS) {
+          departed = shipmentCollected;
+          shipmentCollected = false;
           phase = 'cooldown';
           phaseTime = 0;
           cooldown = REPEAT_VISIT_DELAY;
@@ -266,7 +293,7 @@ export function createCargoPort(site) {
       for (const [index, beacon] of staticGroup.children.filter(child => child.geometry?.type === 'CylinderGeometry').entries()) {
         beacon.scale.y = .88 + Math.sin(phaseTime * 4 + index) * .12;
       }
-      return { pickedUp };
+      return { shipmentPickedUp, departed };
     },
     dispose() {
       for (const material of materials) material.dispose();

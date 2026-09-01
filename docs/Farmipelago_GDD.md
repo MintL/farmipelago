@@ -338,7 +338,7 @@ The Farmipelago's cargo pad connects the physical farm to the main progression s
 
 Vehicles with internal storage can transfer only produce requested by the current objective. Produce counts toward progression in 10 L transfer steps at the pad; surplus and unrelated produce remain in the vehicle.
 
-A chunky VTOL cargo craft periodically approaches from outside the Farmipelago, lands for a short collection window, then departs in the direction from which it arrived. Completed cargo remains staged at the pad until one of these visits collects it. This makes deliveries and shipment visible in the world without introducing a detailed market economy.
+A chunky VTOL cargo craft periodically approaches from outside the Farmipelago, lands for a short collection window, then departs in the direction from which it arrived. When a delivery milestone is completed, the craft is summoned directly to collect the staged cargo; its departure is framed as a brief celebration that clearly shows the newly unlocked farming possibilities. This makes deliveries, shipment and progression visible in the world without introducing a detailed market economy.
 
 The important mechanical function remains:
 

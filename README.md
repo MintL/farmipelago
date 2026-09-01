@@ -6,16 +6,16 @@ A phone-first Three.js prototype for driving and farming across generated floati
 
 - modern phone-first HUD with safe-area support, a fixed touch joystick, input-aware desktop hints, a shared machine-inventory meter, and a discreet build/FPS readout below the pause button
 - smooth high-angle follow camera that keeps the controlled vehicle framed
-- generated archipelago with an expanded two-island starter area: a level farmyard with a walk-in 3×3 barn and a separate roomy cargo-hub island, linked by a bridge; the remaining lobed islands use the roughly 1.5× layout scale, stepped height levels, and bridges across wide gaps
-- permanent cargo hub cantilevered from the second starter island, with a marked landing deck, staged delivery crates, and a chunky four-fan VTOL that makes a rapid curved arrival and departure while keeping its rotors fixed; completing a delivery milestone summons it straight to the pad for a short celebration flight and an explicit unlock reveal
+- generated radial archipelago with a large, level central starter hub containing the walk-in 3×3 barn, vehicles, starter field, and cargo pad; a direct bridge reaches a second large early farming island, while mixed-size surrounding islands spread outward through a deliberately varied bridge graph
+- permanent cargo hub cantilevered from the west edge of the central starter island, with a marked landing deck, staged delivery crates, and a chunky four-fan VTOL that makes a rapid curved arrival and departure while keeping its rotors fixed; completing a delivery milestone summons it straight to the pad for a short celebration flight and an explicit unlock reveal
 - generated props that fade when they block the camera's view of the tractor
 - one broad raised plot and one broad base level on each non-starter island, both kept clear as usable farm plots
 - small procedural lakes that feed animated rivers and waterfalls spilling below the islands
-- high-contrast generated moisture and sunlight fields that tint grass, gather trees into cool damp groves, and leave bright dry areas rockier and mostly treeless
+- aggressive continuous moisture and sunlight variation that creates dark dense rainforest, normal woodland, lush meadows and wetlands, yellow dry plains, and rocky scrub through strongly differentiated grass color, obstruction density, tree silhouettes, and lightweight ground cover
 - crop suitability mode with Corn, Wheat, Barley, Canola, and Soybeans views; selecting it switches to an elevated map camera with drag and keyboard panning
 - a second, round build button beneath suitability: open it to enter a pannable construction view, select the free detailed grain silo, and drag it onto a clear level patch; placed silos have physical collision and can be repositioned in build mode, retain unloaded crops, and show their available crop volumes plus round icon Load / Unload controls beneath the popup; the cargo pad uses the same popup to show each delivery requirement and its Deliver control
 - softly lit, gently fogged miniature terrain with muted grass / dirt / stone layers and deep, pointed undersides
-- sparse, clustered visual-only grass tufts that the tractor can drive through and plough clear
+- environment-driven flowers, ferns, reeds, bushes, mushrooms, lush grass, yellow dry grass, and scrub that remain non-blocking and disappear when their tile is ploughed
 - blue hero tractor with a glazed cab, treaded wheels, lamps, beacon, and squash-and-stretch jumps
 - a persistent owned Farm Tractor and Combine Harvester: both remain parked as solid world objects, keep their positions, loadouts, and storage, and cycle with a short lift-and-glide camera handoff
 - barn-style loadout workshop with live 3D previews for the controlled vehicle and its compatible rear/front equipment; equip the Farm Tractor's 20,000 L Grain Trailer to carry one crop from silos to the cargo hub, while the combine's built-in header leaves its attachment bays unavailable

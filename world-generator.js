@@ -1,23 +1,18 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=hay-simple-20260901-1';
-import { cropStats as environmentalCropStats, crops } from './crops.js?v=hay-simple-20260901-1';
-import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=vtol-fast-flight-20260901-1';
-import { createForageSystem } from './forage.js?v=hay-simple-20260901-1';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=bale-wrapper-20260902-1';
+import { cropStats as environmentalCropStats, crops } from './crops.js?v=bale-wrapper-20260902-1';
+import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=bale-wrapper-20260902-1';
+import { createForageSystem } from './forage.js?v=bale-wrapper-20260902-1';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;
 const BRIDGE_WIDTH = TILE * 1.25;
 const BRIDGE_THICKNESS = 0.18;
 const STARTER_ISLAND_ID = 0;
-const CARGO_ISLAND_ID = 1;
 const BARN_TREE_CLEARANCE = 3.5 * TILE;
 const WATER_DEPTH = .22;
 const ISLAND_LAYOUT_SCALE = 1.5;
-// The first two islands are the starting farmyard and its cargo hub. They
-// need enough clear, level land for the barn, cargo pad, crop variety, and
-// early placed buildings without crowding each other out.
-const STARTER_FARMYARD_RADIUS = 7.4;
-const STARTER_CARGO_RADIUS = 5.2;
-const STARTER_CARGO_CENTER = { x: -9, z: -1 };
+const STARTER_HUB_RADIUS = 7.2;
+const SECOND_STARTER_RADIUS = 7.0;
 const CROP_STAGE_SECONDS = 3;
 const GRASS_STAGE_SECONDS = 10;
 const WEED_CHANCE = .4;
@@ -37,7 +32,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const bridgeBlocks = [];
   const buildingObstacles = new Map();
   const trees = [];
+  const foliageMaterials = new Map();
   const tallGrass = new THREE.Group();
+  const groundCoverPlacements = [];
   const water = new THREE.Group();
   const waterMotion = [];
   const waterfalls = [];
@@ -99,7 +96,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     terrain.set(gridKey(gx, gz), {
       gx, gz, x, z, topY, baseY, islandId, radial, dirtDepth,
       environment, normalGrassColor: null, surfaceBatch: null, surfaceInstance: -1,
-      tallGrass: null, stones: [], hasTree: false,
+      tallGrass: null, groundCover: [], stones: [], hasTree: false, nearWater: 0,
       ploughed: false, water: false, reserved: false, noDecoration: false, crop: null,
       looseGrassLitres: 0,
     });
@@ -107,26 +104,20 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
 
   const grassColorFor = tile => {
     const raised = tile.topY > tile.baseY + .01;
-    const { moisture, sun } = tile.environment;
-    const shade = 1 - sun;
-    const wetShade = moisture * shade;
-    const darkening = THREE.MathUtils.smoothstep(wetShade, .20, .50);
-    // Keep the grass hue fixed. Most terrain remains normal green, while the
-    // wettest shaded pockets move through to a saturated dark green.
-    const hue = .31;
-    const saturation = .42 + moisture * .04 + darkening * .14;
-    const minLightness = .28;
-    const maxLightness = raised ? .47 : .455;
+    const profile = environmentProfile(tile.environment);
+    const yellowing = (1 - profile.moisture) * (.45 + profile.sun * .55);
+    const wetShade = profile.wet * profile.shady;
+    const hue = THREE.MathUtils.lerp(.325, .155, yellowing);
+    const saturation = THREE.MathUtils.clamp(.40 + profile.moisture * .22 + profile.sunny * .08 - profile.veryDry * .08, .34, .68);
     const lightness = THREE.MathUtils.clamp(
-      .43 + sun * .01 - moisture * .005 - shade * .005 - darkening * .14 + (raised ? .015 : 0),
-      minLightness,
-      maxLightness,
+      .43 + profile.sun * .08 + profile.veryDry * profile.sunny * .05 - wetShade * .18 - profile.shade * .035 + (raised ? .015 : 0),
+      .24,
+      .55,
     );
-    const saturationStep = Math.round((saturation - .42) / .18 * 7);
-    const lightnessStep = Math.round((lightness - minLightness) / (maxLightness - minLightness) * 8);
-    const quantizedSaturation = .42 + saturationStep * .18 / 7;
-    const quantizedLightness = minLightness + lightnessStep * (maxLightness - minLightness) / 8;
-    return new THREE.Color().setHSL(hue, quantizedSaturation, quantizedLightness);
+    const quantizedHue = Math.round(hue * 28) / 28;
+    const quantizedSaturation = Math.round(saturation * 12) / 12;
+    const quantizedLightness = Math.round(lightness * 14) / 14;
+    return new THREE.Color().setHSL(quantizedHue, quantizedSaturation, quantizedLightness);
   };
 
   const finalizeEnvironment = (cells, waterTiles) => {
@@ -139,32 +130,57 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         const distance = Math.hypot(tile.gx - waterTile.gx, tile.gz - waterTile.gz);
         waterBonus = Math.max(waterBonus, THREE.MathUtils.clamp(1 - distance / 4, 0, 1) * .58);
       }
+      tile.nearWater = waterBonus / .58;
       tile.environment.moisture = tile.water ? 1 : THREE.MathUtils.clamp(tile.environment.moisture + waterBonus, 0, 1);
       if (!tile.water) tile.normalGrassColor = grassColorFor(tile);
     }
   };
 
   const addTallGrass = tile => {
-    const tuft = new THREE.Group();
-    tuft.position.set(tile.x, tile.topY, tile.z);
-    tallGrassGeometry ||= new THREE.BoxGeometry(1, 1, 1);
-    const blades = new THREE.InstancedMesh(tallGrassGeometry, mats.tallGrass, 9);
-    const bladeTransform = new THREE.Object3D();
-    blades.castShadow = false;
-    blades.receiveShadow = false;
-    for (let index = 0; index < 9; index++) {
-      const height = .55 + random() * .38;
-      bladeTransform.position.set((random() - .5) * .5, height * .5, (random() - .5) * .5);
-      bladeTransform.rotation.set((random() - .5) * .18, random() * Math.PI, (random() - .5) * .18);
-      bladeTransform.scale.set(.05, height, .065);
-      bladeTransform.updateMatrix();
-      blades.setMatrixAt(index, bladeTransform.matrix);
+    groundCoverPlacements.push({ tile, type: 'brightGrass', yaw: random() * Math.PI * 2, scale: .85 + random() * .3 });
+  };
+
+  const addGroundCover = (tile, type) => {
+    groundCoverPlacements.push({ tile, type, yaw: random() * Math.PI * 2, scale: .82 + random() * .36 });
+  };
+
+  const buildGroundCover = () => {
+    if (!groundCoverPlacements.length) return;
+    const geometry = tallGrassGeometry ||= new THREE.BoxGeometry(1, 1, 1);
+    const materials = groundCoverMaterials();
+    const placementsByType = new Map();
+    for (const placement of groundCoverPlacements) {
+      if (!placementsByType.has(placement.type)) placementsByType.set(placement.type, []);
+      placementsByType.get(placement.type).push(placement);
     }
-    blades.instanceMatrix.needsUpdate = true;
-    blades.computeBoundingSphere();
-    tuft.add(blades);
-    tallGrass.add(tuft);
-    tile.tallGrass = tuft;
+    const transform = new THREE.Object3D();
+    const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const [type, placements] of placementsByType) {
+      const design = groundCoverDesign(type);
+      design.forEach((part, partIndex) => {
+        const mesh = new THREE.InstancedMesh(geometry, materials[part.material], placements.length);
+        mesh.name = `ground-cover-${type}-${partIndex}`;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        placements.forEach((placement, index) => {
+          const cos = Math.cos(placement.yaw);
+          const sin = Math.sin(placement.yaw);
+          transform.position.set(
+            placement.tile.x + (part.x * cos + part.z * sin) * placement.scale,
+            placement.tile.topY + part.y * placement.scale,
+            placement.tile.z + (-part.x * sin + part.z * cos) * placement.scale,
+          );
+          transform.rotation.set(part.rx || 0, placement.yaw + (part.ry || 0), part.rz || 0);
+          transform.scale.set(part.w * placement.scale, part.h * placement.scale, part.d * placement.scale);
+          transform.updateMatrix();
+          mesh.setMatrixAt(index, transform.matrix);
+          placement.tile.groundCover.push({ mesh, index, hidden });
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+        tallGrass.add(mesh);
+      });
+    }
   };
 
   const addLowerLayers = (cells, topY, radius) => {
@@ -254,13 +270,20 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   };
 
-  const addTree = (x, y, z, large) => {
+  const addTree = (x, y, z, silhouette, large, profile) => {
     const tree = new THREE.Group();
     const sway = new THREE.Group();
     tree.add(sway);
-    const silhouette = Math.floor(random() * 2);
     const scale = large ? 1.5 : 1.14;
     const design = treeDesign(silhouette);
+    const palette = treeFoliagePalette(profile);
+    if (!foliageMaterials.has(palette.key)) {
+      foliageMaterials.set(palette.key, {
+        dark: new THREE.MeshStandardMaterial({ color: palette.dark, roughness: 1 }),
+        light: new THREE.MeshStandardMaterial({ color: palette.light, roughness: 1 }),
+      });
+    }
+    const foliage = foliageMaterials.get(palette.key);
     const voxel = .27 * scale;
     const trunkHeight = design.trunkHeight * scale;
     const trunk = box(.15 * scale, trunkHeight, .15 * scale, mats.trunk);
@@ -281,7 +304,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       addBranch([sx * scale, sy * scale, sz * scale], [ex * scale, ey * scale, ez * scale]);
     });
     design.leaves.forEach(([lx, ly, lz], index) => {
-      const leaf = box(voxel, voxel, voxel, index % 3 === 0 ? mats.leavesLight : mats.leaves);
+      const leaf = box(voxel, voxel, voxel, index % 3 === 0 ? foliage.light : foliage.dark);
       leaf.position.set(lx * voxel, design.leafBaseY * scale + ly * voxel, lz * voxel);
       sway.add(leaf);
     });
@@ -384,27 +407,35 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   };
 
-  const backbone = [
-    { cx: 0, cz: 11, h: 0, r: STARTER_FARMYARD_RADIUS },
-    { cx: STARTER_CARGO_CENTER.x, cz: STARTER_CARGO_CENTER.z, h: 1, r: STARTER_CARGO_RADIUS },
-    { cx: 3, cz: -10, h: 2, r: 3.8 }, { cx: -3, cz: -20, h: 1, r: 5.5 },
-    { cx: 3, cz: -31, h: 2, r: 3.8 }, { cx: -2, cz: -41, h: 3, r: 3.7 },
+  const islandLayout = [
+    // Central hub: barn, vehicles, starter field, cargo pad.
+    { cx: 0, cz: 0, h: 0, r: STARTER_HUB_RADIUS },
+
+    // Large second starter/farming island.
+    { cx: 1, cz: -16, h: 1, r: SECOND_STARTER_RADIUS },
+
+    // Surrounding islands: deliberately mixed sizes.
+    { cx: 15, cz: -6, h: 2, r: 4.8 },
+    { cx: 14, cz: 10, h: 1, r: 3.5 },
+    { cx: 0, cz: 16, h: 2, r: 5.6 },
+    { cx: -14, cz: 10, h: 3, r: 3.8 },
+    { cx: -15, cz: -8, h: 1, r: 4.6 },
   ].map(scaleIslandLayout);
-  const branch = scaleIslandLayout({
-    cx: (random() > .5 ? 1 : -1) * 20,
-    cz: -22 + Math.round((random() - .5) * 2),
-    h: random() > .5 ? 0 : 2,
-    r: 3.5,
-  });
-  const islands = [...backbone, branch].map((island, id) => ({ ...island, id }));
+  const islands = islandLayout.map((island, id) => ({ ...island, id }));
+  const islandConnections = [
+    [0, 1],
+    [0, 2],
+    [0, 3],
+    [0, 4],
+    [4, 5],
+    [1, 6],
+  ];
   let barnSite;
   let cargoSite;
   let waterFeatureCount = 0;
+  const islandGeneration = [];
 
   islands.forEach((island, id) => {
-    if (id > 0 && id < backbone.length) {
-      island.cx = Math.round(island.cx + Math.round((random() - .5) * 1.1) * ISLAND_LAYOUT_SCALE);
-    }
     island.r += (random() - .5) * 0.22;
     const cells = createOrganicCells(island.cx, island.cz, island.r, seed + id * 911);
     const angle = random() * Math.PI * 2;
@@ -413,19 +444,24 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       : plateauHeight(cell, island, angle);
     cells.forEach(cell => addTile(cell.gx, cell.gz, island.h + tileHeight(cell), id, cell.dist / island.r, island.h));
     addLowerLayers(cells, island.h, island.r);
-    // Two backbone islands always try to grow water, with occasional extra
-    // courses elsewhere so regenerated farms remain varied without going dry.
-    let waterTiles = id > 0 && (id === 2 || id === 4 || random() < .25)
+    const waterTiles = id > 1 && (id === 2 || id === 4 || random() < .25)
       ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, true)
       : new Set();
     if (waterTiles.size) waterFeatureCount++;
     finalizeEnvironment(cells, waterTiles);
-    if (id === STARTER_ISLAND_ID) barnSite = findBarnSite(terrain, island);
-    if (id === CARGO_ISLAND_ID) {
-      cargoSite = findCargoSite(terrain, island);
-      reserveCargoApproach(terrain, cargoSite);
-    }
+    islandGeneration.push({ island, id, cells, tileHeight, waterTiles });
+  });
 
+  const hubIsland = islands[STARTER_ISLAND_ID];
+  barnSite = findBarnSite(terrain, hubIsland);
+  cargoSite = findCargoSite(terrain, hubIsland, barnSite);
+  reserveCargoApproach(terrain, cargoSite, hubIsland.id);
+
+  for (const [fromId, toId] of islandConnections) {
+    reserveBridgeLandings(terrain, closestIslandGap(terrain, fromId, toId));
+  }
+
+  islandGeneration.forEach(({ island, id, cells, tileHeight, waterTiles }) => {
     const clearCells = cells.filter(candidate => {
       const starterField = id === STARTER_ISLAND_ID && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
       const tile = terrain.get(gridKey(candidate.gx, candidate.gz));
@@ -439,24 +475,45 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       const z = cell.gz * TILE + (random() - .5) * .18;
       const y = terrain.get(gridKey(cell.gx, cell.gz))?.topY ?? island.h;
       const tile = terrain.get(gridKey(cell.gx, cell.gz));
-      const { moisture, sun } = tile.environment;
-      // Trees form distinct cool, damp groves instead of appearing evenly
-      // throughout the farm. Rocks remain the dry, bright counterpart.
-      const wet = THREE.MathUtils.smoothstep(moisture, .38, .78);
-      const shade = THREE.MathUtils.smoothstep(1 - sun, .32, .72);
-      const dry = THREE.MathUtils.smoothstep(1 - moisture, .36, .76);
-      const bright = THREE.MathUtils.smoothstep(sun, .36, .76);
-      const treeChance = .002 + wet * shade * .18;
-      const rockChance = .03 + dry * .09 + bright * .028;
-      const roll = random();
+      const profile = environmentProfile(tile.environment);
+      const rainforest = profile.veryWet * profile.veryShady;
+      const forest = profile.shady * (.35 + profile.moisture * .65) * (1 - profile.veryDry);
+      const dryWoodland = profile.shady * profile.dry;
+      const treeChance = THREE.MathUtils.clamp(
+        .015 + forest * .28 + rainforest * .35 + dryWoodland * .06 + profile.wet * .06 - profile.sunny * .04 - profile.veryDry * .08,
+        0,
+        .60,
+      );
+      const rockChance = THREE.MathUtils.clamp(
+        .025 + profile.dry * .10 + profile.veryDry * .09 + profile.dry * profile.sunny * .05 - profile.wet * .035 - profile.veryWet * .04,
+        .001,
+        .25,
+      );
+      const starterDensityScale = id === STARTER_ISLAND_ID ? .16 : id === 1 ? .45 : 1;
+      const effectiveTreeChance = treeChance * starterDensityScale + (id === STARTER_ISLAND_ID ? .006 : 0);
       const nearBarn = barnSite && id === STARTER_ISLAND_ID &&
         Math.hypot(x - barnSite.x, z - barnSite.z) < BARN_TREE_CLEARANCE;
-      if (roll < treeChance) {
-        if (!nearBarn) addTree(x, y, z, random() < .35);
+      let blockingDecoration = false;
+      if (!nearBarn && random() < effectiveTreeChance) {
+        addTree(x, y, z, chooseTreeSilhouette(profile, random), random() < .25 + rainforest * .5, profile);
+        blockingDecoration = true;
       }
-      else if (roll < treeChance + rockChance) addStone(x, y, z, .8 + random() * .5);
-      else if (grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
-        addTallGrass(terrain.get(gridKey(cell.gx, cell.gz)));
+      else if (random() < rockChance) {
+        addStone(x, y, z, .8 + random() * .5);
+        blockingDecoration = true;
+      }
+
+      const groundChance = THREE.MathUtils.clamp(
+        .12 + profile.wet * .20 + rainforest * .34 + profile.wet * profile.sunny * .22 + profile.dry * profile.sunny * .2 + profile.shady * .12,
+        .12,
+        .78,
+      );
+      const effectiveGroundChance = groundChance * (id === STARTER_ISLAND_ID ? .70 : 1);
+      if (random() < effectiveGroundChance) {
+        addGroundCover(tile, chooseGroundCover(profile, tile.nearWater, random));
+      }
+      else if (!blockingDecoration && grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
+        addTallGrass(tile);
       }
     }
   });
@@ -464,15 +521,15 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   if (!cargoSite) {
     scene.remove(group);
     disposeObjectResources(group);
-    if (attempt >= 20) throw new Error('Unable to generate a clear west-side, first-floor cargo deck site');
+    if (attempt >= 20) throw new Error('Unable to generate a clear west-side cargo deck site on the starter hub');
     return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange);
   }
   const cargoAnchor = terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)));
   if (!cargoAnchor || Math.abs(cargoAnchor.topY - cargoAnchor.baseY) > .01) {
     throw new Error('Cargo deck must be anchored on the first floor');
   }
-  if (cargoAnchor.gx >= islands[CARGO_ISLAND_ID].cx || cargoSite.outward.x !== -1 || cargoSite.outward.z !== 0) {
-    throw new Error('Cargo deck must stay on the west side of the cargo island');
+  if (cargoAnchor.gx >= hubIsland.cx || cargoSite.outward.x !== -1 || cargoSite.outward.z !== 0) {
+    throw new Error('Cargo deck must stay on the west side of the starter hub island');
   }
   const terrainOverlap = [...terrain.values()].find(tile =>
     cargoDeckContains(cargoSite, tile.x, tile.z, TILE * .72) && tile.topY > cargoSite.y + .01
@@ -486,16 +543,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   group.add(cargoPort.group);
   obstacles.push(...cargoPort.colliders);
 
-  for (let index = 0; index < backbone.length - 1; index++) {
-    addBridgeBetween(islands[index], islands[index + 1], terrain, group, bridgeBlocks);
+  for (const [fromId, toId] of islandConnections) {
+    addBridgeBetween(islands[fromId], islands[toId], terrain, group, bridgeBlocks);
   }
-  const branchIsland = islands.at(-1);
-  const branchAnchor = islands.slice(0, -1).reduce((closest, island) => {
-    const closestDistance = Math.hypot(closest.cx - branchIsland.cx, closest.cz - branchIsland.cz);
-    const distance = Math.hypot(island.cx - branchIsland.cx, island.cz - branchIsland.cz);
-    return distance < closestDistance ? island : closest;
-  });
-  addBridgeBetween(branchAnchor, branchIsland, terrain, group, bridgeBlocks);
 
   if (!waterFeatureCount && attempt < 7) {
     scene.remove(group);
@@ -504,6 +554,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   }
 
   addTerrainInstances();
+  buildGroundCover();
   const cropInstances = createCropInstances(terrain.size, group);
   const fieldEffects = createFieldEffects(group);
   const cropOverlay = createCropOverlay(terrain, group);
@@ -553,6 +604,10 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     tile.surfaceBatch.setColorAt(tile.surfaceInstance, mats.ploughed.color);
     tile.surfaceBatch.instanceColor.needsUpdate = true;
     if (tile.tallGrass) tile.tallGrass.visible = false;
+    for (const decoration of tile.groundCover) {
+      decoration.mesh.setMatrixAt(decoration.index, decoration.hidden);
+      decoration.mesh.instanceMatrix.needsUpdate = true;
+    }
     for (const stone of tile.stones) group.remove(stone);
     tile.stones.length = 0;
     ploughedTiles.push(tile);
@@ -564,7 +619,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const forage = createForageSystem(terrain, group, onChange);
   const occlusion = createOcclusionSystem(group);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
-  const start = terrain.get(gridKey(backbone[0].cx, backbone[0].cz)) || terrain.values().next().value;
+  const starterIsland = islands[STARTER_ISLAND_ID];
+  const start = terrain.get(gridKey(starterIsland.cx, starterIsland.cz)) || terrain.values().next().value;
   const vehicleSpawns = findVehicleSpawns(terrain, start, barnArea);
   return {
     group,
@@ -755,6 +811,18 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     spawnBale(x, y, z, heading) {
       return forage.spawnBale(x, y, z, heading);
+    },
+    hasBale(id) {
+      return forage.hasBale(id);
+    },
+    baleNear(x, z, levelY, radius) {
+      return forage.baleNear(x, z, levelY, radius);
+    },
+    moveBale(id, x, y, z, heading, notify = false) {
+      return forage.moveBale(id, x, y, z, heading, notify);
+    },
+    removeBale(id) {
+      return forage.removeBale(id);
     },
     harvestAt(x, z, levelY, acceptedCropId = null) {
       const tile = tileAtLevel(x, z, levelY, terrain);
@@ -1349,7 +1417,7 @@ function findBarnSite(terrain, island) {
       return neighbor?.islandId === STARTER_ISLAND_ID && Math.abs(neighbor.topY - tile.topY) < .01;
     }));
     if (!hasPad) continue;
-    const score = Math.hypot(tile.gx - (island.cx - 2), tile.gz - (island.cz + 2));
+    const score = Math.hypot(tile.gx - (island.cx + 2), tile.gz - (island.cz + 2));
     candidates.push({ ...tile, score });
   }
   candidates.sort((first, second) => first.score - second.score);
@@ -1391,11 +1459,10 @@ function findVehicleSpawns(terrain, start, barnArea) {
   return selected.length ? selected : [{ x: start.x, y: start.topY, z: start.z }];
 }
 
-function findCargoSite(terrain, island) {
-  // Backbone bridges leave this island toward its north and southeast edges.
-  // Keep cargo infrastructure on the west side and face the deck due west.
+function findCargoSite(terrain, island, barnSite) {
+  // Keep cargo infrastructure on the hub's open west side and face the deck due west.
   const outward = { x: -1, z: 0 };
-  const islandTiles = [...terrain.values()].filter(tile => tile.islandId === CARGO_ISLAND_ID);
+  const islandTiles = [...terrain.values()].filter(tile => tile.islandId === island.id);
   const candidates = [];
 
   // The half-diagonal margin treats each terrain tile as a full square rather
@@ -1411,7 +1478,7 @@ function findCargoSite(terrain, island) {
         const gx = Math.round(site.x / TILE - site.outward.x * depth + lateral.x * across);
         const gz = Math.round(site.z / TILE - site.outward.z * depth + lateral.z * across);
         const approach = terrain.get(gridKey(gx, gz));
-        if (!approach || approach.islandId !== CARGO_ISLAND_ID || approach.water || Math.abs(approach.topY - site.y) > .01) return false;
+        if (!approach || approach.islandId !== island.id || approach.water || Math.abs(approach.topY - site.y) > .01) return false;
       }
     }
     return true;
@@ -1423,6 +1490,7 @@ function findCargoSite(terrain, island) {
     const dx = tile.gx - island.cx;
     const dz = tile.gz - island.cz;
     if (tile.radial < .62 || dx >= -island.r * .45) continue;
+    if (barnSite && Math.hypot(tile.x - barnSite.x, tile.z - barnSite.z) < 5.5 * TILE) continue;
     const site = { x: tile.x, y: tile.topY, z: tile.z, outward };
     if (!approachIsClear(site) || !deckIsClear(site)) continue;
     candidates.push({ site, score: -dx * 3 + tile.radial - Math.abs(dz) * .05 });
@@ -1433,17 +1501,18 @@ function findCargoSite(terrain, island) {
 
   const safeFallback = islandTiles
     .filter(tile => !tile.water && Math.abs(tile.topY - tile.baseY) <= .01 &&
-      tile.radial >= .62 && tile.gx - island.cx < -island.r * .45)
+      tile.radial >= .62 && tile.gx - island.cx < -island.r * .45 &&
+      (!barnSite || Math.hypot(tile.x - barnSite.x, tile.z - barnSite.z) >= 5.5 * TILE))
     .map(tile => ({ site: { x: tile.x, y: tile.topY, z: tile.z, outward }, tile }))
     .filter(candidate => deckIsClear(candidate.site))
     .sort((a, b) => a.tile.gx - b.tile.gx)[0];
   return safeFallback?.site || null;
 }
 
-function reserveCargoApproach(terrain, site) {
+function reserveCargoApproach(terrain, site, islandId) {
   if (!site) return;
   for (const tile of terrain.values()) {
-    if (tile.islandId !== CARGO_ISLAND_ID) continue;
+    if (tile.islandId !== islandId) continue;
     const approach = Math.abs(tile.topY - site.y) <= .01 && Math.hypot(tile.x - site.x, tile.z - site.z) <= 2.35;
     if (approach || cargoDeckContains(site, tile.x, tile.z, TILE * .85)) tile.reserved = true;
     // Tree crowns reach farther than their trunks; keep decorations clear
@@ -1660,6 +1729,113 @@ function chooseGrassPatches(cells, random, count) {
   return patches;
 }
 
+function chooseTreeSilhouette(profile, random) {
+  const choices = [
+    { value: 0, weight: .35 + profile.shady * .45 },
+    { value: 1, weight: .35 + profile.wet * .35 },
+    { value: 2, weight: profile.veryWet * profile.veryShady * 4.2 },
+    { value: 3, weight: profile.veryWet * profile.shady * 3.4 },
+    { value: 4, weight: profile.shady * (1 - profile.veryDry) * 2.4 },
+    { value: 5, weight: profile.dry * (.45 + profile.shady) * 2.8 },
+  ];
+  return weightedChoice(choices, random);
+}
+
+function treeFoliagePalette(profile) {
+  const rainforest = profile.veryWet * profile.veryShady;
+  const yellowing = profile.dry * (.35 + profile.sunny * .65);
+  if (rainforest > .48) return { key: 'rainforest', dark: 0x155c3a, light: 0x2f9860 };
+  if (profile.wet * profile.shady > .35) return { key: 'jungle', dark: 0x237447, light: 0x52b95f };
+  if (yellowing > .62) return { key: 'golden-dry', dark: 0x8f7330, light: 0xc5a23d };
+  if (profile.dry > .45) return { key: 'dry-olive', dark: 0x6f7434, light: 0xa6a242 };
+  if (profile.sunny > .58) return { key: 'sunny-lush', dark: 0x55983b, light: 0x9dcc48 };
+  return { key: 'woodland', dark: 0x3f7f3c, light: 0x75ad4d };
+}
+
+function chooseGroundCover(profile, nearWater, random) {
+  return weightedChoice([
+    { value: 'flowers', weight: profile.sunny * (.25 + profile.wet * 1.5) },
+    { value: 'ferns', weight: profile.wet * profile.shady * (1 + nearWater) * 1.7 },
+    { value: 'reeds', weight: profile.wet * nearWater * 3.2 },
+    { value: 'leafyBush', weight: profile.wet * (.35 + profile.shady) * 1.2 },
+    { value: 'yellowGrass', weight: profile.dry * profile.sunny * 2.4 },
+    { value: 'darkGrass', weight: profile.wet * profile.shady * 2.1 },
+    { value: 'mushrooms', weight: profile.wet * profile.veryShady * 1.15 },
+    { value: 'dryScrub', weight: profile.dry * (.35 + profile.sunny) * (1 - nearWater) * 1.8 },
+    { value: 'brightGrass', weight: .18 + profile.sunny * (1 - profile.veryDry) + profile.wet * profile.sunny },
+  ], random);
+}
+
+function weightedChoice(choices, random) {
+  const total = choices.reduce((sum, choice) => sum + Math.max(0, choice.weight), 0);
+  let roll = random() * total;
+  for (const choice of choices) {
+    roll -= Math.max(0, choice.weight);
+    if (roll <= 0) return choice.value;
+  }
+  return choices.at(-1).value;
+}
+
+function groundCoverMaterials() {
+  const material = color => new THREE.MeshStandardMaterial({ color, roughness: 1 });
+  return {
+    brightGrass: material(0x7fba4e),
+    darkGrass: material(0x315f3b),
+    dryGrass: material(0xc4a54e),
+    fern: material(0x356f43),
+    lushLeaf: material(0x4f8b48),
+    flower: material(0xf3c1dc),
+    flowerGold: material(0xf1d64f),
+    mushroom: material(0xd8d0b3),
+    mushroomCap: material(0xb65d4c),
+    reed: material(0x739251),
+    reedTip: material(0x8a6840),
+    scrub: material(0x817949),
+  };
+}
+
+function groundCoverDesign(type) {
+  const part = (x, y, z, w, h, d, material, rz = 0, ry = 0) => ({ x, y, z, w, h, d, material, rz, ry });
+  const blades = (material, height = .58) => [
+    part(-.22, height * .5, -.12, .045, height, .05, material, -.14),
+    part(-.08, height * .58, .16, .04, height * 1.15, .045, material, .12),
+    part(.08, height * .48, -.2, .05, height * .9, .04, material, -.08),
+    part(.22, height * .54, .08, .04, height * 1.05, .05, material, .16),
+    part(0, height * .42, 0, .055, height * .8, .045, material, -.1),
+  ];
+  if (type === 'flowers') return [
+    part(-.17, .22, -.08, .035, .44, .035, 'brightGrass'), part(.12, .17, .12, .035, .34, .035, 'brightGrass'),
+    part(.02, .25, -.18, .035, .5, .035, 'brightGrass'), part(-.17, .46, -.08, .13, .1, .13, 'flower'),
+    part(.12, .36, .12, .12, .1, .12, 'flowerGold'), part(.02, .52, -.18, .13, .1, .13, 'flower'),
+  ];
+  if (type === 'ferns') return [
+    part(0, .18, 0, .06, .36, .06, 'fern'),
+    part(-.19, .22, 0, .42, .045, .1, 'fern', .35), part(.19, .25, 0, .42, .045, .1, 'fern', -.35),
+    part(0, .28, -.18, .1, .045, .42, 'fern', .3, Math.PI * .5), part(0, .2, .18, .1, .045, .42, 'fern', -.3, Math.PI * .5),
+  ];
+  if (type === 'reeds') return [
+    part(-.22, .43, -.13, .035, .86, .035, 'reed'), part(-.05, .52, .12, .035, 1.04, .035, 'reed'),
+    part(.12, .46, -.18, .035, .92, .035, 'reed'), part(.24, .38, .1, .035, .76, .035, 'reed'),
+    part(-.05, 1.04, .12, .07, .16, .07, 'reedTip'), part(.12, .94, -.18, .07, .15, .07, 'reedTip'),
+  ];
+  if (type === 'leafyBush') return [
+    part(0, .18, 0, .07, .36, .07, 'scrub'), part(-.2, .35, 0, .32, .28, .34, 'lushLeaf'),
+    part(.19, .32, .08, .34, .3, .32, 'lushLeaf'), part(0, .48, -.1, .36, .32, .34, 'lushLeaf'),
+  ];
+  if (type === 'yellowGrass') return blades('dryGrass', .7);
+  if (type === 'darkGrass') return blades('darkGrass', .76);
+  if (type === 'mushrooms') return [
+    part(-.13, .12, -.08, .055, .24, .055, 'mushroom'), part(.13, .09, .1, .05, .18, .05, 'mushroom'),
+    part(-.13, .25, -.08, .2, .09, .2, 'mushroomCap'), part(.13, .19, .1, .16, .075, .16, 'mushroomCap'),
+  ];
+  if (type === 'dryScrub') return [
+    part(0, .2, 0, .055, .4, .055, 'scrub', .18), part(-.14, .31, 0, .32, .045, .055, 'scrub', .4),
+    part(.15, .42, .03, .34, .045, .055, 'scrub', -.48), part(-.24, .42, 0, .14, .11, .14, 'dryGrass'),
+    part(.25, .5, .03, .13, .1, .13, 'dryGrass'),
+  ];
+  return blades('brightGrass', .64);
+}
+
 function treeDesign(silhouette) {
   if (silhouette === 0) {
     return {
@@ -1686,6 +1862,64 @@ function treeDesign(silhouette) {
         [-2,2,0], [0,2,0], [2,2,0],
       ],
     };
+  }
+  if (silhouette === 2) {
+    return {
+      trunkHeight: 4.35,
+      leafBaseY: 3.38,
+      radius: .45,
+      branches: [[0,3.1,0,-1.15,3.55,.08], [0,3.18,0,1.18,3.62,-.1], [0,3.35,0,.1,3.72,1.08]],
+      leaves: [
+        [-4,0,-2],[-4,0,-1],[-4,0,0],[-4,0,1],[-4,0,2],[-3,0,-3],[-3,0,-2],[-3,0,-1],[-3,0,0],[-3,0,1],[-3,0,2],[-3,0,3],
+        [-2,0,-4],[-2,0,-3],[-2,0,-2],[-2,0,-1],[-2,0,0],[-2,0,1],[-2,0,2],[-2,0,3],[-2,0,4],[-1,0,-4],[-1,0,-3],[-1,0,-2],[-1,0,-1],[-1,0,0],[-1,0,1],[-1,0,2],[-1,0,3],[-1,0,4],
+        [0,0,-5],[0,0,-4],[0,0,-3],[0,0,-2],[0,0,-1],[0,0,0],[0,0,1],[0,0,2],[0,0,3],[0,0,4],[0,0,5],
+        [1,0,-4],[1,0,-3],[1,0,-2],[1,0,-1],[1,0,0],[1,0,1],[1,0,2],[1,0,3],[1,0,4],[2,0,-4],[2,0,-3],[2,0,-2],[2,0,-1],[2,0,0],[2,0,1],[2,0,2],[2,0,3],[2,0,4],
+        [3,0,-3],[3,0,-2],[3,0,-1],[3,0,0],[3,0,1],[3,0,2],[3,0,3],[4,0,-2],[4,0,-1],[4,0,0],[4,0,1],[4,0,2],[-2,1,-2],[0,1,0],[2,1,2],[0,2,0],
+      ],
+    };
+  }
+  if (silhouette === 3) {
+    return {
+      trunkHeight: 3.9,
+      leafBaseY: 1.95,
+      radius: .42,
+      branches: [[0,1.65,0,-.82,2.05,.12],[0,2.3,0,.92,2.62,-.1],[0,2.9,0,-.65,3.2,-.5]],
+      leaves: [
+        [-3,0,-1],[-3,0,0],[-3,0,1],[-2,0,-2],[-2,0,-1],[-2,0,0],[-2,0,1],[-2,0,2],[-1,0,-2],[-1,0,-1],[-1,0,0],[-1,0,1],[-1,0,2],[0,0,-3],[0,0,-2],[0,0,-1],[0,0,0],[0,0,1],[0,0,2],[0,0,3],[1,0,-2],[1,0,-1],[1,0,0],[1,0,1],[1,0,2],[2,0,-2],[2,0,-1],[2,0,0],[2,0,1],[2,0,2],[3,0,-1],[3,0,0],[3,0,1],
+        [-3,3,0],[-2,3,-1],[-2,3,0],[-2,3,1],[-1,3,-2],[-1,3,-1],[-1,3,0],[-1,3,1],[-1,3,2],[0,3,-2],[0,3,-1],[0,3,0],[0,3,1],[0,3,2],[1,3,-2],[1,3,-1],[1,3,0],[1,3,1],[1,3,2],[2,3,-1],[2,3,0],[2,3,1],[3,3,0],
+        [-2,6,0],[-1,6,-1],[-1,6,0],[-1,6,1],[0,6,-2],[0,6,-1],[0,6,0],[0,6,1],[0,6,2],[1,6,-1],[1,6,0],[1,6,1],[2,6,0],
+      ],
+    };
+  }
+  if (silhouette === 4) {
+    return {
+      trunkHeight: 3.5,
+      leafBaseY: 2.15,
+      radius: .38,
+      branches: [[0,1.6,0,-.8,2.25,.15],[0,1.72,0,.82,2.32,-.18],[0,2.05,0,.12,2.65,.72]],
+      leaves: [
+        [-3,0,-1],[-3,0,0],[-3,0,1],[-2,0,-2],[-2,0,-1],[-2,0,0],[-2,0,1],[-2,0,2],[-1,0,-2],[-1,0,-1],[-1,0,0],[-1,0,1],[-1,0,2],[0,0,-3],[0,0,-2],[0,0,-1],[0,0,0],[0,0,1],[0,0,2],[0,0,3],[1,0,-2],[1,0,-1],[1,0,0],[1,0,1],[1,0,2],[2,0,-2],[2,0,-1],[2,0,0],[2,0,1],[2,0,2],[3,0,-1],[3,0,0],[3,0,1],[-2,1,0],[-1,1,-1],[-1,1,0],[-1,1,1],[0,1,-1],[0,1,0],[0,1,1],[1,1,-1],[1,1,0],[1,1,1],[2,1,0],[0,2,0],
+      ],
+    };
+  }
+  return {
+    trunkHeight: 3.1,
+    leafBaseY: 2.15,
+    radius: .31,
+    branches: [[0,.9,0,.28,1.65,.05],[.18,1.5,0,-.72,2.28,.08],[.25,1.72,0,1.05,2.38,-.18],[.1,2.05,0,.2,2.62,.7]],
+    leaves: [
+      [-3,0,0],[-2,0,-1],[-2,0,0],[-1,0,-1],[-1,0,0],[1,1,0],[2,1,-1],[2,1,0],[2,1,1],[3,1,0],[0,2,2],[1,2,1],[1,2,2],
+    ],
+  };
+}
+
+function reserveBridgeLandings(terrain, gap) {
+  if (!gap) return;
+  for (const tile of terrain.values()) {
+    if (Math.hypot(tile.x - gap.from.x, tile.z - gap.from.z) <= 2.6 * TILE ||
+      Math.hypot(tile.x - gap.to.x, tile.z - gap.to.z) <= 2.6 * TILE) {
+      tile.noDecoration = true;
+    }
   }
 }
 
@@ -1782,6 +2016,36 @@ function environmentalAxis(value) {
   // Expand the middle of Perlin's distribution so each field develops
   // decisive bright/dry and dark/wet regions rather than mostly midtones.
   return THREE.MathUtils.clamp(.5 + (normalized - .5) * 3, 0, 1);
+}
+
+function environmentProfile(environment) {
+  const moisture = environment.moisture;
+  const sun = environment.sun;
+  const shade = 1 - sun;
+
+  const veryWet = THREE.MathUtils.smoothstep(moisture, .68, .92);
+  const wet = THREE.MathUtils.smoothstep(moisture, .48, .78);
+  const dry = THREE.MathUtils.smoothstep(1 - moisture, .42, .78);
+  const veryDry = THREE.MathUtils.smoothstep(1 - moisture, .68, .92);
+
+  const shady = THREE.MathUtils.smoothstep(shade, .38, .72);
+  const veryShady = THREE.MathUtils.smoothstep(shade, .62, .90);
+  const sunny = THREE.MathUtils.smoothstep(sun, .42, .78);
+  const verySunny = THREE.MathUtils.smoothstep(sun, .68, .92);
+
+  return {
+    moisture,
+    sun,
+    shade,
+    veryWet,
+    wet,
+    dry,
+    veryDry,
+    shady,
+    veryShady,
+    sunny,
+    verySunny,
+  };
 }
 
 function createPerlin(seed) {

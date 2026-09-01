@@ -202,6 +202,10 @@ The world consists of multiple connected or closely positioned voxel islands.
 
 The broad terrain and water layout are procedurally generated.
 
+The large starting island sits roughly at the center of the generated archipelago and acts as the farm's initial operations hub. The barn, cargo pad, starting vehicles and first useful farming space are all located there. A direct bridge reaches a second nearby large island that provides substantial early farming room while retaining more varied elevation.
+
+Additional islands surround this central area in deliberately mixed sizes and elevations. Their controlled connection graph lets the farm expand outward without making every island an identical spoke from the hub, while the islands' outlines, surfaces, water and decoration remain procedurally organic.
+
 Islands can contain several elevations. Vehicles can jump between appropriate height differences, making vertical terrain part of navigation.
 
 Terrain uses relatively large blocks.
@@ -222,7 +226,7 @@ Current planned axes are:
 
 **Sunny ↔ Shady**
 
-Different crops prefer different combinations.
+Different crops can prefer different combinations, but crop suitability is not the only reason these environmental fields matter.
 
 Crop suitability influences:
 
@@ -231,24 +235,13 @@ Crop suitability influences:
 
 An overlay allows the player to inspect crop suitability across the Farmipelago.
 
-These environmental properties should eventually affect the visual environment as well.
+Moisture and sunlight also generate immediately visible environmental character through ground color, tree and rock density, tree silhouettes, and lightweight vegetation. Their continuous overlap can produce dense forest or rainforest, normal woodland, open green grassland, lush meadow or wetland, muted dry woodland, and yellow rocky plains without requiring hard named-biome boundaries.
 
-For the initial version they can influence:
+A single island can cross several characters where the noise fields change. Coherent patches should remain recognizable from a distance, making islands feel visually distinct and changing how open, wooded, rocky or naturally obstructed their usable land is.
 
-- grass hue
-- tree density
-- rock density
+Choosing which island to develop next should therefore consider access, usable area, elevation and natural obstruction as well as agricultural conditions. The central hub and second large starter island retain the full visual variation but suppress extreme blocking-tree density so both remain practical early farming spaces.
 
-Later they may influence:
-
-- different tree species
-- bushes
-- flowers
-- other vegetation
-- wildlife
-- additional environmental objects
-
-The goal is gradual environmental variation rather than sharply separated named biomes.
+The goal is strong, gradual environmental variation rather than sharply separated named biomes. This visual and land-use direction does not itself introduce new crop-yield or growth rules.
 
 ---
 

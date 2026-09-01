@@ -7,14 +7,17 @@ const DECK_DEPTH = 5.4;
 const DECK_CENTER_Z = 2.12;
 const FIRST_VISIT_DELAY = 5;
 const REPEAT_VISIT_DELAY = 60;
-const APPROACH_SECONDS = 6;
-const DESCEND_SECONDS = 3;
+const APPROACH_SECONDS = 1.4;
+const DESCEND_SECONDS = 4.6;
 const DWELL_SECONDS = 4;
 const PICKUP_SECONDS = 1.2;
-const DEPART_SECONDS = 7;
+const ASCEND_SECONDS = 4.6;
+const DEPART_SECONDS = 1.6;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ease = value => value * value * (3 - 2 * value);
+const easeOutCubic = value => 1 - (1 - value) ** 3;
+const easeInCubic = value => value ** 3;
 
 export function cargoDeckContains(site, x, z, margin = 0) {
   const yaw = Math.atan2(site.outward.x, site.outward.z);
@@ -132,11 +135,19 @@ export function createCargoPort(site) {
   craftRoot.visible = false;
 
   const landing = new THREE.Vector3(0, .13, 2.3);
-  const hover = new THREE.Vector3(0, 6.4, 7.1);
+  const hover = new THREE.Vector3(0, 6.4, 2.3);
   const start = new THREE.Vector3(0, 14, startDistance);
+  const approachCurve = new THREE.QuadraticBezierCurve3(start, new THREE.Vector3(-9.6, 15.6, startDistance * .5), hover);
+  const departCurve = new THREE.QuadraticBezierCurve3(hover, new THREE.Vector3(10.8, 10.2, startDistance * .52), start);
+  const flightPoint = new THREE.Vector3();
 
   const placeBetween = (from, to, amount) => {
     craftRoot.position.lerpVectors(from, to, ease(amount));
+  };
+
+  const placeOnCurve = (curve, amount) => {
+    curve.getPoint(amount, flightPoint);
+    craftRoot.position.copy(flightPoint);
   };
 
   const chooseOffscreenStart = camera => {
@@ -149,6 +160,8 @@ export function createCargoPort(site) {
       }
     }
     start.set(0, 14, startDistance);
+    approachCurve.v1.set(-9.6, 15.6, startDistance * .5);
+    departCurve.v1.set(10.8, 10.2, startDistance * .52);
     craftRoot.position.copy(start);
   };
 
@@ -183,7 +196,7 @@ export function createCargoPort(site) {
         }
       }
       else if (phase === 'approach') {
-        placeBetween(start, hover, Math.min(1, phaseTime / APPROACH_SECONDS));
+        placeOnCurve(approachCurve, easeOutCubic(Math.min(1, phaseTime / APPROACH_SECONDS)));
         if (phaseTime >= APPROACH_SECONDS) { phase = 'descend'; phaseTime = 0; }
       }
       else if (phase === 'descend') {
@@ -198,7 +211,7 @@ export function createCargoPort(site) {
             pickedUp = true;
             this.setLoadRatio(0);
           }
-          phase = pickupQueued && !reducedMotion ? 'pickup' : 'depart';
+          phase = pickupQueued && !reducedMotion ? 'pickup' : 'ascend';
           phaseTime = 0;
         }
       }
@@ -220,15 +233,18 @@ export function createCargoPort(site) {
         if (phaseTime >= PICKUP_SECONDS) {
           pickedUp = true;
           this.setLoadRatio(0);
-          phase = 'depart';
+          phase = 'ascend';
           phaseTime = 0;
         }
       }
+      else if (phase === 'ascend') {
+        const amount = Math.min(1, phaseTime / ASCEND_SECONDS);
+        placeBetween(landing, hover, amount);
+        craftRoot.rotation.y = Math.PI * ease(amount);
+        if (phaseTime >= ASCEND_SECONDS) { phase = 'depart'; phaseTime = 0; }
+      }
       else if (phase === 'depart') {
-        const amount = Math.min(1, phaseTime / DEPART_SECONDS);
-        placeBetween(landing, start, amount);
-        craftRoot.position.y += Math.sin(amount * Math.PI) * 2.8;
-        craftRoot.rotation.y = ease(Math.min(1, amount * 2.2)) * Math.PI;
+        placeOnCurve(departCurve, easeInCubic(Math.min(1, phaseTime / DEPART_SECONDS)));
         if (phaseTime >= DEPART_SECONDS) {
           phase = 'cooldown';
           phaseTime = 0;

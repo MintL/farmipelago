@@ -92,6 +92,9 @@ export function createMilestoneProgression(savedState = null) {
     state() {
       const milestone = current();
       const isComplete = complete();
+      const requirements = milestone.choiceLimit && selectedCropIds.length === milestone.choiceLimit
+        ? milestone.requirements.filter(requirement => selectedCropIds.includes(requirement.cropId))
+        : milestone.requirements;
       return {
         id: milestone.id,
         title: milestone.title,
@@ -102,7 +105,7 @@ export function createMilestoneProgression(savedState = null) {
         complete: isComplete,
         pickupReady: isComplete && !collected,
         collected,
-        requirements: milestone.requirements.map(requirement => ({
+        requirements: requirements.map(requirement => ({
           ...requirement,
           delivered: delivered[requirement.cropId],
           selected: selectedCropIds.includes(requirement.cropId),

@@ -2,10 +2,10 @@ import { THREE } from './shared.js?v=persistence-20260831-1';
 import { crops } from './crops.js?v=cargo-litres-20260831-1';
 import { createPhysics } from './physics.js?v=persistence-20260831-1';
 import { createLoadoutPreview, createVehicle } from './tractor.js?v=trailer-grain-world-splash-20260831-1';
-import { createUi } from './ui.js?v=progression-gates-20260901-1';
+import { createUi } from './ui.js?v=carried-crop-default-20260901-2';
 import { createBuildingManager } from './buildings.js?v=transfer-batching-20260831-1';
 import { generateFarm } from './world-generator.js?v=trailer-grain-size-20260831-1';
-import { createMilestoneProgression } from './progression.js?v=progression-gates-20260901-1';
+import { createMilestoneProgression } from './progression.js?v=crop-diversity-display-20260901-1';
 import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=cargo-litres-20260831-1';
 import { OWNED_VEHICLES, TRAILER_STORAGE_CAPACITY, vehicleType } from './vehicles.js?v=trailer-capacity-20260831-1';
 
@@ -474,7 +474,7 @@ function syncStorageUi() {
   const vehicle = activeVehicle();
   const storage = vehicle.storage;
   vehicle.visual.setStorageAmount(storageAmount(vehicle), storage.capacity);
-  ui?.setHarvestMeter(storageAmount(vehicle), storage.capacity, storageLabel());
+  ui?.setHarvestMeter(storageAmount(vehicle), storage.capacity, storageLabel(), storageCropId(vehicle));
 }
 
 function syncActiveVehicleUi() {
@@ -659,7 +659,7 @@ function loadFromSilo(siloId, cropId) {
   startTransfer({ kind: 'load', vehicleId: vehicle.id, siloId, cropId, amount });
 }
 
-function dropOffCargo() {
+function dropOffCargo(selectedCropId = null) {
   const vehicle = activeVehicle();
   if (!canTransferCargo(vehicle)) return;
   const storage = vehicle.storage;
@@ -668,7 +668,10 @@ function dropOffCargo() {
   const milestone = progression.state();
   if (milestone.complete) return;
   if (!storageAmount()) return;
-  const cropId = storageCropId();
+  const storedCropId = storageCropId();
+  const cropId = selectedCropId && storage.contents[selectedCropId] > 0
+    ? selectedCropId
+    : storedCropId;
   const requirement = milestone.requirements.find(entry => entry.cropId === cropId);
   const amount = requirement?.accepting
     ? Math.min(storage.contents[cropId] || 0, Math.max(0, requirement.target - requirement.delivered))

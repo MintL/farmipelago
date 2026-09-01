@@ -1,6 +1,6 @@
 import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=crop-diversity-20260831-1';
 import { cropStats as environmentalCropStats, crops } from './crops.js?v=crop-diversity-20260831-1';
-import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=animations-20260831-1';
+import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=vtol-fast-flight-20260901-1';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;

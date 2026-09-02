@@ -1,6 +1,6 @@
-import { createCombineAsset, createFrontToolAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=hay-simple-20260901-1';
-import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './equipment.js?v=hay-simple-20260901-1';
-import { THREE } from './shared.js?v=hay-simple-20260901-1';
+import { createCombineAsset, createFrontToolAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=bale-wrapper-20260902-1';
+import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './equipment.js?v=bale-wrapper-20260902-1';
+import { THREE } from './shared.js?v=bale-wrapper-20260902-1';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -143,6 +143,9 @@ export function createVehicle(scene, vehicle) {
         rearToolY = rearToolTargetY;
         rearToolVelocity = 0;
       }
+    },
+    frontToolLift() {
+      return THREE.MathUtils.clamp((frontToolY - toolDownY) / (toolUpY - toolDownY), 0, 1);
     },
     setSelected(selected) {
       if (reducedMotion) return;

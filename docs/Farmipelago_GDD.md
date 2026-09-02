@@ -1,16 +1,17 @@
 # Farmipelago — Game Design Document
 
-**Status:** Early design / living document
+**Status:** Playable prototype / living design document  
+**Updated from implementation:** 2026-09-02
 
 ## 1. Game Concept
 
 Farmipelago is a small, playful farming game set on a persistent procedurally generated voxel archipelago.
 
-The player operates tractors, tools and other farming machinery directly. The challenge comes from making effective use of irregular islands with different heights, shapes and growing conditions.
+The player directly operates tractors, harvesters, tools and transport equipment. The challenge comes from making effective use of irregular islands with different heights, shapes and growing conditions.
 
 Rather than building a perfectly rectangular farm, the player gradually learns how to make the best use of the Farmipelago they were given.
 
-The same Farmipelago remains throughout the game. Fields, cleared vegetation, infrastructure and other changes persist as the farm develops.
+The same Farmipelago persists throughout the game. Fields, crops, cleared vegetation, buildings, vehicle positions, stored produce and progression state are saved and restored.
 
 ---
 
@@ -24,7 +25,8 @@ The satisfaction should come from:
 - transforming the landscape through farming
 - discovering good uses for different parts of the islands
 - deciding how limited land should be used
-- unlocking new forms of agriculture
+- moving crops through a physical farm logistics chain
+- unlocking new crops and eventually new forms of agriculture
 - reorganizing the farm as its capabilities expand
 
 The game should retain some of the appeal of Farming Simulator while being dramatically smaller, faster and more playful.
@@ -35,15 +37,15 @@ The game should retain some of the appeal of Farming Simulator while being drama
 
 ### Farming Through Machines
 
-Most important farming actions are performed physically using vehicles and attachments.
+Important farming actions are performed physically using vehicles and equipment.
 
-The player drives the tractor, equips the correct tool and performs the work rather than managing fields primarily through menus.
+The player drives the tractor or combine, equips compatible equipment and performs the work rather than managing fields primarily through menus.
 
 ### The Land Matters
 
 The generated Farmipelago is not just scenery.
 
-Island shape, elevation, available space and local growing conditions influence where different activities make sense.
+Island shape, elevation, usable flat areas, access routes, moisture and sunlight influence where different activities make sense.
 
 The player should regularly have to think:
 
@@ -51,17 +53,15 @@ The player should regularly have to think:
 
 ### Persistent Farm
 
-The player keeps developing the same Farmipelago.
+The player keeps developing the same generated Farmipelago.
 
-The game is not structured around completing disposable farming levels.
-
-The farm should accumulate history and become increasingly personalized through the player's decisions.
+The game is not structured around completing disposable farming levels. The farm accumulates history through ploughed fields, planted crops, placed silos, stored produce, vehicle locations and completed progression milestones.
 
 ### Progression Adds Possibilities
 
 Progression should primarily introduce new ways to farm rather than simply increasing numerical efficiency.
 
-New crops, animals, machinery and infrastructure should create new decisions and new demands on the existing farm.
+The current prototype unlocks new crops through deliveries. Future progression can add animals, machinery, infrastructure and additional agricultural systems.
 
 ### Compact and Playful
 
@@ -71,61 +71,62 @@ Systems can have meaningful consequences without requiring realistic complexity.
 
 ---
 
-## 4. Core Loop
+## 4. Current Core Loop
 
-At the most basic level:
+The implemented crop-farming loop is:
 
-**Prepare land → plant → grow → harvest → deliver produce → unlock new possibilities → adapt the farm → repeat**
+**Inspect land → plough → choose seed → plant → grow → harvest with combine → unload into silo → load trailer → transport to cargo hub → deliver milestone cargo → unlock new crops → repeat**
 
-Moment-to-moment play revolves around operating machinery.
+The player can also ignore the current milestone and continue farming freely.
 
-Long-term play revolves around making the Farmipelago capable of producing increasingly varied agricultural products.
+Moment-to-moment play revolves around driving and operating machinery.
+
+Long-term play revolves around making the persistent Farmipelago capable of producing increasingly varied agricultural outputs.
 
 ---
 
 ## 5. Main Progression
 
-Farmipelago uses a progression structure inspired by games such as Shapez.
+Farmipelago uses milestone progression inspired by games such as Shapez rather than a conventional money-first farming economy.
 
-There is no requirement to constantly sell produce for money in order to buy increasingly expensive equipment.
+The outside world requests specific agricultural deliveries. Completing them advances progression and unlocks new capabilities.
 
-Instead, the outside world requests specific agricultural deliveries.
+### Current Prototype Progression
 
-Completing these deliveries advances the main progression.
+The farm starts with **Wheat** unlocked.
 
-Early requirements may involve simple crops.
+**Getting started**
 
-Later requirements can combine several crops and eventually products from entirely new farming systems such as livestock.
+- Deliver 3,600 L Wheat.
+- Unlock Barley, Canola and Soybeans.
 
-For example:
+**Crop diversity**
 
-**Wheat**
+- Choose any two crops from Wheat, Barley, Canola and Soybeans.
+- Deliver 3,600 L of each chosen crop.
+- Unlock Corn.
 
-then
+Once two crops have been committed to the Crop diversity milestone, only those two remain relevant to its tracker and cargo-pad requirements.
 
-**Wheat + potatoes**
+Completing a non-final milestone triggers the cargo VTOL pickup and reveals the newly unlocked crops. Completing the final currently implemented milestone produces a Farmipelago-complete state and then returns the player to free farming.
 
-then
+There is no time limit on milestones and no macro-level failure state.
 
-**several different crops**
+The current two milestones are prototype content, not the intended final progression length.
 
-then eventually
+### Long-Term Direction
 
-**crops + milk**
+Later milestones should introduce increasingly broad production requirements and eventually combine different farming systems, for example crops plus livestock products.
 
-For the current prototype, the farm starts with Wheat only. **Getting started** requires 3,600 L of Wheat and unlocks Barley, Canola, and Soybeans. It is followed by **Crop diversity**, where the player chooses two of Wheat, Barley, Canola, and Soybeans and delivers 3,600 L of each; completing it unlocks Corn, Grass seed, and the hay-equipment set. Corn currently uses the existing seeder, while its specialized equipment remains future work. These objectives exercise the complete harvest, transport, delivery and pickup loop while establishing the intended shift from a simple crop delivery to a varied requirement.
-
-There is no time limit on these objectives and no macro-level failure state.
-
-A player can ignore the next objective and continue farming freely for as long as they want.
+Progression should continue to unlock possibilities rather than becoming a sequence of increasingly expensive vehicle upgrades.
 
 ---
 
 ## 6. Optional Progression
 
-Optional progression should reward the player for developing the Farmipelago in broader and more interesting ways rather than simply asking for additional deliveries.
+Optional progression is a planned system and is not yet represented by a full milestone structure in the current prototype.
 
-These milestones should encourage experimentation, expansion and diversification.
+It should reward the player for developing the Farmipelago in broader and more interesting ways rather than simply asking for additional delivery quotas.
 
 Possible milestone categories include:
 
@@ -146,7 +147,7 @@ Possible milestone categories include:
 
 - keep different animal species
 - support livestock with crops grown on the Farmipelago
-- develop enough grazing or feeding capacity for larger herds
+- develop enough feeding capacity for larger herds
 
 ### Machinery
 
@@ -156,15 +157,11 @@ Possible milestone categories include:
 
 ### Logistics and Infrastructure
 
-- connect or make productive use of distant islands
+- make productive use of distant islands
 - transport produce between different parts of the Farmipelago
-- build and use systems such as irrigation, storage or animal infrastructure
+- build and use storage or future agricultural infrastructure
 
-Optional milestones should unlock useful capabilities, conveniences or specialized equipment.
-
-They should preferably introduce new options rather than only grant percentage-based stat increases.
-
-Optional progression should feel like recognition that the player has broadened and improved the farm, while main progression measures whether the farm can produce the increasingly complex outputs required to advance.
+Optional milestones should preferably unlock useful capabilities, conveniences or specialized equipment rather than only percentage-based stat increases.
 
 ---
 
@@ -172,236 +169,337 @@ Optional progression should feel like recognition that the player has broadened 
 
 Progression should expand the player's **capabilities**.
 
-The game may eventually contain several overlapping areas of farming:
+The game can eventually contain several overlapping areas of farming:
 
 **Crop farming**  
 Ploughing, planting, harvesting and crop-specific machinery.
 
 **Livestock**  
-Animals, feeding, grazing, animal products and livestock-related vehicles.
+Animals, feeding, animal products and livestock-related vehicles.
 
 **Logistics**  
 Transporting crops, feed, equipment and other resources around the Farmipelago.
 
 **Land improvement**  
-Irrigation, fencing, access between islands and potentially other ways of adapting difficult terrain.
+Storage, access between islands and potentially other ways of adapting difficult terrain.
 
 These do not need to form a large visible skill tree.
 
-The important principle is that progression must support multiple forms of agriculture rather than becoming a linear chain of increasingly powerful tractors.
-
-Main progression should primarily be driven by increasingly complex production deliveries.
-
-Optional progression should primarily be driven by milestones that reward breadth, experimentation and development of the Farmipelago.
+Main progression should primarily be driven by increasingly complex production deliveries. Optional progression should primarily reward breadth, experimentation and development of the Farmipelago.
 
 ---
 
 ## 8. The Farmipelago
 
-The world consists of multiple connected or closely positioned voxel islands.
+The world consists of multiple voxel islands generated from a persistent seed.
 
-The broad terrain and water layout are procedurally generated.
+The current generator provides:
 
-The large starting island sits roughly at the center of the generated archipelago and acts as the farm's initial operations hub. The barn, cargo pad, starting vehicles and first useful farming space are all located there. A direct bridge reaches a second nearby large island that provides substantial early farming room while retaining more varied elevation.
+- a two-island starter area
+- a level starter farmyard with a walk-in 3×3 barn
+- a separate cargo-hub island connected by bridge
+- additional larger lobed islands with stepped elevations
+- broad clear farming plots on generated islands
+- bridges across larger gaps
+- lakes, animated rivers and waterfalls
+- grass, dirt and stone terrain layers with deep pointed undersides
+- generated trees, rocks and grass tufts
 
-Additional islands surround this central area in deliberately mixed sizes and elevations. Their controlled connection graph lets the farm expand outward without making every island an identical spoke from the hub, while the islands' outlines, surfaces, water and decoration remain procedurally organic.
+Vehicles can jump, so elevation and gaps are part of navigation without requiring ramps.
 
-Islands can contain several elevations. Vehicles can jump between appropriate height differences, making vertical terrain part of navigation.
+Generated props can fade when they block the camera's view of the active vehicle.
 
-Terrain uses relatively large blocks.
-
-Vehicles, trees, rocks and other objects use smaller voxels, allowing them to contain more visual detail than the landscape.
-
-The Farmipelago persists for the entire game.
+The Farmipelago persists across browser sessions, including its generated tiles and seed.
 
 ---
 
 ## 9. Growing Conditions
 
-Different locations have environmental properties generated using overlapping noise fields.
+Each farmable location has environmental values for:
 
-Current planned axes are:
+**Dry ↔ Wet / moisture**
 
-**Dry ↔ Wet**
+**Shady ↔ Sunny / sunlight**
 
-**Sunny ↔ Shady**
+These values are procedurally generated and visibly affect the world. Damp/cool areas tend to gather trees, while bright/dry areas are rockier and more open. Grass color also varies with the environmental fields.
 
-Different crops can prefer different combinations, but crop suitability is not the only reason these environmental fields matter.
+The player can enter a **crop suitability mode** for any unlocked or inspectable crop. This switches to an elevated map-style camera that can be panned across the Farmipelago.
 
-Crop suitability influences:
+Suitability is calculated from how close local moisture and sunlight are to that crop's preferred values.
 
-- growth rate
+Suitability currently affects both:
+
+- growth speed
 - harvest yield
 
-An overlay allows the player to inspect crop suitability across the Farmipelago.
+Growth ranges from roughly **70% to 100%** of normal speed according to suitability.
 
-Moisture and sunlight also generate immediately visible environmental character through ground color, tree and rock density, tree silhouettes, and lightweight vegetation. Their continuous overlap can produce dense forest or rainforest, normal woodland, open green grassland, lush meadow or wetland, muted dry woodland, and yellow rocky plains without requiring hard named-biome boundaries.
+Yield ranges from roughly **50% to 100%** of the crop's maximum tile yield according to suitability.
 
-A single island can cross several characters where the noise fields change. Coherent patches should remain recognizable from a distance, making islands feel visually distinct and changing how open, wooded, rocky or naturally obstructed their usable land is.
-
-Choosing which island to develop next should therefore consider access, usable area, elevation and natural obstruction as well as agricultural conditions. The central hub and second large starter island retain the full visual variation but suppress extreme blocking-tree density so both remain practical early farming spaces.
-
-The goal is strong, gradual environmental variation rather than sharply separated named biomes. This visual and land-use direction does not itself introduce new crop-yield or growth rules.
+The current implementation intentionally keeps poor land usable rather than making unsuitable locations completely invalid.
 
 ---
 
 ## 10. Crops
 
-Different crops should have different environmental preferences.
+The current prototype contains five crops:
 
-This creates competition for suitable land and gives different parts of the Farmipelago different agricultural value.
+- Wheat
+- Barley
+- Canola
+- Soybeans
+- Corn
 
-As progression introduces additional crops, the player should sometimes need to reconsider how existing land is being used.
+They occupy different points in the moisture/sunlight space:
 
-The crop system should remain readable enough that the player can understand why a crop performs well or poorly.
+- Wheat prefers relatively dry, very sunny land.
+- Barley prefers dry, moderately sunny land.
+- Canola prefers wetter, moderately sunny land.
+- Soybeans prefer wet and sunny land.
+- Corn prefers moderate moisture and high sunlight.
 
-Each cultivated tile represents a compact farm plot and yields 50–200 L at harvest, depending on suitability. The prototype combine stores 3,600 L, and crop storage and deliveries are displayed in liters. Harvesting and all silo/cargo transfers update the real inventory in rapid 10 L steps, so a displayed amount never completes ahead of the physical transfer.
+The player selects seed while using the seeder. Only crops unlocked by progression should be available for normal progression play.
 
-Exact crop lists and growth times are not yet defined.
+Planted crops visibly sprout and grow. Harvest-ready crops pulse in synchronized world time.
 
-### Grass and Hay
+Each ready crop tile currently yields approximately **50–200 L**, scaled by suitability.
 
-Grass is a perennial seeded crop planted on prepared soil with the existing seeder. It does not develop weeds. Once mature, it is cut with a front or rear mower and automatically regrows without reseeding.
-
-The hay-production machinery forms a compact physical sequence:
-
-**mow grass → bale the loose cut grass**
-
-The front mower covers a centered strip, while the side-mounted rear mower expands the cutting width. The baler picks loose grass up directly across its intake. A front mower and rear baler can work together so grass is cut ahead of the tractor and collected behind it in one pass.
-
-Grass suitability determines a tile's 50–200 L cutting yield, and the baler conserves that volume as it gathers loose grass. It emits one rectangular bale for every 3,600 L processed. Bales remain visible and persistent in the Farmipelago. Bale handling, storage, delivery, and use as livestock feed remain future work.
-
----
-
-## 11. Livestock
-
-Livestock is intended as a future major farming system.
-
-Animals could produce resources such as:
-
-- milk
-- eggs
-- wool
-- other agricultural products
-
-Livestock should create new uses for land rather than simply behaving as another passive production building.
-
-Possible requirements include grazing areas, feed production, shelters and fenced spaces.
-
-Livestock should also introduce new machinery and logistics requirements.
-
-The exact animal and building systems remain unresolved.
+This system is intended to create competition for the best land and encourage the player to reconsider how existing fields are allocated as new crops unlock.
 
 ---
 
-## 12. Vehicles and Equipment
+## 11. Field Work
 
-Vehicles are central to interaction and exist persistently as physical objects in the Farmipelago.
+Crop farming is physically represented in the world.
 
-The player owns a fleet and cycles control directly between its vehicles. Parked vehicles remain where they were left, keep their individual loadouts and storage, and continue to occupy physical space in the world.
+### Ploughing
 
-The current planned vehicle concept separates:
+The tractor's visible four-share plough converts grass tiles into ploughed soil and produces rolling voxel soil feedback.
 
-- owned vehicle instance
-- rear attachment
-- front attachment
+Grass tufts on worked tiles are cleared as part of cultivation.
 
-Different vehicles and attachments should have meaningful tradeoffs.
+### Seeding
 
-A larger tractor should not automatically replace a smaller tractor in every situation.
+The seeder plants the currently selected crop on prepared soil. The player can cycle seed directly from the vehicle controls.
 
-Island size, maneuverability, terrain and the job being performed should influence equipment choice.
+### Harvesting
 
-The barn is the primary location for configuring the currently controlled vehicle's compatible equipment. It does not select, spawn or relocate the vehicle being used.
+The Combine Harvester uses its built-in header. The header can be raised/lowered and started/stopped through the same contextual tool-control philosophy used by tractor attachments.
 
-Grass seed and the front mower, rear mower, and baler unlock together after the current Crop diversity objective. Grass seed and the hay-equipment set remain separate capability gates so development overrides can test planting and machinery independently.
+Harvested crop enters the combine's internal storage.
 
 ---
 
-## 13. Buildings
+## 12. Livestock
 
-Buildings should have clear gameplay functions.
+Livestock remains a future major farming system and is not yet implemented.
 
-The game should avoid filling the Farmipelago with buildings simply for decoration or because farming games conventionally contain them.
+The first likely animal is cattle, with hay/feed providing a physical connection back to crop farming.
 
-The barn currently has a clear role as the workshop where a vehicle's individual attachment loadout is changed.
+Livestock should create new uses for land and logistics rather than behaving as passive production buildings.
+
+Potential systems include:
+
+- feeding from crops produced on the Farmipelago
+- growth and reproduction
+- milk production
+- shelters or barns
+- fenced or managed areas
+- livestock-specific machinery and transport
+
+The exact complexity of birth, growth, feeding, aging/death and milk production remains open and should stay consistent with the game's compact, readable style.
+
+---
+
+## 13. Vehicles and Equipment
+
+Vehicles are persistent world objects. The owned fleet currently contains:
+
+### Farm Tractor
+
+- rear tool slot
+- front tool slot
+- default loadout: plough + front loader
+- can equip compatible rear/front equipment
+- can equip a **20,000 L Grain Trailer** for crop transport
+
+### Combine Harvester
+
+- built-in harvesting header
+- no swappable rear/front attachment slots in the current prototype
+- **3,600 L** internal crop tank
+
+Both vehicles remain parked in the world when not controlled. Their positions, loadouts and stored crop are saved.
+
+The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
+
+### Barn Workshop
+
+The barn functions as the loadout workshop.
+
+The player drives into it and receives a live 3D preview of the active vehicle and compatible equipment. The UI distinguishes unavailable slots for vehicles such as the combine.
+
+Long-term equipment design should preserve meaningful tradeoffs. Larger or more capable vehicles should not automatically invalidate smaller machinery if terrain, maneuverability or specialization can keep both useful.
+
+---
+
+## 14. Storage and Logistics
+
+Crop volume is represented physically in litres and moves between actual inventories.
+
+The current logistics chain is:
+
+**Combine → silo → Grain Trailer → cargo hub**
+
+Transfers occur in rapid 10 L steps and are reflected in vehicle/building inventories rather than functioning as abstract menu submissions.
+
+### Grain Silos
+
+The player can enter build mode and place grain silos on valid clear, level terrain.
+
+Current silo behavior:
+
+- silos are free in the prototype
+- they have physical collision
+- they can be repositioned while in build mode
+- each silo stores crop volumes by crop type
+- contents persist in the save
+- a nearby popup shows stored crop amounts
+- round Load / Unload controls transfer produce between the selected silo and an eligible vehicle
+
+This is the first implemented building-placement and farm-storage system.
+
+---
+
+## 15. Buildings and Construction
+
+The game now has an implemented construction mode rather than buildings being entirely unresolved.
+
+A round build button opens a dedicated elevated, pannable construction view. The player selects a building and drags it onto valid terrain.
+
+Currently the **grain silo** is the only player-placeable building.
+
+The permanent starter structures are:
+
+- barn / vehicle workshop
+- cargo hub and landing pad
 
 Future buildings may support:
 
 - livestock
-- storage
-- crop handling
+- specialized crop handling
+- additional storage
 - equipment
-- progression deliveries
-- other agricultural systems
+- new progression systems
 
-How buildings are placed and how much physical space they require remains an open design question.
-
----
-
-## 14. Deliveries
-
-The Farmipelago's cargo pad connects the physical farm to the main progression system. It is a permanent facility on the edge of the second island, with a receiving area for vehicle drop-offs and a landing deck for visiting cargo craft.
-
-Vehicles with internal storage can transfer only produce requested by the current objective. Produce counts toward progression in 10 L transfer steps at the pad; surplus and unrelated produce remain in the vehicle.
-
-A chunky VTOL cargo craft periodically approaches from outside the Farmipelago, lands for a short collection window, then departs in the direction from which it arrived. When a delivery milestone is completed, the craft is summoned directly to collect the staged cargo; its departure is framed as a brief celebration that clearly shows the newly unlocked farming possibilities. This makes deliveries, shipment and progression visible in the world without introducing a detailed market economy.
-
-The important mechanical function remains:
-
-**The player sends agricultural products away from the Farmipelago in order to fulfill main progression objectives.**
-
-Optional progression should generally come from milestones and farm development rather than additional delivery quotas.
+The design should continue to require buildings to have clear gameplay functions rather than adding structures purely because farming games conventionally contain them.
 
 ---
 
-## 15. Controls and Camera
+## 16. Cargo Hub and Deliveries
 
-Primary platform target is mobile.
+The current progression receiver is a **cargo hub** permanently attached to the second starter island.
 
-The game is designed primarily for portrait orientation.
+It contains:
 
-The camera uses a relatively high fixed angle and should remain mostly stable rather than closely following every movement of the vehicle.
+- a marked VTOL landing deck
+- staged delivery crates
+- a nearby cargo interaction popup
+- visible milestone requirements and Deliver controls
 
-Current basic controls include:
+The player transports crops to the hub and transfers eligible cargo into the current milestone.
 
-- fixed movement stick on the lower left
+When a milestone is completed, a chunky four-fan cargo VTOL rapidly approaches the landing deck. Staged cargo is collected and the aircraft departs, creating a physical payoff for progression rather than resolving it only through menus.
+
+The cargo hub provides the current in-world connection to the outside world. The wider fiction behind who is requesting or receiving the products remains intentionally open.
+
+---
+
+## 17. Controls and Camera
+
+Primary platform target is mobile, with portrait-oriented phone play as the main control constraint.
+
+### Mobile
+
+Current controls include:
+
+- dynamic camera-relative virtual joystick in the lower-left drive zone
 - jump button
-- a cycle-vehicle action above the movement stick on the left edge
-- separate general front-tool and rear-tool actions, allowing compatible attachments to be raised and lowered independently
-- context-specific secondary farming controls as required
+- contextual primary tool action
+- secondary action such as cycling seed
+- cycle-vehicle button
+- suitability button
+- build button
+- nearby building/cargo interaction popups
 
-The controlled machine's active inventory uses one compact HUD treatment regardless of source. The combine tank, grain trailer, and baler chamber share the same litre meter, label, and fill bar rather than introducing equipment-specific inventory panels.
+The virtual stick can begin anywhere inside its drive zone and points the vehicle in the corresponding screen-relative direction.
 
-Controls should remain simple despite the increasing number of farming systems.
+### Desktop Fallback
+
+Current keyboard controls include:
+
+- WASD / arrow keys — drive
+- Space — jump
+- E — raise/lower or activate the relevant tool
+- V — cycle vehicles
+- F — cycle seed with the seeder
+- B — build mode
+- Escape — leave special camera modes or open the menu
+- 1–4 — equipment selection in the barn workshop
+
+### Camera
+
+The normal gameplay camera is a smooth high-angle follow camera that keeps the active vehicle framed.
+
+Suitability and construction modes switch to elevated pannable overview cameras.
+
+The camera should preserve the miniature-diorama feeling while keeping vehicle control readable on a phone screen.
 
 ---
 
-## 16. UI Direction
+## 18. UI Direction
 
-The UI should be modern, minimal and visually integrated with the game.
+The UI should remain modern, compact and visually integrated with the world.
 
-Large framed panels should be avoided where possible.
+Current implementation follows these principles through:
 
-Important actions should generally use:
+- phone safe-area support
+- a dynamic touch joystick rather than a large permanent control frame
+- round action buttons
+- compact crop icons and inventory readouts
+- contextual silo and cargo popups
+- an integrated milestone tracker
+- live 3D vehicle/equipment previews in the barn
+- temporary labels for actions such as seed cycling
+- input-aware desktop control hints
 
-**icon + short text**
+Large decorative panels should be avoided where possible.
 
-rather than relying entirely on unlabeled icons.
+Important actions should generally use recognizable iconography with text where the action would otherwise be ambiguous.
 
-The game should avoid the visual language commonly associated with free-to-play mobile games, including excessive currencies, reward badges and decorative progression screens.
+The game should avoid the visual language of free-to-play mobile farming games: excessive currencies, reward badges, storefront-like screens and decorative progression clutter.
 
 The world should remain visually dominant.
 
 ---
 
-## 17. Art Direction
+## 19. Art Direction
 
-Farmipelago uses a playful voxel style.
+Farmipelago uses a playful miniature voxel style.
 
-The terrain is chunky and simplified.
+The terrain is chunky and simplified, while vehicles and props use smaller voxels and greater detail.
 
-Vehicles and environmental objects use smaller voxels and therefore have more detail.
+Current visual language includes:
+
+- muted grass, dirt and stone layers
+- softly lit terrain and gentle fog
+- deep pointed floating-island undersides
+- colorful toy-like farm vehicles
+- a blue hero tractor with glazed cab, lamps and beacon
+- squash-and-stretch on vehicle jumps and crop growth
+- animated trees and vegetation
+- waterfalls and environmental motion
+- physical crop unloading streams and delivery crates
 
 The overall feeling should be:
 
@@ -411,27 +509,50 @@ The overall feeling should be:
 - playful
 - slightly toy-like
 
-It should not look like a realistic simulator, but it should still communicate recognizable farming machinery and agricultural processes.
+It should not look like a realistic simulator, but farming machinery and agricultural processes should remain recognizable.
 
 ---
 
-## 18. Free Play
+## 20. Persistence and Free Play
+
+The game automatically saves to browser-local storage.
+
+The current save includes:
+
+- world seed
+- generated world tiles
+- field and crop state
+- placed buildings and silo contents
+- progression state and delivered amounts
+- vehicle positions
+- vehicle loadouts
+- vehicle storage
+- active vehicle
+- relevant UI state
+
+Refreshing the page restores the same farm rather than generating a new level.
+
+The pause menu includes a confirmed restart option that deletes the save and generates a new Farmipelago.
 
 Progression objectives should never prevent players from simply enjoying their farm.
 
-There should be no deadline for completing the next delivery.
-
-There should be no penalty for taking a long time.
-
-The player can continue farming, reorganizing fields, experimenting with machinery and developing the Farmipelago without advancing the main progression.
-
-Optional milestones should also be rewards for natural play rather than mandatory checklists.
+There is no deadline for deliveries and no penalty for taking a long time. After completing all currently available milestones, the player returns to unrestricted free farming.
 
 Progression provides direction rather than pressure.
 
 ---
 
-## 19. Non-Goals
+## 21. Failure and Recovery
+
+Farmipelago is not currently built around punishing failure.
+
+Vehicles can fall from islands, but the game automatically rescues them so navigation mistakes do not destroy the persistent farm or create a large recovery burden.
+
+There is currently no macro-level failure state.
+
+---
+
+## 22. Non-Goals
 
 Farmipelago is not intended to become:
 
@@ -443,43 +564,71 @@ Farmipelago is not intended to become:
 - a decoration-focused mobile farming game
 - an automation game where machinery eventually removes the player from farming
 
-Automation may support the player, but personally operating agricultural machinery should remain important.
+Automation may eventually support the player, but personally operating agricultural machinery should remain important.
 
 ---
 
-## 20. Major Open Questions
+## 23. Current Prototype Scope
 
-### How should the cargo connection expand?
+The playable prototype currently proves the following major systems together:
 
-The cargo pad and VTOL establish the physical delivery point. The identity of the outside organization, later cargo handling upgrades and whether other islands gain specialized logistics links remain open.
+- persistent procedurally generated archipelago
+- vehicle driving and jumping
+- tractor attachments
+- ploughing and seeding
+- crop growth, suitability and yield
+- combine harvesting
+- crop storage in litres
+- persistent placeable silos
+- trailer-based transport
+- cargo-hub deliveries
+- crop-unlock milestone progression
+- multiple persistent vehicles
+- barn loadout workshop
+- suitability and construction overview modes
+- automatic local saving and restoration
 
-### What does the main progression sequence look like?
-
-The progression needs to introduce crops, equipment, livestock and other systems at a good pace.
-
-### What do optional milestones unlock?
-
-The relationship between milestone categories and specific rewards still needs to be designed.
-
-### How do buildings work?
-
-Placement, size, construction and interaction are still largely undefined.
-
-### How does livestock work?
-
-Animal movement, grazing, feeding, shelters and machinery all need further design.
-
-### How large is the Farmipelago?
-
-The amount of persistent land strongly affects how much pressure exists around allocating space.
-
-### How much can the player modify the terrain?
-
-This will determine whether generated geography remains an important constraint throughout the game.
+This prototype should be treated as the foundation for expansion rather than as a disposable technical test.
 
 ---
 
-## 21. Design Test
+## 24. Major Open Questions
+
+### What comes after the current crop milestones?
+
+The current two milestones prove the progression mechanic, but the longer sequence that introduces equipment, crops, livestock and other systems still needs to be designed.
+
+### What should optional milestones unlock?
+
+The relationship between breadth-of-farm achievements and concrete capability rewards remains unresolved.
+
+### How should livestock work?
+
+Cattle are a likely first animal, but the desired complexity of feeding, growth, reproduction, milk production, aging/death and shelters still needs to be set.
+
+### How should livestock buildings work with construction?
+
+The silo establishes a placement model, but larger functional structures, fences and animal areas may require different rules.
+
+### How large should the final Farmipelago be?
+
+The amount of persistent usable land strongly affects the pressure around crop allocation and future livestock space.
+
+### How much terrain modification should be allowed?
+
+Current farming changes surface state but does not fundamentally reshape the generated islands. Future terrain modification must not erase the importance of generated geography.
+
+### What is the fiction behind the cargo network?
+
+The cargo hub and VTOL establish the mechanic, but the organization requesting deliveries and the broader setting remain open.
+
+### How should vehicles and tools unlock?
+
+Crop gates are implemented. The game still needs a coherent way to introduce future tractors, livestock machinery and specialized equipment without falling back into a simple money ladder.
+
+---
+
+## 25. Design Test
 
 When considering a new feature, ask:
 

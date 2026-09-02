@@ -33,16 +33,27 @@ const MILESTONES = [
     ],
     unlocks: ['crop:corn', 'crop:grass', 'equipment:hay'],
   },
+  {
+    id: 'livestock-preparation',
+    title: 'Livestock preparation',
+    requirements: [
+      { itemId: 'hay-bale', name: 'Hay bales', target: 4, unit: 'bales', icon: 'hay-bale' },
+    ],
+    unlocks: [],
+  },
 ];
 
 const lastMilestoneIndex = MILESTONES.length - 1;
+const requirementId = requirement => requirement.itemId || requirement.cropId;
 
-const blankDelivery = milestone => Object.fromEntries(milestone.requirements.map(requirement => [requirement.cropId, 0]));
+const blankDelivery = milestone => Object.fromEntries(milestone.requirements.map(requirement => [requirementId(requirement), 0]));
 
 export function createMilestoneProgression(savedState = null) {
   const savedIndex = Math.floor(Number(savedState?.index));
   let index = Number.isSafeInteger(savedIndex) ? Math.min(lastMilestoneIndex, Math.max(0, savedIndex)) : 0;
-  let collected = Boolean(savedState?.collected) && index === lastMilestoneIndex;
+  const legacyFinalCollected = Boolean(savedState?.collected) && index < lastMilestoneIndex;
+  if (legacyFinalCollected) index = Math.min(lastMilestoneIndex, index + 1);
+  let collected = Boolean(savedState?.collected) && !legacyFinalCollected && index === lastMilestoneIndex;
   let delivered = {};
   let selectedCropIds = [];
   const overrideGates = new Set((Array.isArray(savedState?.overrideGates) ? savedState.overrideGates : [])
@@ -53,8 +64,8 @@ export function createMilestoneProgression(savedState = null) {
   const restoreDelivery = () => {
     const milestone = current();
     delivered = Object.fromEntries(milestone.requirements.map(requirement => [
-      requirement.cropId,
-      Math.min(requirement.target, Math.max(0, Math.floor(Number(savedState?.delivered?.[requirement.cropId]) || 0))),
+      requirementId(requirement),
+      Math.min(requirement.target, Math.max(0, Math.floor(Number(savedState?.delivered?.[requirementId(requirement)]) || 0))),
     ]));
     if (!milestone.choiceLimit) return;
     const validCropIds = new Set(milestone.requirements.map(requirement => requirement.cropId));
@@ -76,7 +87,7 @@ export function createMilestoneProgression(savedState = null) {
         delivered[cropId] >= milestone.requirements.find(requirement => requirement.cropId === cropId).target
       );
     }
-    return milestone.requirements.every(requirement => delivered[requirement.cropId] >= requirement.target);
+    return milestone.requirements.every(requirement => delivered[requirementId(requirement)] >= requirement.target);
   };
   if (collected && !complete()) collected = false;
 
@@ -95,7 +106,7 @@ export function createMilestoneProgression(savedState = null) {
 
   const canAccept = requirement => {
     const milestone = current();
-    if (complete() || collected || !requirement || delivered[requirement.cropId] >= requirement.target) return false;
+    if (complete() || collected || !requirement || delivered[requirementId(requirement)] >= requirement.target) return false;
     if (!milestone.choiceLimit) return true;
     return selectedCropIds.includes(requirement.cropId) || selectedCropIds.length < milestone.choiceLimit;
   };
@@ -127,12 +138,17 @@ export function createMilestoneProgression(savedState = null) {
           overridden: overrideGates.has(unlockable.id),
           canOverride: !naturalGates.has(unlockable.id),
         })),
+        milestones: MILESTONES.map((entry, milestoneIndex) => ({
+          id: entry.id,
+          title: entry.title,
+          active: !gameComplete && milestoneIndex === index,
+        })),
         complete: gameComplete ? false : isComplete,
         pickupReady: !gameComplete && isComplete && !collected,
         collected,
         requirements: requirements.map(requirement => ({
           ...requirement,
-          delivered: delivered[requirement.cropId],
+          delivered: delivered[requirementId(requirement)],
           selected: selectedCropIds.includes(requirement.cropId),
           accepting: canAccept(requirement),
           locked: Boolean(milestone.choiceLimit && selectedCropIds.length >= milestone.choiceLimit && !selectedCropIds.includes(requirement.cropId)),
@@ -156,17 +172,28 @@ export function createMilestoneProgression(savedState = null) {
       else overrideGates.delete(gateId);
       return true;
     },
+    setMilestoneOverride(milestoneId) {
+      const nextIndex = MILESTONES.findIndex(milestone => milestone.id === milestoneId);
+      if (nextIndex === -1 || (nextIndex === index && !collected)) return false;
+      index = nextIndex;
+      collected = false;
+      delivered = blankDelivery(current());
+      selectedCropIds = [];
+      for (const gateId of progressionGates()) overrideGates.delete(gateId);
+      return true;
+    },
     accept(contents) {
       if (complete() || collected) return {};
       for (const requirement of current().requirements) {
-        const available = Math.max(0, contents[requirement.cropId] || 0);
+        const id = requirementId(requirement);
+        const available = Math.max(0, contents[id] || 0);
         if (!available || !canAccept(requirement)) continue;
-        const remaining = Math.max(0, requirement.target - delivered[requirement.cropId]);
+        const remaining = Math.max(0, requirement.target - delivered[id]);
         const amount = Math.min(available, remaining);
         if (!amount) continue;
         if (current().choiceLimit && !selectedCropIds.includes(requirement.cropId)) selectedCropIds.push(requirement.cropId);
-        delivered[requirement.cropId] += amount;
-        return { [requirement.cropId]: amount };
+        delivered[id] += amount;
+        return { [id]: amount };
       }
       return {};
     },

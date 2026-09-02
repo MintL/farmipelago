@@ -1,4 +1,4 @@
-export { TRAILER_STORAGE_CAPACITY } from './equipment.js?v=hay-simple-20260901-1';
+export { TRAILER_STORAGE_CAPACITY } from './equipment.js?v=bale-wrapper-20260902-1';
 
 export const VEHICLE_TYPES = {
   tractor: {

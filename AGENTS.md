@@ -120,6 +120,12 @@ the GDD as well:
 
 ## Manual verification checklist
 
+Do not automate or attempt to automate these manual tests unless the user
+explicitly asks for automated testing. This includes browser automation,
+scripted input, synthetic save states, and test-only gameplay hooks. When
+automation was not requested, leave the checklist for a person to perform and
+report which checks remain manual.
+
 After gameplay, terrain, or UI changes, run the server and verify:
 
 1. Initial farm appears, the tractor spawns on solid ground, and regenerate

@@ -13,6 +13,7 @@ export const REAR_EQUIPMENT = [
 export const FRONT_EQUIPMENT = [
   { id: 'loader', name: 'Front Loader', icon: 'utility', description: 'Move and lift heavy objects.' },
   { id: 'front-mower', name: 'Front Mower', icon: 'mower', description: 'Cuts a centered strip of mature grass ahead of the tractor.', gate: 'equipment:hay', working: true },
+  { id: 'bale-fork', name: 'Bale Fork', icon: 'bale-fork', description: 'Spears, lifts, and places one rectangular hay bale.', gate: 'equipment:hay', working: true },
   { id: 'forks', name: 'Pallet Forks', icon: 'utility', description: 'Carry crates and stacked supplies.', unavailable: true },
   { id: 'weight', name: 'Front Weight', icon: 'utility', description: 'Adds stability for heavy rear work.', unavailable: true },
 ].map(item => ({ slot: 'frontTool', working: item.working ?? false, ...item }));

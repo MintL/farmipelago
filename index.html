@@ -124,7 +124,7 @@
       place-items: center;
       padding: 0;
       border: 1px solid var(--line);
-      border-radius: 50%;
+      border-radius: 15px;
       background: var(--glass);
       box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
       color: var(--muted);
@@ -781,7 +781,8 @@
       background: rgba(52, 60, 45, .035);
     }
     .debugIntro { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
-    #debugUnlockList { display: grid; gap: 6px; }
+    #debugUnlockList, #debugMilestoneList { display: grid; gap: 6px; }
+    .debugSectionLabel { color: var(--ink); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
     .debugUnlock {
       width: 100%;
       min-height: 48px;
@@ -875,7 +876,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.100</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.109</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -1022,16 +1023,20 @@
               <strong>Front tool</strong><span>Q or the front action button</span>
               <strong>Rear tool</strong><span>E or the rear action button</span>
               <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
-              <strong>Seed / storage</strong><span>With the seeder, use the crop button or F to cycle seed; with the combine, use it to transfer beside a silo or cargo pad</span>
+              <strong>Seed / cargo</strong><span>With the seeder, use the crop button or F to cycle seed; use the popup beside a silo or cargo pad to transfer crops or deliver a carried bale</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
               <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
             </div>
             <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
               <svg class="icon" aria-hidden="true"><use href="#icon-field"></use></svg>
-              <span><strong>Debug</strong><small>Override progression unlocks for testing</small></span>
+              <span><strong>Debug</strong><small>Override milestones and unlocks for testing</small></span>
             </button>
             <div id="debugPanel" hidden>
+              <strong class="debugSectionLabel">Active milestone</strong>
+              <p class="debugIntro">Selecting a milestone switches immediately and clears its current delivery progress.</p>
+              <div id="debugMilestoneList" aria-label="Milestone override"></div>
+              <strong class="debugSectionLabel">Unlocks</strong>
               <p class="debugIntro">Overrides unlock an option without completing its delivery. Normal progression unlocks remain unchanged.</p>
               <div id="debugUnlockList" aria-label="Unlockable overrides"></div>
               <button id="clearUnlockOverrides" class="button" type="button" hidden>Clear overrides</button>
@@ -1085,6 +1090,8 @@
     <symbol id="icon-sprayer" viewBox="0 0 24 24"><path d="M8 6h8v10H8zM10 3h4M4 12h4M16 12h4M4 12v4M20 12v4M3 19h2M11 19h2M19 19h2" /></symbol>
     <symbol id="icon-mower" viewBox="0 0 24 24"><path d="M4 15h16M6 15l2-6h8l2 6M8 18h8M6 20l3-2M18 20l-3-2M10 9V6h4v3" /></symbol>
     <symbol id="icon-baler" viewBox="0 0 24 24"><path d="M5 8h12l2 4v7H5zM8 11h7v5H8zM3 16h2M19 16h2M6 6h8" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
+    <symbol id="icon-bale-fork" viewBox="0 0 24 24"><path d="M6 4v13M18 4v13M6 7h12M6 17h12M9 17v5M15 17v5" /></symbol>
+    <symbol id="icon-hay-bale" viewBox="0 0 24 24"><path d="M4 7h16v12H4z" fill="#d1ae52" stroke="#80652f" /><path d="M8 7v12M16 7v12" stroke="#6f8b45" stroke-width="2" /><path d="M6 10h2M10 10h4M17 10h1M5 15h3M10 15h4M17 15h2" stroke="#f0d277" /></symbol>
     <symbol id="icon-grass" viewBox="0 0 24 24"><path d="M4 21c1-7 3-11 5-15M9 21c0-8 1-13 3-18M14 21c0-7 2-12 5-16M6 21c1-4 3-7 6-9M12 21c2-4 5-7 8-8" stroke="#4f8f45" /></symbol>
     <symbol id="icon-wheat" viewBox="0 0 24 24"><path d="M12 21V4" stroke="#69512d" /><path d="m12 8-3.8-2.9c-.7 2.2.6 3.6 3.8 4.2ZM12 11l4-3c.7 2.3-.8 3.7-4 4.2ZM12 14l-4-3c-.5 2.3 1.1 3.6 4 4.1ZM12 17l3.8-2.8c.6 2.2-.8 3.5-3.8 4" fill="#e8bf55" stroke="#80602d" /><path d="M12 7.8 9.8 6.1M12 12l2.4-1.8M12 15.1l-2.3-1.7" stroke="#d79635" /></symbol>
     <symbol id="icon-sunflower" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><path d="M12 5V3M12 13v8M9 8H7M17 8h-2M9.8 5.8 8.4 4.4M14.2 10.2l1.4 1.4M14.2 5.8l1.4-1.4M9.8 10.2l-1.4 1.4M12 17c-3 0-5-1-6-3 3 0 5 1 6 3Z" /></symbol>
@@ -1100,6 +1107,6 @@
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=hay-simple-20260901-1"></script>
+  <script type="module" src="./main.js?v=bale-wrapper-20260902-1"></script>
 </body>
 </html>

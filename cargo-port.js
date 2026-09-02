@@ -1,4 +1,4 @@
-import { THREE, box } from './shared.js?v=crop-diversity-20260831-1';
+import { THREE, box, mats } from './shared.js?v=bale-wrapper-20260902-1';
 
 const DECK_HEIGHT = .18;
 const DECK_CLEARANCE = .04;
@@ -43,6 +43,7 @@ export function createCargoPort(site) {
   let startDistance = 34;
   let pickupQueued = false;
   let shipmentCollected = false;
+  let cargoKind = 'crops';
 
   group.name = 'cargo-port';
   const deckBaseY = site.y + DECK_CLEARANCE;
@@ -131,6 +132,33 @@ export function createCargoPort(site) {
     crates[index] = crate;
   }
 
+  const stagedBales = [];
+  for (const [index, position] of [[0, [1.28, .48, -.05]], [1, [1.96, .48, -.05]], [2, [1.28, 1.07, -.05]], [3, [1.96, 1.07, -.05]]]) {
+    const bale = new THREE.Group();
+    const body = box(.82, .56, 1.15, mats.bale);
+    bale.add(body);
+    for (const offset of [-.27, .27]) {
+      for (const y of [-.292, .292]) {
+        const band = box(.86, .035, .13, mats.baleBand);
+        band.position.set(0, y, offset);
+        bale.add(band);
+      }
+      for (const x of [-.422, .422]) {
+        const band = box(.035, .56, .13, mats.baleBand);
+        band.position.set(x, 0, offset);
+        bale.add(band);
+      }
+    }
+    bale.position.set(...position);
+    bale.userData.basePosition = new THREE.Vector3(...position);
+    bale.userData.pop = 0;
+    bale.visible = false;
+    cargoGroup.add(bale);
+    stagedBales[index] = bale;
+  }
+
+  const cargoItems = () => cargoKind === 'hay-bale' ? stagedBales : crates;
+
   const craft = createVtol({ deckMaterial, deckEdgeMaterial, markingMaterial, cargoMaterial, cargoDarkMaterial, glassMaterial, lightMaterial, redLightMaterial });
   craftRoot.add(craft.group);
   craftRoot.visible = false;
@@ -178,11 +206,19 @@ export function createCargoPort(site) {
     },
     setLoadRatio(nextRatio) {
       loadRatio = THREE.MathUtils.clamp(nextRatio, 0, 1);
-      crates.forEach((crate, index) => {
-        const visible = loadRatio > index / crates.length + .001;
-        if (visible && !crate.visible) crate.userData.pop = 1;
-        crate.visible = visible;
+      for (const item of [...crates, ...stagedBales]) item.visible = false;
+      const items = cargoItems();
+      items.forEach((item, index) => {
+        item.position.copy(item.userData.basePosition);
+        item.scale.set(1, 1, 1);
+        const visible = loadRatio > index / items.length + .001;
+        if (visible) item.userData.pop = 1;
+        item.visible = visible;
       });
+    },
+    setCargoKind(nextKind) {
+      cargoKind = nextKind === 'hay-bale' ? 'hay-bale' : 'crops';
+      this.setLoadRatio(loadRatio);
     },
     requestPickup(camera) {
       pickupQueued = true;
@@ -244,15 +280,15 @@ export function createCargoPort(site) {
         craftRoot.updateMatrixWorld(true);
         const target = craft.group.localToWorld(craft.cargoTarget.clone());
         cargoGroup.worldToLocal(target);
-        crates.forEach((crate, index) => {
-          if (!crate.visible) return;
+        cargoItems().forEach((item, index) => {
+          if (!item.visible) return;
           const progress = THREE.MathUtils.clamp((phaseTime / PICKUP_SECONDS - index * .16) / .68, 0, 1);
           const amount = ease(progress);
-          crate.position.lerpVectors(crate.userData.basePosition, target, amount);
-          crate.position.y += Math.sin(progress * Math.PI) * .72;
+          item.position.lerpVectors(item.userData.basePosition, target, amount);
+          item.position.y += Math.sin(progress * Math.PI) * .72;
           const scale = 1 + Math.sin(progress * Math.PI) * .24 - amount * .72;
-          crate.scale.set(scale, scale * (1 + Math.sin(progress * Math.PI) * .28), scale);
-          if (progress >= 1) crate.visible = false;
+          item.scale.set(scale, scale * (1 + Math.sin(progress * Math.PI) * .28), scale);
+          if (progress >= 1) item.visible = false;
         });
         if (phaseTime >= PICKUP_SECONDS) {
           shipmentCollected = true;
@@ -280,13 +316,13 @@ export function createCargoPort(site) {
           craftRoot.rotation.y = 0;
         }
       }
-      crates.forEach(crate => {
-        if (!crate.visible || phase === 'pickup') return;
-        crate.userData.pop = Math.max(0, crate.userData.pop - dt * 4.5);
-        const pop = crate.userData.pop;
-        crate.position.copy(crate.userData.basePosition);
-        crate.position.y += pop * .08;
-        crate.scale.set(1 + pop * .14, 1 - pop * .12, 1 + pop * .14);
+      cargoItems().forEach(item => {
+        if (!item.visible || phase === 'pickup') return;
+        item.userData.pop = Math.max(0, item.userData.pop - dt * 4.5);
+        const pop = item.userData.pop;
+        item.position.copy(item.userData.basePosition);
+        item.position.y += pop * .08;
+        item.scale.set(1 + pop * .14, 1 - pop * .12, 1 + pop * .14);
       });
       const flightPower = phase === 'dwell' || phase === 'pickup' ? .48 : 1;
       craft.animate(dt, flightPower, phase === 'dwell' || phase === 'pickup', phase === 'pickup' ? phaseTime / PICKUP_SECONDS : 0);

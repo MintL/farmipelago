@@ -1,4 +1,4 @@
-import { box, mats, THREE } from './shared.js?v=hay-simple-20260901-1';
+import { box, mats, THREE } from './shared.js?v=bale-wrapper-20260902-1';
 
 const previewMats = {
   green: new THREE.MeshStandardMaterial({ color: 0x6eab37, roughness: .7 }),
@@ -300,6 +300,22 @@ function createForksAsset() {
   return group;
 }
 
+function createBaleForkAsset() {
+  const group = new THREE.Group();
+  group.name = 'attachment-bale-fork';
+  const mount = box(.72, .48, .12, previewMats.greenDark); mount.position.set(0, .26, .16); group.add(mount);
+  const topRail = box(1.02, .12, .14, previewMats.green); topRail.position.set(0, .5, .16); group.add(topRail);
+  for (const x of [-.31, .31]) {
+    const brace = box(.09, .5, .09, previewMats.green); brace.position.set(x, .25, .19); group.add(brace);
+    const spear = new THREE.Mesh(new THREE.CylinderGeometry(.025, .065, 1.5, 8), mats.metal);
+    spear.position.set(x, -.02, .92);
+    spear.rotation.x = Math.PI / 2;
+    spear.castShadow = true;
+    group.add(spear);
+  }
+  return group;
+}
+
 function createFrontWeightAsset() {
   const group = new THREE.Group();
   const weight = box(1.32, .65, .52, previewMats.greenDark); weight.position.y = .43; group.add(weight);
@@ -309,7 +325,13 @@ function createFrontWeightAsset() {
 }
 
 export function createFrontToolAsset(type) {
-  const factories = { loader: createFrontLoaderAsset, 'front-mower': () => createMowerDeckAsset(true), forks: createForksAsset, weight: createFrontWeightAsset };
+  const factories = {
+    loader: createFrontLoaderAsset,
+    'front-mower': () => createMowerDeckAsset(true),
+    'bale-fork': createBaleForkAsset,
+    forks: createForksAsset,
+    weight: createFrontWeightAsset,
+  };
   return factories[type]?.() || null;
 }
 

@@ -1,4 +1,4 @@
-import { TILE, THREE, gridKey, mats } from './shared.js?v=hay-simple-20260901-1';
+import { TILE, THREE, gridKey, mats } from './shared.js?v=bale-wrapper-20260902-1';
 
 const INITIAL_BALE_CAPACITY = 32;
 
@@ -15,7 +15,7 @@ export function createForageSystem(terrain, group, onChange = () => {}) {
   forageGroup.add(loose);
 
   const baleGeometry = new THREE.BoxGeometry(.82, .56, 1.15);
-  const bandGeometry = new THREE.BoxGeometry(.86, .035, .13);
+  const bandGeometry = new THREE.BoxGeometry(1, 1, 1);
   let baleCapacity = INITIAL_BALE_CAPACITY;
   let baleBodies;
   let baleBands;
@@ -56,7 +56,7 @@ export function createForageSystem(terrain, group, onChange = () => {}) {
   const createBaleMeshes = () => {
     if (baleBodies) forageGroup.remove(baleBodies, baleBands);
     baleBodies = new THREE.InstancedMesh(baleGeometry, mats.bale, baleCapacity);
-    baleBands = new THREE.InstancedMesh(bandGeometry, mats.baleBand, baleCapacity * 2);
+    baleBands = new THREE.InstancedMesh(bandGeometry, mats.baleBand, baleCapacity * 8);
     baleBodies.name = 'hay-bales';
     baleBands.name = 'hay-bale-bands';
     baleBodies.castShadow = baleBands.castShadow = true;
@@ -77,14 +77,28 @@ export function createForageSystem(terrain, group, onChange = () => {}) {
       transform.updateMatrix();
       baleBodies.setMatrixAt(index, transform.matrix);
       for (const offset of [-.27, .27]) {
-        transform.position.set(
-          bale.x + Math.sin(bale.heading) * offset,
-          bale.y + .29,
-          bale.z + Math.cos(bale.heading) * offset,
-        );
-        transform.rotation.set(0, bale.heading, 0);
-        transform.updateMatrix();
-        baleBands.setMatrixAt(bandIndex++, transform.matrix);
+        for (const yOffset of [.002, .558]) {
+          transform.position.set(
+            bale.x + Math.sin(bale.heading) * offset,
+            bale.y + yOffset,
+            bale.z + Math.cos(bale.heading) * offset,
+          );
+          transform.rotation.set(0, bale.heading, 0);
+          transform.scale.set(.86, .035, .13);
+          transform.updateMatrix();
+          baleBands.setMatrixAt(bandIndex++, transform.matrix);
+        }
+        for (const xOffset of [-.422, .422]) {
+          transform.position.set(
+            bale.x + Math.cos(bale.heading) * xOffset + Math.sin(bale.heading) * offset,
+            bale.y + .28,
+            bale.z - Math.sin(bale.heading) * xOffset + Math.cos(bale.heading) * offset,
+          );
+          transform.rotation.set(0, bale.heading, 0);
+          transform.scale.set(.035, .56, .13);
+          transform.updateMatrix();
+          baleBands.setMatrixAt(bandIndex++, transform.matrix);
+        }
       }
     });
     updateCount(baleBodies, bales.length);
@@ -119,6 +133,40 @@ export function createForageSystem(terrain, group, onChange = () => {}) {
       refreshBales();
       onChange();
       return bale;
+    },
+    hasBale(id) {
+      return bales.some(bale => bale.id === id);
+    },
+    baleNear(x, z, levelY, radius = .75) {
+      let nearest = null;
+      let nearestDistance = radius;
+      for (const bale of bales) {
+        if (Math.abs(bale.y - levelY) > .65) continue;
+        const distance = Math.hypot(bale.x - x, bale.z - z);
+        if (distance > nearestDistance) continue;
+        nearest = bale;
+        nearestDistance = distance;
+      }
+      return nearest;
+    },
+    moveBale(id, x, y, z, heading, notify = false) {
+      const bale = bales.find(candidate => candidate.id === id);
+      if (!bale || ![x, y, z, heading].every(Number.isFinite)) return false;
+      bale.x = x;
+      bale.y = y;
+      bale.z = z;
+      bale.heading = heading;
+      refreshBales();
+      if (notify) onChange();
+      return true;
+    },
+    removeBale(id) {
+      const index = bales.findIndex(bale => bale.id === id);
+      if (index === -1) return false;
+      bales.splice(index, 1);
+      refreshBales();
+      onChange();
+      return true;
     },
     persistentState() {
       const tiles = [];

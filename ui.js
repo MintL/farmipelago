@@ -1,5 +1,5 @@
-import { cropIds, crops } from './crops.js?v=hay-simple-20260901-1';
-import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=hay-simple-20260901-1';
+import { cropIds, crops } from './crops.js?v=bale-wrapper-20260902-1';
+import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=bale-wrapper-20260902-1';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', icon: 'plough' },
@@ -16,7 +16,7 @@ const TICKER_STEP_LITRES = 10;
 const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 
-export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -47,6 +47,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let siloCropId = null;
   let milestoneState = null;
   let debugUnlockables = [];
+  let debugMilestones = [];
   const amountTickers = new Map();
 
   const topBar = document.querySelector('#topBar');
@@ -68,6 +69,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const showDebug = document.querySelector('#showDebug');
   const debugPanel = document.querySelector('#debugPanel');
   const debugUnlockList = document.querySelector('#debugUnlockList');
+  const debugMilestoneList = document.querySelector('#debugMilestoneList');
   const clearUnlockOverrides = document.querySelector('#clearUnlockOverrides');
   const stickZone = document.querySelector('#stickZone');
   const stickBase = document.querySelector('#stickBase');
@@ -154,6 +156,30 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     clearUnlockOverrides.hidden = !debugUnlockables.some(unlockable => unlockable.overridden);
   };
 
+  const renderDebugMilestones = () => {
+    debugMilestoneList.replaceChildren();
+    for (const milestone of debugMilestones) {
+      const button = document.createElement('button');
+      const details = document.createElement('span');
+      const name = document.createElement('strong');
+      const category = document.createElement('small');
+      const state = document.createElement('small');
+      name.textContent = milestone.title;
+      category.textContent = 'Milestone';
+      state.className = 'debugUnlockState';
+      state.textContent = milestone.active ? 'Active' : 'Switch';
+      details.append(name, category);
+      button.className = 'debugUnlock debugMilestone';
+      button.type = 'button';
+      button.dataset.milestoneId = milestone.id;
+      button.setAttribute('aria-pressed', String(milestone.active));
+      button.setAttribute('aria-label', `${milestone.title}: ${milestone.active ? 'Active milestone' : 'Switch to this milestone and clear its progress'}`);
+      button.disabled = milestone.active;
+      button.append(details, state);
+      debugMilestoneList.append(button);
+    }
+  };
+
   const cropMeters = new WeakMap();
 
   const renderCropMeter = (container, { cropId, label, value, percent, ariaLabel, ariaValueText }) => {
@@ -198,6 +224,14 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const formatLitres = amount => `${Math.max(0, Number(amount) || 0).toLocaleString(undefined, {
     maximumFractionDigits: 0,
   })} L`;
+
+  const formatRequirementAmount = (amount, unit = 'litres') => unit === 'bales'
+    ? `${Math.max(0, Math.floor(Number(amount) || 0))} ${Math.floor(Number(amount) || 0) === 1 ? 'bale' : 'bales'}`
+    : formatLitres(amount);
+
+  const formatRequirementProgress = (amount, target, unit = 'litres') => unit === 'bales'
+    ? `${Math.max(0, Math.floor(Number(amount) || 0))} / ${Math.max(0, Math.floor(Number(target) || 0))} bales`
+    : `${formatLitres(amount)} / ${formatLitres(target)}`;
 
   const availableCropIds = () => cropIds.filter(cropId => unlockedGates.has(`crop:${cropId}`));
   const selectedSeedCropId = () => availableCropIds()[seedIndex] || 'wheat';
@@ -294,7 +328,8 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     const tankCropId = Object.keys(machine.contents).find(cropId => machine.contents[cropId] > 0) || null;
     if (cropsInSilo.length && !cropsInSilo.some(crop => crop.id === siloCropId)) siloCropId = cropsInSilo[0].id;
     if (siloInventory.autoSelectCarriedCrop) {
-      const carriedCrop = cropsInSilo.find(crop => crop.id === tankCropId && (!cargoPad || crop.accepting));
+      const carriedId = machine.carriedBale ? 'hay-bale' : tankCropId;
+      const carriedCrop = cropsInSilo.find(crop => crop.id === carriedId && (!cargoPad || crop.accepting));
       if (carriedCrop) siloCropId = carriedCrop.id;
       siloInventory.autoSelectCarriedCrop = false;
     }
@@ -302,12 +337,13 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     const canLoad = !cargoPad && Boolean(crop?.amount) && machine.canTransfer
       && tankAmount < machine.capacity && (!tankCropId || tankCropId === crop.id);
     const canUnload = cargoPad
-      ? Boolean(crop) && crop.accepting && machine.canTransfer && crop.amount < crop.target && (machine.contents[crop.id] || 0) > 0
+      ? Boolean(crop) && crop.accepting && machine.canTransfer && crop.amount < crop.target
+        && (crop.unit === 'bales' ? machine.carriedBale : (machine.contents[crop.id] || 0) > 0)
       : machine.canTransfer && tankAmount > 0;
     previousSiloCrop.disabled = cropsInSilo.length < 2;
     nextSiloCrop.disabled = cropsInSilo.length < 2;
     siloLoadButton.hidden = cargoPad;
-    const unloadLabel = cargoPad ? 'Deliver selected cargo' : 'Unload cargo into silo';
+    const unloadLabel = cargoPad && crop?.unit === 'bales' ? 'Deliver carried hay bale' : cargoPad ? 'Deliver selected cargo' : 'Unload cargo into silo';
     siloUnloadButton.setAttribute('aria-label', unloadLabel);
     siloUnloadButton.title = unloadLabel;
     siloUnloadIconUse.setAttribute('href', '#icon-silo-unload');
@@ -320,16 +356,17 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       siloInventoryElement.setAttribute('aria-label', 'Silo inventory is empty');
       return;
     }
-    siloCropIconUse.setAttribute('href', `#icon-${crop.id}`);
-    siloCropIcon.setAttribute('aria-label', crop.locked ? `${crops[crop.id].name} unavailable` : crops[crop.id].name);
+    const itemName = crop.name || crops[crop.id]?.name || crop.id;
+    siloCropIconUse.setAttribute('href', `#icon-${crop.icon || crop.id}`);
+    siloCropIcon.setAttribute('aria-label', crop.locked ? `${itemName} unavailable` : itemName);
     const tickerKey = `${cargoPad ? 'cargo' : 'silo'}:${siloInventory.id}:${crop.id}`;
     const displayAmount = tickerValue(tickerKey, crop.amount, crop.amount, TRANSFER_TICKS_PER_SECOND, 'silo');
     siloCropValue.textContent = cargoPad
-      ? `${formatLitres(displayAmount)} / ${formatLitres(crop.target)}`
+      ? formatRequirementProgress(displayAmount, crop.target, crop.unit)
       : formatLitres(displayAmount);
     siloInventoryElement.setAttribute('aria-label', cargoPad
-      ? `Cargo pad: ${formatLitres(crop.amount)} of ${formatLitres(crop.target)} ${crops[crop.id].name} delivered`
-      : `Silo inventory: ${formatLitres(crop.amount)} ${crops[crop.id].name}`);
+      ? `Cargo pad: ${formatRequirementAmount(crop.amount, crop.unit)} of ${formatRequirementAmount(crop.target, crop.unit)} ${itemName} delivered`
+      : `Silo inventory: ${formatLitres(crop.amount)} ${itemName}`);
   };
 
   const cycleSiloCrop = direction => {
@@ -381,17 +418,18 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     }
     for (const requirement of milestone.requirements) {
       const row = document.createElement('div');
-      const displayDelivered = tickerValue(`milestone:${milestone.id}:${requirement.cropId}`, requirement.delivered, requirement.delivered, TRANSFER_TICKS_PER_SECOND, 'milestone');
+      const requirementId = requirement.itemId || requirement.cropId;
+      const displayDelivered = tickerValue(`milestone:${milestone.id}:${requirementId}`, requirement.delivered, requirement.delivered, TRANSFER_TICKS_PER_SECOND, 'milestone');
       const percent = requirement.target ? Math.min(100, displayDelivered / requirement.target * 100) : 0;
       row.className = 'milestoneRow';
       row.dataset.locked = String(requirement.locked);
       renderCropMeter(row, {
-        cropId: requirement.cropId,
+        cropId: requirement.icon || requirementId,
         label: requirement.name,
-        value: requirement.locked ? 'Unavailable' : `${formatLitres(displayDelivered)} / ${formatLitres(requirement.target)}`,
+        value: requirement.locked ? 'Unavailable' : formatRequirementProgress(displayDelivered, requirement.target, requirement.unit),
         percent,
         ariaLabel: requirement.locked ? `${requirement.name} unavailable` : `${requirement.name} delivered`,
-        ariaValueText: `${formatLitres(displayDelivered)} of ${formatLitres(requirement.target)} ${requirement.name} delivered`,
+        ariaValueText: `${formatRequirementAmount(displayDelivered, requirement.unit)} of ${formatRequirementAmount(requirement.target, requirement.unit)} ${requirement.name} delivered`,
       });
       milestoneRows.append(row);
     }
@@ -795,6 +833,11 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     const unlockable = debugUnlockables.find(item => item.id === button.dataset.unlockId);
     if (unlockable) onUnlockOverride(unlockable.id, !unlockable.overridden);
   });
+  debugMilestoneList.addEventListener('click', event => {
+    const button = event.target.closest('.debugMilestone');
+    if (!button || button.disabled) return;
+    onMilestoneOverride(button.dataset.milestoneId);
+  });
   clearUnlockOverrides.addEventListener('click', onClearUnlockOverrides);
   document.querySelector('#requestRegenerate').addEventListener('click', () => {
     overlayState = 'confirm';
@@ -983,10 +1026,20 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       }
       const cropsInSilo = Array.isArray(nextInventory.items)
         ? nextInventory.items.flatMap(item => {
-          const cropId = item?.id;
+          const itemId = typeof item?.id === 'string' ? item.id : null;
           const amount = Math.max(0, Math.floor(Number(item?.amount) || 0));
           const target = Math.max(0, Math.floor(Number(item?.target) || 0));
-      return crops[cropId] ? [{ id: cropId, amount, target, accepting: item?.accepting !== false, locked: Boolean(item?.locked) }] : [];
+          if (!itemId || (!crops[itemId] && itemId !== 'hay-bale')) return [];
+          return [{
+            id: itemId,
+            name: typeof item.name === 'string' ? item.name : crops[itemId]?.name || itemId,
+            icon: typeof item.icon === 'string' ? item.icon : itemId,
+            unit: item.unit === 'bales' ? 'bales' : 'litres',
+            amount,
+            target,
+            accepting: item?.accepting !== false,
+            locked: Boolean(item?.locked),
+          }];
         })
         : cropIds.flatMap(cropId => {
         const amount = Math.max(0, Math.floor(Number(nextInventory.contents?.[cropId]) || 0));
@@ -998,17 +1051,21 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         capacity: Math.max(0, Number(nextInventory.machine?.capacity) || 0),
         contents: { ...nextInventory.machine?.contents },
         canTransfer: Boolean(nextInventory.machine?.canTransfer),
+        carriedBale: Boolean(nextInventory.machine?.carriedBale),
       };
-      const carriedCropId = Object.keys(machine.contents).find(cropId => machine.contents[cropId] > 0) || null;
+      const carriedCropId = machine.carriedBale
+        ? 'hay-bale'
+        : Object.keys(machine.contents).find(cropId => machine.contents[cropId] > 0) || null;
       if (nextInventory.kind === 'silo' && carriedCropId && !cropsInSilo.some(crop => crop.id === carriedCropId)) {
         cropsInSilo.push({ id: carriedCropId, amount: 0 });
       }
       const signature = [
         nextInventory.kind,
-        cropsInSilo.map(crop => `${crop.id}:${crop.amount}:${crop.target || ''}:${crop.accepting}:${crop.locked}`).join('|'),
+        cropsInSilo.map(crop => `${crop.id}:${crop.unit}:${crop.amount}:${crop.target || ''}:${crop.accepting}:${crop.locked}`).join('|'),
         machine.type,
         machine.capacity,
         machine.canTransfer,
+        machine.carriedBale,
         cropIds.map(cropId => `${cropId}:${machine.contents[cropId] || 0}`).join('|'),
       ].join(';');
       const changed = siloInventory?.id !== nextInventory.id || siloInventory?.signature !== signature;
@@ -1043,6 +1100,10 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     setDebugUnlockables(nextUnlockables) {
       debugUnlockables = Array.isArray(nextUnlockables) ? nextUnlockables.map(unlockable => ({ ...unlockable })) : [];
       renderDebugUnlockables();
+    },
+    setDebugMilestones(nextMilestones) {
+      debugMilestones = Array.isArray(nextMilestones) ? nextMilestones.map(milestone => ({ ...milestone })) : [];
+      renderDebugMilestones();
     },
     showMilestoneCelebration,
     setCinematicActive(active) {

@@ -8,6 +8,8 @@ const UNLOCKABLES = [
   { id: 'crop:corn', name: 'Corn', category: 'Crops' },
   { id: 'crop:grass', name: 'Grass', category: 'Crops' },
   { id: 'equipment:hay', name: 'Hay equipment', category: 'Equipment' },
+  { id: 'building:cattle-barn', name: 'Cattle barn', category: 'Buildings' },
+  { id: 'equipment:livestock', name: 'Livestock equipment', category: 'Equipment' },
 ];
 const unlockableIds = new Set(UNLOCKABLES.map(unlockable => unlockable.id));
 
@@ -38,6 +40,14 @@ const MILESTONES = [
     title: 'Livestock preparation',
     requirements: [
       { itemId: 'hay-bale', name: 'Hay bales', target: 4, unit: 'bales', icon: 'hay-bale' },
+    ],
+    unlocks: ['building:cattle-barn', 'equipment:livestock'],
+  },
+  {
+    id: 'first-milk',
+    title: 'First milk',
+    requirements: [
+      { itemId: 'milk', name: 'Milk', target: 3600, unit: 'litres', icon: 'milk' },
     ],
     unlocks: [],
   },

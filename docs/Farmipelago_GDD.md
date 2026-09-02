@@ -77,6 +77,10 @@ The implemented crop-farming loop is:
 
 **Inspect land → plough → choose seed → plant → grow → harvest with combine → unload into silo → load trailer → transport to cargo hub → deliver milestone cargo → unlock new crops → repeat**
 
+The first implemented livestock extension adds:
+
+**Grow grass → mow → bale hay → carry a bale to a Cattle Barn → feed cattle → produce milk → load a Water / Milk Tank → deliver milk at the cargo hub**
+
 The player can also ignore the current milestone and continue farming freely.
 
 Moment-to-moment play revolves around driving and operating machinery.
@@ -108,11 +112,20 @@ The farm starts with **Wheat** unlocked.
 
 Once two crops have been committed to the Crop diversity milestone, only those two remain relevant to its tracker and cargo-pad requirements.
 
-Completing a non-final milestone triggers the cargo VTOL pickup and reveals the newly unlocked crops. Completing the final currently implemented milestone produces a Farmipelago-complete state and then returns the player to free farming.
+**Livestock preparation**
+
+- Deliver 4 physical hay bales.
+- Unlock the Cattle Barn and livestock equipment.
+
+**First milk**
+
+- Deliver 3,600 L Milk.
+
+Completing a non-final milestone triggers the cargo VTOL pickup and reveals newly unlocked capabilities. Completing First milk produces a Farmipelago-complete state and then returns the player to free farming.
 
 There is no time limit on milestones and no macro-level failure state.
 
-The current two milestones are prototype content, not the intended final progression length.
+The current four milestones are prototype content, not the intended final progression length.
 
 ### Long-Term Direction
 
@@ -292,22 +305,15 @@ Harvested crop enters the combine's internal storage.
 
 ## 12. Livestock
 
-Livestock remains a future major farming system and is not yet implemented.
+Cattle are the first implemented livestock system and connect directly to the existing physical hay and vehicle-logistics loops.
 
-The first likely animal is cattle, with hay/feed providing a physical connection back to crop farming.
+After Livestock preparation, the player can place a Cattle Barn on clear level terrain. The barn permanently anchors one custom pen. The player draws the pasture freehand from one barn-side anchor to the other; input resolves to an editable, grid-snapped orthogonal fence along tile boundaries. The enclosed ground must be continuous clear grass at the barn's level. Every four valid pasture tiles provide one hard capacity slot, and edits that would reduce capacity below the current herd are rejected.
 
-Livestock should create new uses for land and logistics rather than behaving as passive production buildings.
+The first valid pen grants two adult cows. Cows are individual persistent animals that wander between neighboring valid pen tiles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
 
-Potential systems include:
+Existing physical 3,600 L hay bales are deposited at the barn and converted to shared herd feed. Hay supports full milk production and automatic herd growth. Without hay, cattle continue grazing without depleting terrain and produce at 20% of the fed rate; herd growth pauses and cattle never starve or die.
 
-- feeding from crops produced on the Farmipelago
-- growth and reproduction
-- milk production
-- shelters or barns
-- fenced or managed areas
-- livestock-specific machinery and transport
-
-The exact complexity of birth, growth, feeding, aging/death and milk production remains open and should stay consistent with the game's compact, readable style.
+Milk accumulates in the barn up to 10,000 L. The tractor's livestock-gated 6,000 L Water / Milk Tank loads milk from a nearby barn in rapid 10 L steps and carries it to the cargo hub for the First milk milestone.
 
 ---
 
@@ -322,6 +328,7 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 - default loadout: plough + front loader
 - can equip compatible rear/front equipment
 - can equip a **20,000 L Grain Trailer** for crop transport
+- can equip a **6,000 L Water / Milk Tank** for milk transport after the livestock unlock
 
 ### Combine Harvester
 
@@ -329,7 +336,7 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 - no swappable rear/front attachment slots in the current prototype
 - **3,600 L** internal crop tank
 
-Both vehicles remain parked in the world when not controlled. Their positions, loadouts and stored crop are saved.
+Both vehicles remain parked in the world when not controlled. Their positions, loadouts and compatible stored cargo are saved.
 
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 
@@ -347,9 +354,13 @@ Long-term equipment design should preserve meaningful tradeoffs. Larger or more 
 
 Crop volume is represented physically in litres and moves between actual inventories.
 
-The current logistics chain is:
+The crop logistics chain is:
 
 **Combine → silo → Grain Trailer → cargo hub**
+
+The cattle logistics chain is:
+
+**Hay bale → Cattle Barn → stored milk → Water / Milk Tank → cargo hub**
 
 Transfers occur in rapid 10 L steps and are reflected in vehicle/building inventories rather than functioning as abstract menu submissions.
 
@@ -377,7 +388,9 @@ The game now has an implemented construction mode rather than buildings being en
 
 A round build button opens a dedicated elevated, pannable construction view. The player selects a building and drags it onto valid terrain.
 
-Currently the **grain silo** is the only player-placeable building.
+The player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn**.
+
+Placed buildings use a deliberate hold-and-drag gesture for repositioning so a quick tap remains available for selection. A Cattle Barn can move only while it has neither a pen nor animals; once either exists, attempting to move the barn shows a construction warning instead. Its pen remains independently editable through snapped corner and segment dragging, with a full redraw fallback. The barn is incomplete and produces nothing until a valid pen is committed.
 
 The permanent starter structures are:
 
@@ -407,7 +420,7 @@ It contains:
 - a nearby cargo interaction popup
 - visible milestone requirements and Deliver controls
 
-The player transports crops to the hub and transfers eligible cargo into the current milestone.
+The player transports crops or milk to the hub and transfers eligible cargo into the current milestone. Physical hay bales remain a separate one-object delivery path. Staged cargo visually changes between crop crates, hay bales and milk cans according to the active milestone.
 
 When a milestone is completed, a chunky four-fan cargo VTOL rapidly approaches the landing deck. Staged cargo is collected and the aircraft departs, creating a physical payoff for progression rather than resolving it only through menus.
 
@@ -431,6 +444,7 @@ Current controls include:
 - suitability button
 - build button
 - nearby building/cargo interaction popups
+- cattle-barn Feed bale and Load milk actions
 
 The virtual stick can begin anywhere inside its drive zone and points the vehicle in the corresponding screen-relative direction.
 
@@ -445,7 +459,7 @@ Current keyboard controls include:
 - F — cycle seed with the seeder
 - B — build mode
 - Escape — leave special camera modes or open the menu
-- 1–4 — equipment selection in the barn workshop
+- 1–8 — rear-equipment selection in the barn workshop
 
 ### Camera
 
@@ -467,7 +481,7 @@ Current implementation follows these principles through:
 - a dynamic touch joystick rather than a large permanent control frame
 - round action buttons
 - compact crop icons and inventory readouts
-- contextual silo and cargo popups
+- contextual silo, cattle-barn and cargo popups
 - an integrated milestone tracker
 - live 3D vehicle/equipment previews in the barn
 - temporary labels for actions such as seed cycling
@@ -523,6 +537,7 @@ The current save includes:
 - generated world tiles
 - field and crop state
 - placed buildings and silo contents
+- cattle pens, individual cow movement/growth state, shared hay, milk and birth progress
 - progression state and delivered amounts
 - vehicle positions
 - vehicle loadouts
@@ -581,6 +596,9 @@ The playable prototype currently proves the following major systems together:
 - crop storage in litres
 - persistent placeable silos
 - trailer-based transport
+- cattle barns, editable custom pens and persistent herds
+- hay-fed milk production with grazing fallback
+- Water / Milk Tank transport and milk delivery
 - cargo-hub deliveries
 - crop-unlock milestone progression
 - multiple persistent vehicles
@@ -594,21 +612,17 @@ This prototype should be treated as the foundation for expansion rather than as 
 
 ## 24. Major Open Questions
 
-### What comes after the current crop milestones?
+### What comes after First milk?
 
-The current two milestones prove the progression mechanic, but the longer sequence that introduces equipment, crops, livestock and other systems still needs to be designed.
+The current four milestones prove crop, hay and cattle progression, but the longer sequence introducing additional products and agricultural systems still needs to be designed.
 
 ### What should optional milestones unlock?
 
 The relationship between breadth-of-farm achievements and concrete capability rewards remains unresolved.
 
-### How should livestock work?
+### Which livestock system should follow cattle?
 
-Cattle are a likely first animal, but the desired complexity of feeding, growth, reproduction, milk production, aging/death and shelters still needs to be set.
-
-### How should livestock buildings work with construction?
-
-The silo establishes a placement model, but larger functional structures, fences and animal areas may require different rules.
+Cattle establish the compact barn, custom-pen, shared-feed, growth and product-logistics model. Future species should add distinct land or machinery decisions without duplicating management complexity.
 
 ### How large should the final Farmipelago be?
 

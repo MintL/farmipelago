@@ -200,6 +200,26 @@ export function createTrailerAsset() {
   return { group, wheels, bed, tailgate, grain };
 }
 
+export function createLiquidTankAsset() {
+  const group = new THREE.Group();
+  group.name = 'attachment-liquid-tank';
+  const drawbar = box(.14, .12, .82, mats.tractorDark); drawbar.position.set(0, .29, .29); group.add(drawbar);
+  const chassis = box(1.42, .18, 2.24, mats.tractorDark); chassis.position.set(0, .4, 1.48); group.add(chassis);
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(.66, .66, 1.82, 16), mats.tractorCream);
+  tank.rotation.z = Math.PI * .5; tank.position.set(0, 1.02, 1.45); tank.castShadow = true; tank.receiveShadow = true; group.add(tank);
+  for (const x of [-.56, .56]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.68, .055, 6, 16), mats.tractorAccent);
+    band.rotation.y = Math.PI * .5; band.position.set(x, 1.02, 1.45); band.castShadow = true; group.add(band);
+  }
+  const liquid = box(.14, .92, .72, new THREE.MeshStandardMaterial({ color: 0xf4eee0, emissive: 0x837d70, emissiveIntensity: .08, transparent: true, opacity: .86 }), false, false);
+  liquid.position.set(.93, .92, 1.45); liquid.visible = false; group.add(liquid);
+  const outlet = box(.18, .18, .52, mats.metal); outlet.position.set(.58, .48, 2.35); group.add(outlet);
+  const wheels = [];
+  const wheelMaterials = { hub: mats.hub, cap: mats.tractorCream, tread: mats.tractorDark };
+  for (const x of [-.76, .76]) wheels.push({ ...addWheel(group, x, .32, 1.85, .32, .2, wheelMaterials, true), spin: 0, phase: Math.random() * Math.PI * 2 });
+  return { group, wheels, liquid, outlet };
+}
+
 export function createRearToolAsset(type) {
   const factories = {
     plough: createPloughAsset,
@@ -209,6 +229,7 @@ export function createRearToolAsset(type) {
     baler: createBalerAsset,
   };
   if (type === 'trailer') return createTrailerAsset().group;
+  if (type === 'liquid-tank') return createLiquidTankAsset().group;
   return factories[type]?.() || null;
 }
 

@@ -1,5 +1,6 @@
 export const TRAILER_STORAGE_CAPACITY = 20000;
 export const BALER_STORAGE_CAPACITY = 3600;
+export const LIQUID_TANK_CAPACITY = 6000;
 
 export const REAR_EQUIPMENT = [
   { id: 'plough', name: 'Plough', icon: 'plough', description: 'Turns grass tiles into prepared soil across four rows.' },
@@ -8,7 +9,8 @@ export const REAR_EQUIPMENT = [
   { id: 'trailer', name: 'Grain Trailer', icon: 'silo', description: 'Carries up to 20,000 L between silos and the cargo pad.', inventory: { kind: 'crop', capacity: TRAILER_STORAGE_CAPACITY, icon: 'silo' } },
   { id: 'rear-mower', name: 'Rear Mower', icon: 'mower', description: 'Cuts mature grass in an offset swath on the tractor’s right.', gate: 'equipment:hay', working: true },
   { id: 'baler', name: 'Baler', icon: 'baler', description: 'Picks up loose cut grass and compresses each 3,600 L into one bale.', gate: 'equipment:hay', working: true, inventory: { kind: 'grass', capacity: BALER_STORAGE_CAPACITY, icon: 'grass', stateKey: 'balerLitres' } },
-].map(item => ({ slot: 'tool', working: item.working ?? !['trailer'].includes(item.id), ...item }));
+  { id: 'liquid-tank', name: 'Water / Milk Tank', icon: 'milk-tank', description: 'Carries liquid products such as milk between livestock buildings and the cargo pad.', gate: 'equipment:livestock', working: false, inventory: { kind: 'liquid', capacity: LIQUID_TANK_CAPACITY, icon: 'milk' } },
+].map(item => ({ slot: 'tool', working: item.working ?? !['trailer', 'liquid-tank'].includes(item.id), ...item }));
 
 export const FRONT_EQUIPMENT = [
   { id: 'loader', name: 'Front Loader', icon: 'utility', description: 'Move and lift heavy objects.' },

@@ -1,6 +1,6 @@
 import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=bale-wrapper-20260902-1';
 import { cropStats as environmentalCropStats, crops } from './crops.js?v=bale-wrapper-20260902-1';
-import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=bale-wrapper-20260902-1';
+import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=cattle-20260902-1';
 import { createForageSystem } from './forage.js?v=bale-wrapper-20260902-1';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;

@@ -230,6 +230,10 @@
     }
     #siloActions button:active { background: var(--glass-soft); color: var(--ink); }
     #siloActions button .icon { width: 18px; height: 18px; }
+    #barnStorageRows { grid-column: 1 / -1; display: grid; gap: 5px; min-width: 220px; padding: 9px 11px; }
+    #barnStorageRows > div { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
+    #barnStorageRows .icon { width: 18px; height: 18px; color: var(--accent-strong); }
+    #barnStorageRows strong { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
     #viewHint {
       display: none;
       position: absolute;
@@ -320,6 +324,7 @@
     .buildingOption small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     .buildingOption em { padding: 3px 5px; border-radius: 999px; background: rgba(82, 102, 72, .12); color: var(--accent-strong); font-size: 9px; font-style: normal; font-weight: 800; }
     .buildingOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .18); }
+    #redrawPen { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--accent-strong); font-size: 10px; font-weight: 760; }
     #buildPalette p { margin: 8px 4px 1px; color: var(--muted); font-size: 10px; line-height: 1.35; }
 
     #stickZone {
@@ -876,7 +881,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.109</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.113</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -916,14 +921,20 @@
       <button id="previousSiloCrop" type="button" aria-label="Previous stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
       <div class="siloInventoryCrop"><svg id="siloCropIcon" class="icon" role="img" aria-label="Corn"><use id="siloCropIconUse" href="#icon-corn"></use></svg><strong id="siloCropValue">0</strong></div>
       <button id="nextSiloCrop" type="button" aria-label="Next stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
+      <div id="barnStorageRows" hidden></div>
     </aside>
     <aside id="buildPalette" hidden aria-label="Building menu">
       <span class="eyebrow">Buildings</span>
-      <button id="siloOption" class="buildingOption" type="button" aria-pressed="false">
+      <button id="siloOption" class="buildingOption" type="button" data-building-id="silo" aria-pressed="false">
         <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
         <span><strong>Silo</strong><small>Grain storage</small></span><em>Free</em>
       </button>
-      <p>Select the silo, then drag it onto a clear level patch. Drag empty land to pan.</p>
+      <button id="cattleBarnOption" class="buildingOption" type="button" data-building-id="cattle-barn" aria-pressed="false" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-cattle-barn"></use></svg>
+        <span><strong>Cattle Barn</strong><small>Barn + custom pen</small></span><em>Free</em>
+      </button>
+      <button id="redrawPen" type="button">Redraw selected pen</button>
+      <p>Select a building and place it on clear level land. After placing a cattle barn, draw its fence back to the other barn anchor.</p>
     </aside>
 
     <div id="stickZone" aria-hidden="true">
@@ -1023,9 +1034,9 @@
               <strong>Front tool</strong><span>Q or the front action button</span>
               <strong>Rear tool</strong><span>E or the rear action button</span>
               <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
-              <strong>Seed / cargo</strong><span>With the seeder, use the crop button or F to cycle seed; use the popup beside a silo or cargo pad to transfer crops or deliver a carried bale</span>
+              <strong>Storage / cargo</strong><span>Use nearby popups to transfer silo crops, feed a carried bale, load barn milk, or deliver eligible cargo</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
-              <strong>Buildings</strong><span>Use the round silo button, select a silo, then drag it onto clear land; drag empty land to pan</span>
+              <strong>Buildings</strong><span>Choose a building and place it on clear land. After placing a Cattle Barn, draw its snapped pen from one barn anchor to the other; select fence parts to edit or redraw it</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
             </div>
             <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
@@ -1092,6 +1103,10 @@
     <symbol id="icon-baler" viewBox="0 0 24 24"><path d="M5 8h12l2 4v7H5zM8 11h7v5H8zM3 16h2M19 16h2M6 6h8" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
     <symbol id="icon-bale-fork" viewBox="0 0 24 24"><path d="M6 4v13M18 4v13M6 7h12M6 17h12M9 17v5M15 17v5" /></symbol>
     <symbol id="icon-hay-bale" viewBox="0 0 24 24"><path d="M4 7h16v12H4z" fill="#d1ae52" stroke="#80652f" /><path d="M8 7v12M16 7v12" stroke="#6f8b45" stroke-width="2" /><path d="M6 10h2M10 10h4M17 10h1M5 15h3M10 15h4M17 15h2" stroke="#f0d277" /></symbol>
+    <symbol id="icon-cow" viewBox="0 0 24 24"><path d="M5 9h11v8H5zM16 11h3l2 2v4h-5M7 17v3M14 17v3M8 9 6 6M14 9l2-3" /><circle cx="18.5" cy="14" r=".7" fill="currentColor" /></symbol>
+    <symbol id="icon-cattle-barn" viewBox="0 0 24 24"><path d="M3 10 12 3l9 7v11H3zM8 21v-8h8v8M8 8h8M10 13l4 4M14 13l-4 4" /></symbol>
+    <symbol id="icon-milk" viewBox="0 0 24 24"><path d="M8 4h8l1 4v12H7V8zM8 8h9M10 4V2h4v2" /><path d="M9 13c2-2 4 2 6 0v4c-2 2-4-2-6 0z" fill="#eef4ee" /></symbol>
+    <symbol id="icon-milk-tank" viewBox="0 0 24 24"><path d="M5 8h12a4 4 0 0 1 0 8H5zM3 12h2M17 16v2M8 16v2M5 18h14" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
     <symbol id="icon-grass" viewBox="0 0 24 24"><path d="M4 21c1-7 3-11 5-15M9 21c0-8 1-13 3-18M14 21c0-7 2-12 5-16M6 21c1-4 3-7 6-9M12 21c2-4 5-7 8-8" stroke="#4f8f45" /></symbol>
     <symbol id="icon-wheat" viewBox="0 0 24 24"><path d="M12 21V4" stroke="#69512d" /><path d="m12 8-3.8-2.9c-.7 2.2.6 3.6 3.8 4.2ZM12 11l4-3c.7 2.3-.8 3.7-4 4.2ZM12 14l-4-3c-.5 2.3 1.1 3.6 4 4.1ZM12 17l3.8-2.8c.6 2.2-.8 3.5-3.8 4" fill="#e8bf55" stroke="#80602d" /><path d="M12 7.8 9.8 6.1M12 12l2.4-1.8M12 15.1l-2.3-1.7" stroke="#d79635" /></symbol>
     <symbol id="icon-sunflower" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><path d="M12 5V3M12 13v8M9 8H7M17 8h-2M9.8 5.8 8.4 4.4M14.2 10.2l1.4 1.4M14.2 5.8l1.4-1.4M9.8 10.2l-1.4 1.4M12 17c-3 0-5-1-6-3 3 0 5 1 6 3Z" /></symbol>
@@ -1107,6 +1122,6 @@
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=bale-wrapper-20260902-1"></script>
+  <script type="module" src="./main.js?v=cattle-20260902-7"></script>
 </body>
 </html>

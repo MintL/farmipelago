@@ -157,7 +157,22 @@ export function createCargoPort(site) {
     stagedBales[index] = bale;
   }
 
-  const cargoItems = () => cargoKind === 'hay-bale' ? stagedBales : crates;
+  const stagedMilk = [];
+  const milkMaterial = new THREE.MeshStandardMaterial({ color: 0xeee8d8, roughness: .62, metalness: .28 });
+  const milkBandMaterial = new THREE.MeshStandardMaterial({ color: 0x6fa9bd, roughness: .68, metalness: .16 });
+  materials.push(milkMaterial, milkBandMaterial);
+  for (const [index, position] of [[0, [1.25, .42, -.05]], [1, [1.7, .42, -.05]], [2, [2.15, .42, -.05]], [3, [1.7, .92, -.05]]]) {
+    const can = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(.18, .22, .55, 10), milkMaterial);
+    body.castShadow = true; can.add(body);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.2, .035, 5, 10), milkBandMaterial);
+    band.rotation.x = Math.PI * .5; band.position.y = .08; can.add(band);
+    const cap = box(.18, .08, .18, milkBandMaterial); cap.position.y = .32; can.add(cap);
+    can.position.set(...position); can.userData.basePosition = new THREE.Vector3(...position); can.userData.pop = 0; can.visible = false;
+    cargoGroup.add(can); stagedMilk[index] = can;
+  }
+
+  const cargoItems = () => cargoKind === 'hay-bale' ? stagedBales : cargoKind === 'milk' ? stagedMilk : crates;
 
   const craft = createVtol({ deckMaterial, deckEdgeMaterial, markingMaterial, cargoMaterial, cargoDarkMaterial, glassMaterial, lightMaterial, redLightMaterial });
   craftRoot.add(craft.group);
@@ -206,7 +221,7 @@ export function createCargoPort(site) {
     },
     setLoadRatio(nextRatio) {
       loadRatio = THREE.MathUtils.clamp(nextRatio, 0, 1);
-      for (const item of [...crates, ...stagedBales]) item.visible = false;
+      for (const item of [...crates, ...stagedBales, ...stagedMilk]) item.visible = false;
       const items = cargoItems();
       items.forEach((item, index) => {
         item.position.copy(item.userData.basePosition);
@@ -217,7 +232,7 @@ export function createCargoPort(site) {
       });
     },
     setCargoKind(nextKind) {
-      cargoKind = nextKind === 'hay-bale' ? 'hay-bale' : 'crops';
+      cargoKind = ['hay-bale', 'milk'].includes(nextKind) ? nextKind : 'crops';
       this.setLoadRatio(loadRatio);
     },
     requestPickup(camera) {

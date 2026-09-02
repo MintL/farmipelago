@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'farmipelago.gameState';
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -22,7 +22,17 @@ export function loadGameState() {
   try {
     const serialized = localStorage.getItem(STORAGE_KEY);
     if (!serialized) return { state: null, invalid: false, unavailable: false };
-    const state = JSON.parse(serialized);
+    let state = JSON.parse(serialized);
+    if (validState(state, 6)) {
+      // Schema 6 ended at the hay milestone. Preserve that completion by moving
+      // the player onto the new milk milestone, whose preceding gates unlock cattle.
+      const progression = { ...state.progression };
+      if (Math.floor(Number(progression.index)) === 2 && progression.collected) {
+        Object.assign(progression, { index: 3, collected: false, delivered: { milk: 0 }, selectedCropIds: [] });
+      }
+      state = { ...state, schemaVersion: SCHEMA_VERSION, progression };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
+    }
     if (validState(state)) return { state, invalid: false, unavailable: false };
     localStorage.removeItem(STORAGE_KEY);
     return { state: null, invalid: true, unavailable: false };

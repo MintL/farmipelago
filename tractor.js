@@ -1,5 +1,5 @@
-import { createCombineAsset, createFrontToolAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=bale-wrapper-20260902-1';
-import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './equipment.js?v=bale-wrapper-20260902-1';
+import { createCombineAsset, createFrontToolAsset, createLiquidTankAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js?v=cattle-20260902-1';
+import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './equipment.js?v=cattle-20260902-1';
 import { THREE } from './shared.js?v=bale-wrapper-20260902-1';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -34,9 +34,10 @@ export function createVehicle(scene, vehicle) {
   const worldPoint = new THREE.Vector3();
   const localPoint = new THREE.Vector3();
   const trailer = tractor ? createTrailerAsset() : null;
+  const liquidTank = tractor ? createLiquidTankAsset() : null;
   const attachments = tractor ? Object.fromEntries(REAR_EQUIPMENT_IDS.map(type => {
-    const attachment = type === 'trailer' ? trailer.group : createRearToolAsset(type);
-    attachment.position.set(0, type === 'trailer' || type === 'baler' ? 0 : toolUpY, type === 'trailer' ? 1.18 : 1.38);
+    const attachment = type === 'trailer' ? trailer.group : type === 'liquid-tank' ? liquidTank.group : createRearToolAsset(type);
+    attachment.position.set(0, ['trailer', 'liquid-tank', 'baler'].includes(type) ? 0 : toolUpY, ['trailer', 'liquid-tank'].includes(type) ? 1.18 : 1.38);
     tractor.group.add(attachment);
     return [type, attachment];
   })) : {};
@@ -75,6 +76,7 @@ export function createVehicle(scene, vehicle) {
     return { mesh, slots, cursor: 0, transform };
   };
   const spray = createPool('spray-droplets', new THREE.BoxGeometry(.06, .06, .06), new THREE.MeshBasicMaterial({ color: 0xa6ddff, transparent: true, opacity: .82, depthWrite: false }), 64);
+  const milk = createPool('milk-droplets', new THREE.BoxGeometry(.075, .075, .075), new THREE.MeshBasicMaterial({ color: 0xfff8e8, transparent: true, opacity: .9, depthWrite: false }), 42);
   const claim = (pool, data) => {
     const available = pool.slots.findIndex(slot => !slot.active);
     const index = available === -1 ? pool.cursor++ % pool.slots.length : available;
@@ -123,11 +125,17 @@ export function createVehicle(scene, vehicle) {
       });
     },
     setStorageAmount(amount, capacity) {
-      if (!trailer) return;
       const ratio = capacity ? THREE.MathUtils.clamp(amount / capacity, 0, 1) : 0;
-      trailer.grain.visible = ratio > 0;
-      trailer.grain.scale.set(1, Math.max(.12, ratio * 3.6), 1);
-      trailer.grain.position.y = .08 + ratio * .19;
+      if (trailer) {
+        trailer.grain.visible = loadout === 'trailer' && ratio > 0;
+        trailer.grain.scale.set(1, Math.max(.12, ratio * 3.6), 1);
+        trailer.grain.position.y = .08 + ratio * .19;
+      }
+      if (liquidTank) {
+        liquidTank.liquid.visible = loadout === 'liquid-tank' && ratio > 0;
+        liquidTank.liquid.scale.y = Math.max(.08, ratio);
+        liquidTank.liquid.position.y = .52 + ratio * .4;
+      }
     },
     setToolEnabled(slot, enabled, immediate = false) {
       if (slot === 'front') frontToolTargetY = enabled ? toolDownY : toolUpY;
@@ -152,8 +160,8 @@ export function createVehicle(scene, vehicle) {
       selectionDirection = selected ? 1 : -1;
       selectionPulse = 1;
     },
-    playUnload(target, _cropId, elapsed) {
-      if (reducedMotion || (!combine && !trailer) || !target) return false;
+    playUnload(target, itemId, elapsed) {
+      if (reducedMotion || (!combine && !trailer && !liquidTank) || !target) return false;
       if (combine) {
         root.updateMatrixWorld(true);
         localPoint.set(target.x, target.y, target.z);
@@ -167,7 +175,9 @@ export function createVehicle(scene, vehicle) {
         started: elapsed,
         targetYaw: combine ? Math.atan2(-localPoint.z, localPoint.x) : 0,
         activeUntil: elapsed + 1.15,
+        itemId,
       };
+      if (unload) unload.itemId = itemId;
       return true;
     },
     stopUnload() {
@@ -192,7 +202,7 @@ export function createVehicle(scene, vehicle) {
       frontToolY = frontToolSpring.value;
       frontToolVelocity = frontToolSpring.velocity;
       const attachment = attachments[loadout];
-      if (attachment && loadout !== 'trailer' && loadout !== 'baler') {
+      if (attachment && !['trailer', 'liquid-tank', 'baler'].includes(loadout)) {
         attachment.position.y = rearToolY;
         attachment.rotation.x = rearToolVelocity * .035;
       }
@@ -211,7 +221,7 @@ export function createVehicle(scene, vehicle) {
       }
 
       const speedFactor = Math.min(1, state.speed / 5.5);
-      const activeWheels = combine ? combine.wheels : [...tractor.wheels, ...(loadout === 'trailer' ? trailer.wheels : [])];
+      const activeWheels = combine ? combine.wheels : [...tractor.wheels, ...(loadout === 'trailer' ? trailer.wheels : loadout === 'liquid-tank' ? liquidTank.wheels : [])];
       activeWheels.forEach(wheel => {
         wheel.spin += state.speed * dt / wheel.radius;
         wheel.roller.rotation.x = wheel.spin;
@@ -261,6 +271,18 @@ export function createVehicle(scene, vehicle) {
         transform.rotation.set(progress * 5, slot.phase + progress * 3, progress * 4);
         transform.scale.set(scale, Math.max(.18, 1 - progress), scale);
       });
+      if (!reducedMotion && unload?.itemId === 'milk' && loadout === 'liquid-tank' && elapsed < unload.activeUntil) {
+        worldPoint.set(.58, .48, 2.35);
+        liquidTank.group.localToWorld(worldPoint);
+        if (Math.floor(elapsed * 30) !== Math.floor((elapsed - dt) * 30)) claim(milk, {
+          born: elapsed, life: .48, x: worldPoint.x, y: worldPoint.y, z: worldPoint.z,
+          dx: Math.sin(heading) * .55, dz: Math.cos(heading) * .55,
+        });
+      }
+      updatePool(milk, elapsed, (slot, progress, transform) => {
+        transform.position.set(slot.x + slot.dx * progress, slot.y - progress * .72, slot.z + slot.dz * progress);
+        transform.scale.setScalar(1 - progress * .55);
+      });
       const activeUnload = unload && elapsed < unload.activeUntil;
       if (combine) {
         const targetYaw = activeUnload ? unload.targetYaw : 0;
@@ -276,6 +298,7 @@ export function createVehicle(scene, vehicle) {
         trailer.bed.rotation.x += (tilt - trailer.bed.rotation.x) * (1 - Math.exp(-10 * dt));
         trailer.tailgate.rotation.x = activeUnload && loadout === 'trailer' ? .82 : 0;
       }
+      if (liquidTank) liquidTank.outlet.scale.setScalar(activeUnload && loadout === 'liquid-tank' ? 1 + Math.sin(elapsed * 18) * .12 : 1);
       if (unload && !activeUnload) unload = null;
     },
   };

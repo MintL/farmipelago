@@ -1,5 +1,5 @@
 import { cropIds, crops } from './crops.js?v=bale-wrapper-20260902-1';
-import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=bale-wrapper-20260902-1';
+import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=cattle-20260902-1';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', icon: 'plough' },
@@ -16,7 +16,7 @@ const TICKER_STEP_LITRES = 10;
 const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 
-export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onBarnFeed, onBarnLoadMilk, onPenRedraw, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -30,6 +30,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let buildMode = false;
   let cinematicActive = false;
   let selectedBuilding = null;
+  let buildHint = '';
   let insideBarn = false;
   let overlayState = null;
   let stickPointer = null;
@@ -103,7 +104,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const suitabilityToggle = document.querySelector('#suitabilityToggle');
   const buildingToggle = document.querySelector('#buildingToggle');
   const buildPalette = document.querySelector('#buildPalette');
-  const siloOption = document.querySelector('#siloOption');
+  const buildingOptions = [...document.querySelectorAll('[data-building-id]')];
+  const redrawPen = document.querySelector('#redrawPen');
+  const barnStorageRows = document.querySelector('#barnStorageRows');
   const viewHint = document.querySelector('#viewHint');
   const cropSelector = document.querySelector('#cropSelector');
   const cropName = document.querySelector('#cropName');
@@ -323,7 +326,37 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     siloInventoryElement.hidden = !siloInventory;
     if (!siloInventory) return;
     const machine = siloInventory.machine;
+    const cattleBarn = siloInventory.kind === 'cattle-barn';
     const cargoPad = siloInventory.kind === 'cargo';
+    barnStorageRows.hidden = !cattleBarn;
+    document.querySelector('.siloInventoryCrop').hidden = cattleBarn;
+    previousSiloCrop.hidden = cattleBarn;
+    nextSiloCrop.hidden = cattleBarn;
+    if (cattleBarn) {
+      const barn = siloInventory.barn;
+      barnStorageRows.replaceChildren();
+      for (const [icon, label, value] of [
+        ['cow', 'Herd', `${barn.herd} / ${barn.capacity}`],
+        ['hay-bale', 'Hay', `${formatLitres(barn.hayLitres)} / ${formatLitres(barn.hayCapacity)}`],
+        ['milk', 'Milk', `${formatLitres(barn.milkLitres)} / ${formatLitres(barn.milkCapacity)}`],
+      ]) {
+        const row = document.createElement('div');
+        const copy = document.createElement('span');
+        const strong = document.createElement('strong');
+        copy.textContent = label; strong.textContent = value;
+        row.append(cropIcon(icon, label), copy, strong); barnStorageRows.append(row);
+      }
+      siloLoadButton.hidden = false;
+      siloLoadButton.disabled = !barn.canLoadMilk;
+      siloLoadButton.setAttribute('aria-label', 'Load milk into Water / Milk Tank');
+      siloLoadButton.title = 'Load milk';
+      siloUnloadButton.disabled = !barn.canFeed;
+      siloUnloadButton.setAttribute('aria-label', 'Feed carried hay bale');
+      siloUnloadButton.title = 'Feed bale';
+      siloUnloadIconUse.setAttribute('href', '#icon-hay-bale');
+      siloInventoryElement.setAttribute('aria-label', `Cattle barn: ${barn.herd} of ${barn.capacity} cattle, ${formatLitres(barn.hayLitres)} hay, ${formatLitres(barn.milkLitres)} milk`);
+      return;
+    }
     const tankAmount = Object.values(machine.contents).reduce((sum, amount) => sum + amount, 0);
     const tankCropId = Object.keys(machine.contents).find(cropId => machine.contents[cropId] > 0) || null;
     if (cropsInSilo.length && !cropsInSilo.some(crop => crop.id === siloCropId)) siloCropId = cropsInSilo[0].id;
@@ -334,12 +367,12 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       siloInventory.autoSelectCarriedCrop = false;
     }
     const crop = cropsInSilo.find(entry => entry.id === siloCropId) || cropsInSilo[0] || null;
-    const canLoad = !cargoPad && Boolean(crop?.amount) && machine.canTransfer
+    const canLoad = !cargoPad && machine.storageKind === 'crop' && Boolean(crop?.amount) && machine.canTransfer
       && tankAmount < machine.capacity && (!tankCropId || tankCropId === crop.id);
     const canUnload = cargoPad
       ? Boolean(crop) && crop.accepting && machine.canTransfer && crop.amount < crop.target
         && (crop.unit === 'bales' ? machine.carriedBale : (machine.contents[crop.id] || 0) > 0)
-      : machine.canTransfer && tankAmount > 0;
+      : machine.storageKind === 'crop' && machine.canTransfer && tankAmount > 0;
     previousSiloCrop.disabled = cropsInSilo.length < 2;
     nextSiloCrop.disabled = cropsInSilo.length < 2;
     siloLoadButton.hidden = cargoPad;
@@ -450,9 +483,17 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     buildingToggle.setAttribute('aria-label', buildMode ? 'Leave building mode' : 'Open building menu');
     buildingToggle.title = buildMode ? 'Leave building mode' : 'Buildings';
     buildPalette.hidden = !buildMode;
-    siloOption.setAttribute('aria-pressed', String(selectedBuilding === 'silo'));
-    viewHint.textContent = buildMode
-      ? selectedBuilding ? 'DRAG ON LAND TO PLACE · WASD / ARROWS TO PAN' : 'SELECT A BUILDING · DRAG EMPTY GROUND TO PAN'
+    for (const option of buildingOptions) {
+      const type = option.dataset.buildingId;
+      const locked = type === 'cattle-barn' && !unlockedGates.has('building:cattle-barn');
+      option.hidden = locked;
+      option.disabled = locked;
+      option.setAttribute('aria-pressed', String(selectedBuilding === type));
+    }
+    redrawPen.hidden = !unlockedGates.has('building:cattle-barn');
+    viewHint.textContent = buildMode && buildHint ? buildHint : buildMode
+      ? selectedBuilding === 'cattle-barn' ? 'PLACE BARN · THEN DRAW PEN FROM BARN · RELEASE TO FINISH'
+        : selectedBuilding ? 'DRAG ON LAND TO PLACE · WASD / ARROWS TO PAN' : 'SELECT A BUILDING OR FENCE · DRAG EMPTY GROUND TO PAN'
       : 'DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE';
     renderCropOverlay();
   };
@@ -696,7 +737,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       return;
     }
     if (overlayState === 'barn') {
-      const index = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5, Digit7: 6 }[event.code];
+      const index = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5, Digit7: 6, Digit8: 7 }[event.code];
       if (index !== undefined) {
         const item = CATALOG.equipment[index];
         if (item && !itemLocked(item) && activeVehicle.slots.includes('tool')) draftLoadout.tool = item.id;
@@ -785,11 +826,13 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   unloadButton.addEventListener('click', useSecondaryAction);
   suitabilityToggle.addEventListener('click', () => setCropOverlay(!cropOverlayEnabled));
   buildingToggle.addEventListener('click', () => setBuildMode(!buildMode));
-  siloOption.addEventListener('click', () => {
-    if (!buildMode) return;
-    selectedBuilding = selectedBuilding === 'silo' ? null : 'silo';
+  for (const option of buildingOptions) option.addEventListener('click', () => {
+    if (!buildMode || option.disabled) return;
+    const type = option.dataset.buildingId;
+    selectedBuilding = selectedBuilding === type ? null : type;
     renderBuildMode();
   });
+  redrawPen.addEventListener('click', () => { if (buildMode) onPenRedraw?.(); });
   document.querySelector('#previousCrop').addEventListener('click', () => {
     cropIndex = (cropIndex + availableCropIds().length - 1) % availableCropIds().length;
     renderCropOverlay();
@@ -803,11 +846,13 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   previousSiloCrop.addEventListener('click', () => cycleSiloCrop(-1));
   nextSiloCrop.addEventListener('click', () => cycleSiloCrop(1));
   siloLoadButton.addEventListener('click', () => {
-    if (siloInventory && siloCropId) onSiloLoad(siloInventory.id, siloCropId);
+    if (siloInventory?.kind === 'cattle-barn') onBarnLoadMilk?.(siloInventory.id);
+    else if (siloInventory && siloCropId) onSiloLoad(siloInventory.id, siloCropId);
   });
   siloUnloadButton.addEventListener('click', () => {
     if (!siloInventory) return;
-    if (siloInventory.kind === 'cargo') onCargoDropOff(siloCropId);
+    if (siloInventory.kind === 'cattle-barn') onBarnFeed?.(siloInventory.id);
+    else if (siloInventory.kind === 'cargo') onCargoDropOff(siloCropId);
     else onSiloUnload(siloInventory.id);
   });
   document.querySelector('#menuToggle').addEventListener('click', openPause);
@@ -879,7 +924,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       celebrationTitle,
       document.createTextNode(completeGame
         ? ' was the final available delivery. You have unlocked every current farming capability.'
-        : ' has expanded what this Farmipelago can grow.')
+        : ' has expanded what this Farmipelago can do.')
     );
     celebrationContinue.textContent = completeGame ? 'Keep farming' : 'Continue farming';
     celebrationUnlocks.replaceChildren();
@@ -904,6 +949,13 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         use.setAttribute('href', '#icon-baler');
         icon.append(use);
         label.textContent = 'Hay equipment';
+        item.append(icon, label);
+      }
+      else if (gate === 'equipment:livestock' || gate === 'building:cattle-barn') {
+        const icon = cropIcon(gate === 'equipment:livestock' ? 'milk-tank' : 'cattle-barn', '', 'icon unlockIcon');
+        const label = document.createElement('strong');
+        icon.setAttribute('aria-hidden', 'true');
+        label.textContent = gate === 'equipment:livestock' ? 'Livestock equipment' : 'Cattle barn';
         item.append(icon, label);
       }
       else {
@@ -954,6 +1006,10 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     },
     cropOverlayState: () => ({ enabled: cropOverlayEnabled, cropId: selectedOverlayCropId() }),
     buildState: () => ({ enabled: buildMode, selectedBuilding }),
+    setBuildHint(nextHint) {
+      buildHint = String(nextHint || '');
+      if (buildMode) renderBuildMode();
+    },
     clearBuildingSelection() {
       selectedBuilding = null;
       renderBuildMode();
@@ -1024,12 +1080,38 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         renderSiloInventory();
         return;
       }
+      if (nextInventory.kind === 'cattle-barn') {
+        const previousId = siloInventory?.id;
+        const previousKind = siloInventory?.kind;
+        const previousSignature = siloInventory?.signature;
+        const machine = {
+          type: nextInventory.machine?.type || 'tractor',
+          capacity: Math.max(0, Number(nextInventory.machine?.capacity) || 0),
+          contents: { ...nextInventory.machine?.contents },
+          canTransfer: Boolean(nextInventory.machine?.canTransfer),
+          carriedBale: Boolean(nextInventory.machine?.carriedBale),
+          storageKind: nextInventory.machine?.storageKind || null,
+        };
+        const barn = {
+          herd: Math.max(0, Math.floor(nextInventory.herd || 0)), capacity: Math.max(0, Math.floor(nextInventory.capacity || 0)),
+          hayLitres: Math.max(0, Math.floor(nextInventory.hayLitres || 0)), hayCapacity: Math.max(1, Math.floor(nextInventory.hayCapacity || 1)),
+          milkLitres: Math.max(0, Math.floor(nextInventory.milkLitres || 0)), milkCapacity: Math.max(1, Math.floor(nextInventory.milkCapacity || 1)),
+          canFeed: Boolean(nextInventory.canFeed), canLoadMilk: Boolean(nextInventory.canLoadMilk),
+        };
+        const signature = Object.values(barn).join(':');
+        siloInventory = { id: nextInventory.id, kind: nextInventory.kind, machine, barn, crops: [], signature };
+        siloInventoryElement.style.left = `${Math.max(112, Math.min(innerWidth - 112, nextInventory.x))}px`;
+        siloInventoryElement.style.top = `${Math.max(150, Math.min(innerHeight - 74, nextInventory.y))}px`;
+        if (previousId !== nextInventory.id || previousKind !== nextInventory.kind || previousSignature !== signature) renderSiloInventory();
+        else siloInventoryElement.hidden = false;
+        return;
+      }
       const cropsInSilo = Array.isArray(nextInventory.items)
         ? nextInventory.items.flatMap(item => {
           const itemId = typeof item?.id === 'string' ? item.id : null;
           const amount = Math.max(0, Math.floor(Number(item?.amount) || 0));
           const target = Math.max(0, Math.floor(Number(item?.target) || 0));
-          if (!itemId || (!crops[itemId] && itemId !== 'hay-bale')) return [];
+          if (!itemId || (!crops[itemId] && !['hay-bale', 'milk'].includes(itemId))) return [];
           return [{
             id: itemId,
             name: typeof item.name === 'string' ? item.name : crops[itemId]?.name || itemId,
@@ -1052,11 +1134,12 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         contents: { ...nextInventory.machine?.contents },
         canTransfer: Boolean(nextInventory.machine?.canTransfer),
         carriedBale: Boolean(nextInventory.machine?.carriedBale),
+        storageKind: nextInventory.machine?.storageKind || null,
       };
       const carriedCropId = machine.carriedBale
         ? 'hay-bale'
         : Object.keys(machine.contents).find(cropId => machine.contents[cropId] > 0) || null;
-      if (nextInventory.kind === 'silo' && carriedCropId && !cropsInSilo.some(crop => crop.id === carriedCropId)) {
+      if (nextInventory.kind === 'silo' && crops[carriedCropId] && !cropsInSilo.some(crop => crop.id === carriedCropId)) {
         cropsInSilo.push({ id: carriedCropId, amount: 0 });
       }
       const signature = [
@@ -1066,7 +1149,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         machine.capacity,
         machine.canTransfer,
         machine.carriedBale,
-        cropIds.map(cropId => `${cropId}:${machine.contents[cropId] || 0}`).join('|'),
+        Object.entries(machine.contents).map(([itemId, amount]) => `${itemId}:${amount}`).sort().join('|'),
       ].join(';');
       const changed = siloInventory?.id !== nextInventory.id || siloInventory?.signature !== signature;
       for (const crop of cropsInSilo) {
@@ -1117,6 +1200,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       const previousSeed = selectedSeedCropId();
       const previousOverlay = selectedOverlayCropId();
       unlockedGates = new Set(Array.isArray(nextGates) ? nextGates : []);
+      if (selectedBuilding === 'cattle-barn' && !unlockedGates.has('building:cattle-barn')) selectedBuilding = null;
       const availableCrops = availableCropIds();
       seedIndex = Math.max(0, availableCrops.indexOf(previousSeed));
       cropIndex = Math.max(0, availableCrops.indexOf(previousOverlay));
@@ -1124,6 +1208,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       renderCropOverlay();
       renderLoadoutBays();
       renderEquipmentActions();
+      renderBuildMode();
       if (cropOverlayEnabled) notifyCropOverlay();
     },
     isGameplayBlocked: () => overlayState !== null,

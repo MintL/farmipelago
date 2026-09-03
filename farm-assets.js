@@ -46,8 +46,21 @@ export function createTractorAsset() {
   const hood = box(.88, .38, .7, mats.tractorAccent); hood.position.set(0, .83, -.54); group.add(hood);
   const hoodStripe = box(.58, .045, .74, mats.tractorCream); hoodStripe.position.set(0, 1.04, -.54); group.add(hoodStripe);
   const grille = box(.58, .24, .045, mats.tractorDark); grille.position.set(0, .79, -.913); group.add(grille);
+  const headlampMaterial = mats.headlamp.clone();
+  headlampMaterial.emissiveIntensity = .12;
+  const headlights = [];
   for (const x of [-.28, .28]) {
-    const lamp = box(.16, .14, .055, mats.headlamp); lamp.position.set(x, .86, -.94); group.add(lamp);
+    const lamp = box(.16, .14, .055, headlampMaterial); lamp.position.set(x, .86, -.94); group.add(lamp);
+    const beam = new THREE.SpotLight(0xffd68a, 0, 9, .36, .62, 1.45);
+    beam.name = `tractor-headlight-${x < 0 ? 'left' : 'right'}`;
+    beam.position.set(x, .86, -.99);
+    beam.castShadow = false;
+    beam.visible = false;
+    const target = new THREE.Object3D();
+    target.position.set(x, .38, -7.2);
+    group.add(beam, target);
+    beam.target = target;
+    headlights.push(beam);
   }
 
   const cab = new THREE.Group();
@@ -79,7 +92,7 @@ export function createTractorAsset() {
   addTractorWheel(.58, .35, -.4, .34, .25, true);
   addTractorWheel(-.6, .43, .47, .45, .28, false);
   addTractorWheel(.6, .43, .47, .45, .28, false);
-  return { group, wheels };
+  return { group, wheels, headlights, headlampMaterial };
 }
 
 function createPloughAsset() {

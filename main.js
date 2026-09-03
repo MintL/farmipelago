@@ -292,9 +292,14 @@ function currentEnvironmentFocus() {
   return viewMode === 'build' ? mapCameraTarget : driveCameraTarget;
 }
 
+function applyNightLighting(state) {
+  farm?.setNightAmount(state.nightAmount, state.lanternAmount);
+  fleet.forEach(vehicle => vehicle.visual.setNightAmount(state.nightAmount));
+}
+
 function setTimeOfDay(nextPhase) {
   const state = environment.setPhase(nextPhase, currentEnvironmentFocus());
-  farm?.setNightAmount(state.nightAmount, state.lanternAmount);
+  applyNightLighting(state);
   ui?.setDebugTimeOfDay(state.phase);
   scheduleSave();
   renderRequested = true;
@@ -631,7 +636,7 @@ function initializeFarm(savedState) {
   syncCargoPort();
   updateDriveCamera(activeVehicleState(), 0, true);
   const environmentState = environment.setPhase(savedState?.environment?.phase ?? DEFAULT_DAY_PHASE, driveCameraTarget);
-  farm.setNightAmount(environmentState.nightAmount, environmentState.lanternAmount);
+  applyNightLighting(environmentState);
   ui.setDebugTimeOfDay(environmentState.phase);
   if (progression.state().pickupReady) beginMilestoneCinematic(progression.state());
   persistenceReady = true;
@@ -1471,9 +1476,10 @@ function update(dt) {
   if (cargoEvent?.departed) finishMilestoneCinematic();
   syncFleetVisuals(dt);
   const environmentState = environment.update(dt, currentEnvironmentFocus());
-  farm?.setNightAmount(environmentState.nightAmount, environmentState.lanternAmount);
+  applyNightLighting(environmentState);
   ui.setDebugTimeOfDay(environmentState.phase);
-  farm?.animate(elapsed);
+  farm?.animate(elapsed, dt, (x, z) =>
+    buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z));
   buildings?.animate(elapsed, dt);
   updateConstructionPopup();
   updateStoragePopup();

@@ -112,6 +112,15 @@ export function createVehicle(scene, vehicle) {
   };
 
   return {
+    setNightAmount(amount) {
+      if (!tractor) return;
+      const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
+      tractor.headlampMaterial.emissiveIntensity = .12 + nightAmount * 2.5;
+      for (const headlight of tractor.headlights) {
+        headlight.intensity = nightAmount * 18;
+        headlight.visible = nightAmount > .01;
+      }
+    },
     setLoadout(nextLoadout) {
       const nextTool = nextLoadout.tool || loadout;
       const nextFrontTool = nextLoadout.frontTool || frontLoadout;

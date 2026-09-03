@@ -62,10 +62,17 @@ class FarmPhysics {
     this.addStaticMesh(undersideMesh.vertices, undersideMesh.indices, 0.82);
 
     for (const bridge of bridgeBlocks) {
+      const yaw = bridge.yaw || 0;
+      const rotation = bridge.rotation || {
+        x: 0,
+        y: Math.sin(yaw * .5),
+        z: 0,
+        w: Math.cos(yaw * .5),
+      };
       const collider = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(bridge.width * .5, bridge.height * .5, bridge.depth * .5)
           .setTranslation(bridge.x, bridge.y, bridge.z)
-          .setRotation({ x: 0, y: Math.sin(bridge.yaw * .5), z: 0, w: Math.cos(bridge.yaw * .5) })
+          .setRotation(rotation)
           .setFriction(0.9)
           .setRestitution(0)
       );

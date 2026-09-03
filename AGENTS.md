@@ -84,7 +84,8 @@ the GDD as well:
 - `ui.js` translates touch and keyboard input, owns the HUD state, and calls
   callbacks supplied by `main.js`.
 - `shared.js` is the source of truth for Three.js, tile/layer dimensions,
-  shared materials, box meshes, and `gridKey()`.
+  shared materials, the `MODEL_VOXEL` / `createVoxelModel()` construction
+  convention, box meshes, and `gridKey()`.
 
 ## Important invariants
 
@@ -109,6 +110,12 @@ the GDD as well:
   concise function/constant style.
 - Prefer small procedural primitive meshes and shared materials; do not add an
   asset pipeline or framework for a local feature.
+- Before adding or rebuilding any building, follow the GDD's **Building Voxel
+  Construction Standard**. Author it on the shared five-model-voxels-per-tile
+  grid with `MODEL_VOXEL` and `createVoxelModel()`: use stepped roofs, real
+  wall thickness, constructed openings, and voxel-sized structural details.
+  Do not introduce wall-sized arbitrary boxes, rotated roof slabs, smooth
+  low-poly building forms, visible grid lines, or cube textures.
 - Keep mobile controls usable with safe-area insets and `pointer` events.
   Keyboard controls (WASD/arrows and Space) are a required fallback.
 - Keep rendering work out of the fixed physics step. Clamp frame deltas before

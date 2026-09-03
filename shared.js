@@ -3,6 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.m
 export { THREE };
 
 export const TILE = 1;
+export const MODEL_VOXEL = TILE / 5;
 export const LEVEL_HEIGHT = 1;
 export const GRASS_TOP = 0.1;
 export const SOIL_DEPTH = LEVEL_HEIGHT - GRASS_TOP;
@@ -124,6 +125,75 @@ export function box(width, height, depth, material, cast = true, receive = true)
   mesh.castShadow = cast;
   mesh.receiveShadow = receive;
   return mesh;
+}
+
+export function createVoxelModel(parts, { name = '', origin = [0, 0, 0], cast = true, receive = true } = {}) {
+  const group = new THREE.Group();
+  const batches = new Map();
+  const [originX, originY, originZ] = origin;
+  group.name = name;
+
+  for (const part of parts) {
+    const { at, size, material } = part;
+    if (!material || !Array.isArray(at) || !Array.isArray(size) ||
+      [...at, ...size].some(value => !Number.isInteger(value)) || size.some(value => value <= 0)) {
+      throw new Error('Voxel parts require a material plus integer at/size coordinates');
+    }
+    if (!batches.has(material)) batches.set(material, []);
+    batches.get(material).push(part);
+  }
+
+  const geometry = new THREE.BoxGeometry(MODEL_VOXEL, MODEL_VOXEL, MODEL_VOXEL);
+  const transform = new THREE.Object3D();
+  for (const [material, batchParts] of batches) {
+    const mesh = new THREE.InstancedMesh(geometry, material, batchParts.length);
+    mesh.name = name ? `${name}-voxels` : 'voxel-model';
+    mesh.castShadow = cast;
+    mesh.receiveShadow = receive;
+    batchParts.forEach(({ at: [x, y, z], size: [width, height, depth] }, index) => {
+      transform.position.set(
+        (originX + x + width * .5) * MODEL_VOXEL,
+        (originY + y + height * .5) * MODEL_VOXEL,
+        (originZ + z + depth * .5) * MODEL_VOXEL,
+      );
+      transform.rotation.set(0, 0, 0);
+      transform.scale.set(width, height, depth);
+      transform.updateMatrix();
+      mesh.setMatrixAt(index, transform.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingBox();
+    mesh.computeBoundingSphere();
+    group.add(mesh);
+  }
+  return group;
+}
+
+export function createVoxelLantern({ glowMaterial, frameMaterial = mats.bridgeDark, metalMaterial = mats.metal, hanging = false, name = 'voxel-lantern' }) {
+  const parts = [
+    { material: frameMaterial, at: [0, 1, 0], size: [3, 1, 3] },
+    { material: glowMaterial, at: [1, 0, 1], size: [1, 1, 1] },
+    { material: metalMaterial, at: [0, 0, 0], size: [1, 1, 1] },
+    { material: metalMaterial, at: [2, 0, 0], size: [1, 1, 1] },
+    { material: metalMaterial, at: [0, 0, 2], size: [1, 1, 1] },
+    { material: metalMaterial, at: [2, 0, 2], size: [1, 1, 1] },
+    { material: frameMaterial, at: [0, -1, 0], size: [3, 1, 3] },
+  ];
+  if (hanging) {
+    parts.push(
+      { material: metalMaterial, at: [0, 3, 2], size: [3, 1, 2] },
+      { material: frameMaterial, at: [1, 2, 1], size: [1, 1, 1] },
+    );
+  }
+  else {
+    parts.push({ material: metalMaterial, at: [1, 2, 1], size: [1, 1, 1] });
+  }
+  const group = createVoxelModel(parts, { name: `${name}-model`, origin: [-1.5, 0, -1.5] });
+  group.name = name;
+  return {
+    group,
+    glowMesh: group.children.find(child => child.material === glowMaterial),
+  };
 }
 
 export function gridKey(gx, gz) {

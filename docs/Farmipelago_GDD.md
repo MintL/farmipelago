@@ -1,13 +1,13 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-02
+**Updated from implementation:** 2026-09-03
 
 ## 1. Game Concept
 
 Farmipelago is a small, playful farming game set on a persistent procedurally generated voxel archipelago.
 
-The player directly operates tractors, harvesters, tools and transport equipment. The challenge comes from making effective use of irregular islands with different heights, shapes and growing conditions.
+The player directly operates tractors, harvesters, tools and transport equipment. The challenge comes from making effective use of irregular islands with different heights, shapes and environmental character.
 
 Rather than building a perfectly rectangular farm, the player gradually learns how to make the best use of the Farmipelago they were given.
 
@@ -45,7 +45,7 @@ The player drives the tractor or combine, equips compatible equipment and perfor
 
 The generated Farmipelago is not just scenery.
 
-Island shape, elevation, usable flat areas, access routes, moisture and sunlight influence where different activities make sense.
+Island shape, elevation, usable flat areas and access routes influence where different activities make sense. Moisture and sunlight give each area a distinct visual character.
 
 The player should regularly have to think:
 
@@ -154,7 +154,7 @@ Possible milestone categories include:
 
 - grow several different crop types
 - maintain a diverse set of crops at the same time
-- successfully grow crops across very different environmental conditions
+- maintain productive fields across several islands and elevations
 
 ### Livestock
 
@@ -209,24 +209,26 @@ The world consists of multiple voxel islands generated from a persistent seed.
 The current generator provides:
 
 - a two-island starter area
-- a level starter farmyard with a walk-in 3×3 barn
+- a level starter farmyard with a walk-in 3×3 workshop at the northern end of the starter island's west edge
+- a broad, irregular lake along the starter island's south coast, feeding an east-flowing river and waterfall
 - a separate cargo-hub island connected by bridge
 - additional larger lobed islands with stepped elevations
-- broad clear farming plots on generated islands
+- a large northern island whose north side climbs through three distinct terraces above its base, with fully snow-covered upper terraces and a summit clear of generated props
+- broad farming areas across the base and raised levels of generated islands
 - bridges across larger gaps
 - lakes, animated rivers and waterfalls
 - grass, dirt and stone terrain layers with deep pointed undersides
-- generated trees, rocks and grass tufts
+- generated trees, rocks and grass tufts across both terrain elevations
 
 Vehicles can jump, so elevation and gaps are part of navigation without requiring ramps.
 
-Generated props can fade when they block the camera's view of the active vehicle.
+Generated props, bridges, the cargo pad, completed player-placed buildings and the visiting VTOL can fade when they block the camera's view of the active vehicle. Bridges and the cargo pad do not fade merely because the vehicle is driving across them, so driving surfaces remain readable beneath the vehicle.
 
 The Farmipelago persists across browser sessions, including its generated tiles and seed.
 
 ---
 
-## 9. Growing Conditions
+## 9. Environmental Variation
 
 Each farmable location has environmental values for:
 
@@ -236,20 +238,9 @@ Each farmable location has environmental values for:
 
 These values are procedurally generated and visibly affect the world. Damp/cool areas tend to gather trees, while bright/dry areas are rockier and more open. Grass color also varies with the environmental fields.
 
-The player can enter a **crop suitability mode** for any unlocked or inspectable crop. This switches to an elevated map-style camera that can be panned across the Farmipelago.
+Moisture and sunlight do not score farmland or modify crop growth, crop yield or grass yield. Crops therefore perform consistently wherever there is usable prepared land. There is no crop-planning overlay or separate crop-inspection camera mode.
 
-Suitability is calculated from how close local moisture and sunlight are to that crop's preferred values.
-
-Suitability currently affects both:
-
-- growth speed
-- harvest yield
-
-Growth ranges from roughly **70% to 100%** of normal speed according to suitability.
-
-Yield ranges from roughly **50% to 100%** of the crop's maximum tile yield according to suitability.
-
-The current implementation intentionally keeps poor land usable rather than making unsuitable locations completely invalid.
+The world also runs a persistent ten-minute visual day/night cycle. A moving sun produces warm daylight and animated shadows, dawn and dusk shift through peach and lavender, and a full moon keeps the brief night blue and readable rather than fully dark. Stars, fog, water and local fixture lighting follow the same cycle. This illumination is separate from each tile's generated sunlight value and does not affect crops, livestock, yield or progression.
 
 ---
 
@@ -263,21 +254,13 @@ The current prototype contains five crops:
 - Soybeans
 - Corn
 
-They occupy different points in the moisture/sunlight space:
-
-- Wheat prefers relatively dry, very sunny land.
-- Barley prefers dry, moderately sunny land.
-- Canola prefers wetter, moderately sunny land.
-- Soybeans prefer wet and sunny land.
-- Corn prefers moderate moisture and high sunlight.
-
 The player selects seed while using the seeder. Only crops unlocked by progression should be available for normal progression play.
 
 Planted crops visibly sprout and grow. Harvest-ready crops pulse in synchronized world time.
 
-Each ready crop tile currently yields approximately **50–200 L**, scaled by suitability.
+Each ready crop tile currently yields a fixed **200 L**. Each ready grass tile likewise produces **200 L** of loose grass when mown.
 
-This system is intended to create competition for the best land and encourage the player to reconsider how existing fields are allocated as new crops unlock.
+Crop choice matters through progression requirements, visual identity and the need to keep harvested types separate in machine storage, rather than through environmental yield differences.
 
 ---
 
@@ -340,9 +323,9 @@ Both vehicles remain parked in the world when not controlled. Their positions, l
 
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 
-### Barn Workshop
+### Workshop
 
-The barn functions as the loadout workshop.
+The workshop is a permanent starter structure at the northern end of the starter island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area; the cargo hub occupies the southern west-edge site.
 
 The player drives into it and receives a live 3D preview of the active vehicle and compatible equipment. The UI distinguishes unavailable slots for vehicles such as the combine.
 
@@ -399,7 +382,7 @@ Permanent commitment makes scarce clear, level land and future farm layout part 
 
 The permanent starter structures are:
 
-- barn / vehicle workshop
+- vehicle workshop
 - cargo hub and landing pad
 
 Future buildings may support:
@@ -409,6 +392,8 @@ Future buildings may support:
 - additional storage
 - equipment
 - new progression systems
+
+Every new building must follow the small-voxel building construction standard in the Art Direction section. This applies equally to permanent world structures and player-placeable buildings.
 
 The design should continue to require buildings to have clear gameplay functions rather than adding structures purely because farming games conventionally contain them.
 
@@ -420,14 +405,14 @@ The current progression receiver is a **cargo hub** permanently attached to the 
 
 It contains:
 
-- a marked VTOL landing deck
-- staged delivery crates
+- a small-voxel VTOL landing deck with stepped edges, inlaid block markings and voxel beacons
+- voxel-built staged delivery crates, hay bales and milk cans
 - a nearby cargo interaction popup
 - visible milestone requirements and Deliver controls
 
 The player transports crops or milk to the hub and transfers eligible cargo into the current milestone. Physical hay bales remain a separate one-object delivery path. Staged cargo visually changes between crop crates, hay bales and milk cans according to the active milestone.
 
-When a milestone is completed, a chunky four-fan cargo VTOL rapidly approaches the landing deck. Staged cargo is collected and the aircraft departs, creating a physical payoff for progression rather than resolving it only through menus.
+When a milestone is completed, an articulated four-fan cargo VTOL built from the same small-model voxel grid rapidly approaches the landing deck. Its stepped fuselage, cockpit, landing gear, booms and fan housings preserve a recognizable aircraft silhouette without reverting to smooth low-poly primitives. Staged cargo is collected and the aircraft departs, creating a physical payoff for progression rather than resolving it only through menus.
 
 The cargo hub provides the current in-world connection to the outside world. The wider fiction behind who is requesting or receiving the products remains intentionally open.
 
@@ -442,11 +427,11 @@ Primary platform target is mobile, with portrait-oriented phone play as the main
 Current controls include:
 
 - dynamic camera-relative virtual joystick in the lower-left drive zone
+- two-finger horizontal swipe over the world to rotate the drive camera in 90° steps
 - jump button
 - contextual primary tool action
 - secondary action such as cycling seed
 - cycle-vehicle button
-- suitability button
 - build button
 - nearby building/cargo interaction popups
 - cattle-barn Feed bale and Load milk actions
@@ -462,15 +447,18 @@ Current keyboard controls include:
 - E — raise/lower or activate the relevant tool
 - V — cycle vehicles
 - F — cycle seed with the seeder
+- [ / ] — rotate the drive camera in 90° steps
 - B — build mode
 - Escape — leave special camera modes or open the menu
-- 1–8 — rear-equipment selection in the barn workshop
+- 1–8 — rear-equipment selection in the workshop
 
 ### Camera
 
-The normal gameplay camera is a smooth high-angle follow camera that keeps the active vehicle framed.
+The normal gameplay camera is a smooth high-angle follow camera that keeps the active vehicle framed. It has four 90° orientations relative to the default angle, joined by a short eased rotation, and driving remains camera-relative throughout the turn.
 
-Suitability and construction modes switch to elevated pannable overview cameras.
+Construction mode switches to an elevated pannable overview camera.
+
+The pause menu's Debug section includes a time-of-day slider. It previews the complete environment while paused, saves the selected phase and resumes the normal cycle when play continues.
 
 The camera should preserve the miniature-diorama feeling while keeping vehicle control readable on a phone screen.
 
@@ -488,7 +476,7 @@ Current implementation follows these principles through:
 - compact crop icons and inventory readouts
 - contextual silo, cattle-barn and cargo popups
 - an integrated milestone tracker
-- live 3D vehicle/equipment previews in the barn
+- live 3D vehicle/equipment previews in the workshop
 - temporary labels for actions such as seed cycling
 - input-aware desktop control hints
 
@@ -510,14 +498,21 @@ The terrain is chunky and simplified, while vehicles and props use smaller voxel
 
 Current visual language includes:
 
+- a consistent small-model construction grid of five voxels across one terrain tile, beginning with the starter workshop
+- stepped rooflines, structural thickness, openings and details that read as assembled voxel forms rather than smooth low-poly slabs
 - muted grass, dirt and stone layers
+- continuous snow surfaces across the two highest terraces of the northern island
 - softly lit terrain and gentle fog
+- a moving sun and full moon, animated celestial shadows, warm twilight, subtle stars and readable blue moonlight
+- a hanging warm lantern above the permanent starter workshop entrance, lit from late afternoon until after sunrise
+- two bright hanging voxel lanterns at the cargo hub matching the workshop: one on the permanent pole and one seed-varied companion, with seed-stable rotation variation
 - deep pointed floating-island undersides
 - colorful toy-like farm vehicles
 - a blue hero tractor with glazed cab, lamps and beacon
 - squash-and-stretch on vehicle jumps and crop growth
 - animated trees and vegetation
-- waterfalls and environmental motion
+- sparse environment-driven prop clusters across both elevations, with off-grid placement and subtle rotation, mirroring and scale variation
+- waterfalls, flat landing splashes matched to the day/night base-water palette, and environmental motion
 - physical crop unloading streams and delivery crates
 
 The overall feeling should be:
@@ -530,6 +525,22 @@ The overall feeling should be:
 
 It should not look like a realistic simulator, but farming machinery and agricultural processes should remain recognizable.
 
+### Building Voxel Construction Standard
+
+The starter workshop establishes the mandatory visual construction language for every new or rebuilt building.
+
+- Use the shared small-model grid of **five construction voxels across one terrain tile**. Building dimensions, offsets, thicknesses and details must resolve to integer spans on that local grid.
+- Author the building as occupied voxel cells or rectangular runs of repeated cells. Runs may be merged or instanced by material for performance, but the resulting form must retain a voxel-built silhouette.
+- Walls must have visible voxel-scale thickness. Corners, wall ends, foundations and structural transitions should be resolved with posts, courses, offsets or stepped layers instead of reading as intersecting wall-sized slabs.
+- Openings must be constructed into the wall layout. Doors and windows need voxel-sized jambs, lintels and sills, with panes, shutters or door leaves visibly recessed from the wall face.
+- Roof pitch must be expressed with stepped courses, stepped gables and a voxel-scale ridge or edge treatment. Do not use a single rotated box or smooth sloped prism as a roof plane.
+- Beams, posts, trim, vents, lamps, gutters, ladders and similar details must use the same construction grid. Avoid arbitrary thin strips, smooth curves and decorative polygons that do not belong to the voxel assembly.
+- Large clean surfaces are allowed when they represent contiguous repeated cells, but their boundaries, openings, depth changes and attached details must make the smaller construction scale legible in silhouette.
+- Communicate the grid through geometry rather than visible grid lines, checkerboards or cube textures. Continue using flat, simple materials from the existing Farmipelago palette.
+- Keep visual and gameplay geometry separate. A richer stepped model must not change its footprint, collider, entrance position, interaction point or camera framing unless the gameplay design explicitly calls for that change.
+
+A building passes the visual test when, beside the terrain, the terrain reads as large world blocks while the building clearly reads as a model assembled from many smaller voxels rather than as a few generic low-poly primitives.
+
 ---
 
 ## 20. Persistence and Free Play
@@ -539,6 +550,7 @@ The game automatically saves to browser-local storage.
 The current save includes:
 
 - world seed
+- current time-of-day phase
 - generated world tiles
 - field and crop state
 - placed buildings and silo contents
@@ -593,10 +605,11 @@ Automation may eventually support the player, but personally operating agricultu
 The playable prototype currently proves the following major systems together:
 
 - persistent procedurally generated archipelago
+- persistent visual day/night cycle with a Debug time scrubber
 - vehicle driving and jumping
 - tractor attachments
 - ploughing and seeding
-- crop growth, suitability and yield
+- crop growth and fixed per-tile yield
 - combine harvesting
 - crop storage in litres
 - persistent placeable silos
@@ -607,8 +620,8 @@ The playable prototype currently proves the following major systems together:
 - cargo-hub deliveries
 - crop-unlock milestone progression
 - multiple persistent vehicles
-- barn loadout workshop
-- suitability and construction overview modes
+- loadout workshop
+- construction overview mode
 - automatic local saving and restoration
 
 This prototype should be treated as the foundation for expansion rather than as a disposable technical test.

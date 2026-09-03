@@ -1,26 +1,26 @@
 # Floating Farm Prototype
 
-A phone-first Three.js prototype for driving and farming across generated floating islands, with an environmental crop-planning view.
+A phone-first Three.js prototype for driving and farming across generated floating islands, with persistent fields, vehicles, buildings, and crop logistics.
 
 ## Included
 
 - modern phone-first HUD with safe-area support, a fixed touch joystick, input-aware desktop hints, a shared machine-inventory meter, and a discreet build/FPS readout below the pause button
-- smooth high-angle follow camera that keeps the controlled vehicle framed
-- generated radial archipelago with a large, level central starter hub containing the walk-in 3×3 barn, vehicles, starter field, and cargo pad; a direct bridge reaches a second large early farming island, while mixed-size surrounding islands spread outward through a deliberately varied bridge graph
-- permanent cargo hub cantilevered from the west edge of the central starter island, with a marked landing deck, staged delivery crates, and a chunky four-fan VTOL that makes a rapid curved arrival and departure while keeping its rotors fixed; completing a delivery milestone summons it straight to the pad for a short celebration flight and an explicit unlock reveal
-- generated props that fade when they block the camera's view of the tractor
-- one broad raised plot and one broad base level on each non-starter island, both kept clear as usable farm plots
-- small procedural lakes that feed animated rivers and waterfalls spilling below the islands
+- smooth high-angle follow camera that keeps the controlled vehicle framed, with four camera-relative 90° orientations selected by a two-finger horizontal swipe over the world or the `[` / `]` desktop fallback and joined by a fast eased quarter-turn
+- persistent 10-minute day/night cycle with moving sun and full moon, animated celestial shadows, warm dawn/dusk, subtle stars, blue readable moonlight, and a Debug time-of-day scrubber
+- generated radial archipelago with a large, level central starter island containing a walk-in workshop at the northern end of its west edge, constructed on a five-small-voxels-per-terrain-tile grid with an east-facing open bay, hanging lantern lit from late afternoon through early morning, stepped rooflines, framed openings, tools, lockers, fuel pump, tyres, crates, and stone apron; the island also contains vehicles, a starter field, and cargo pad, while bridges reach mixed-size surrounding islands
+- permanent cargo hub at the southern end of the west edge, with a cantilevered small-voxel landing deck, inlaid stepped markings, two bright hanging voxel lanterns matching the workshop (one on the fixed pole and one seed-varied companion), voxel-built staged cargo, and an articulated four-fan voxel VTOL that makes a rapid curved arrival and departure while keeping its rotors fixed; completing a delivery milestone summons it straight to the pad for a short celebration flight and an explicit unlock reveal
+- generated props, bridges, the cargo pad, the visiting VTOL, and completed player-placed buildings fade when they block the camera's view of the active vehicle; bridges and the cargo pad do not fade merely because the vehicle is driving across them
+- broad base and raised farming plots on every non-starter island, with environment-driven props distributed across elevations; the large northern island's north side climbs through three distinct terraces, with fully snow-covered upper terraces and a prop-free summit
+- a large irregular lake along the central starter island's south coast with an east-flowing river and waterfall, plus small procedural lakes that feed animated rivers and waterfalls spilling below the islands; landing in water throws flat-colored droplets using the same day/night base-water palette without surface glints
 - aggressive continuous moisture and sunlight variation that creates dark dense rainforest, normal woodland, lush meadows and wetlands, yellow dry plains, and rocky scrub through strongly differentiated grass color, obstruction density, tree silhouettes, and lightweight ground cover
-- crop suitability mode with Corn, Wheat, Barley, Canola, and Soybeans views; selecting it switches to an elevated map camera with drag and keyboard panning
-- a second, round build button beneath suitability: open it to enter a pannable construction view and choose grain silos or, once unlocked, a Cattle Barn from the single-row tray along the bottom of the screen. Choosing a type immediately creates its draft at the nearest suitable clear site in view. Unconfirmed buildings carry a pulsing lime outline, can be selected and hold-dragged until explicitly committed, or removed with their contextual Cancel button. Confirm permanently removes the draft outline. Silos use Confirm; barns use Draw pen followed by a rough pasture lasso that automatically closes, trims unusable land, and connects to a brightly highlighted barn doorway and ground gate. Fixed fence connectors begin at the midpoint of both barn side walls, while generated and edited fence segments cannot pass through any building. The generated fence remains editable or can be repainted before final Confirm; leaving build mode discards every unconfirmed building
+- a round build button opens a pannable construction view for grain silos or, once unlocked, a Cattle Barn from the single-row tray along the bottom of the screen. Choosing a type immediately creates its draft at the nearest suitable clear site in view. Unconfirmed buildings carry a pulsing lime outline, can be selected and hold-dragged until explicitly committed, or removed with their contextual Cancel button. Confirm permanently removes the draft outline. Silos use Confirm; barns use Draw pen followed by a rough pasture lasso that automatically closes, trims unusable land, and connects to a brightly highlighted barn doorway and ground gate. Fixed fence connectors begin at the midpoint of both barn side walls, while generated and edited fence segments cannot pass through any building. The generated fence remains editable or can be repainted before final Confirm; leaving build mode discards every unconfirmed building
 - softly lit, gently fogged miniature terrain with muted grass / dirt / stone layers and deep, pointed undersides
-- environment-driven flowers, ferns, reeds, bushes, mushrooms, lush grass, yellow dry grass, and scrub that remain non-blocking and disappear when their tile is ploughed
+- sparse environment-driven clusters of flowers, ferns, reeds, bushes, mushrooms, lush grass, yellow dry grass, and scrub across both elevations, with multi-prop tiles, off-grid placement, and subtle rotation, mirroring, and scale variation; they remain non-blocking and disappear when their tile is ploughed
 - blue hero tractor with a glazed cab, treaded wheels, lamps, beacon, and squash-and-stretch jumps
 - a persistent owned Farm Tractor and Combine Harvester: both remain parked as solid world objects, keep their positions, loadouts, and storage, and cycle with a short lift-and-glide camera handoff
-- barn-style loadout workshop with live 3D previews for the controlled vehicle and its compatible rear/front equipment; equip the Farm Tractor's 20,000 L Grain Trailer to carry one crop from silos to the cargo hub, while the combine's built-in header leaves its attachment bays unavailable
+- walk-in workshop with live 3D previews for the controlled vehicle and its compatible rear/front equipment; equip the Farm Tractor's 20,000 L Grain Trailer to carry one crop from silos to the cargo hub, while the combine's built-in header leaves its attachment bays unavailable
 - progression gates start the farm with Wheat only; Getting started and Crop diversity unlock broader crop and hay systems, Livestock preparation requires four physical hay bales and unlocks the Cattle Barn plus livestock equipment, and First milk asks for 3,600 L Milk. Crop and milk transfers use rapid 10 L steps, while bale deliveries advance one physical bale at a time
-- automatic browser-local saving of the generated Farmipelago, field and crop state, building construction phases, provisional or completed cattle pens, individual herds, feed and milk stores, delivery progress, vehicle positions, loadouts, storage, and active seed; schema-6/7 farms migrate in place and refreshing restores the same playable state
+- automatic browser-local saving of the generated Farmipelago, time of day, field and crop state, building construction phases, provisional or completed cattle pens, individual herds, feed and milk stores, delivery progress, vehicle positions, loadouts, storage, and active seed; schema-6/7/8 farms migrate in place and refreshing restores the same playable state
 - visible four-share plough that changes grass tiles into ploughed soil with rolling voxel soil feedback
 - the seeder plants selectable Corn, Wheat, Barley, Canola, Soybeans, or Grass seed; crops sprout and grow with squash-and-stretch transitions, then all harvest-ready crops pulse in synchronized world time
 - completing Crop diversity also unlocks perennial Grass seed and the hay-equipment set: use the existing seeder to establish grass, mow it with the centered front mower or offset rear mower, then pick up loose cut grass directly with the baler; each 3,600 L becomes a persistent rectangular world bale
@@ -28,28 +28,29 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - finally confirmed cattle barns receive two adult cows. Every four valid pasture tiles provide one hard herd-capacity slot; cows wander independently within the permanent pen, calves arrive automatically when hay and capacity are available, and calves mature into milk-producing adults
 - carry an existing 3,600 L hay bale to the barn to feed the herd at full output. Cattle never starve or die: without hay they graze abstractly and continue producing milk at 20% of the fed rate
 - the livestock-gated Water / Milk Tank holds 6,000 L, loads milk from a nearby Cattle Barn, and unloads it at the cargo hub for First milk; a non-empty storage attachment cannot be swapped away
-- grass yield remains tied to local moisture and sunlight suitability, grass regrows without reseeding or weeds, and loose grass, partial baler fill, and dynamically instanced bales all persist across refreshes
-- independent front and rear equipment controls with general slot icons; each attachment can be raised or lowered separately, the combine header uses the front control, and the secondary action cycles seed; illustrated crop icons use multiple crop colors throughout compact HUD controls and vehicle inventories, while a brief seed-cycle label appears above the control; each ready crop tile yields 50–200 L according to suitability and fills the combine's 3,600 L tank with a 10 L-step ticker
+- every ready grass tile produces 200 L, grass regrows without reseeding or weeds, and loose grass, partial baler fill, and dynamically instanced bales all persist across refreshes
+- independent front and rear equipment controls with general slot icons; each attachment can be raised or lowered separately, the combine header uses the front control, and the secondary action cycles seed; illustrated crop icons use multiple crop colors throughout compact HUD controls and vehicle inventories, while a brief seed-cycle label appears above the control; each ready crop tile yields a fixed 200 L and fills the combine's 3,600 L tank with a 10 L-step ticker
 - lowered sprayers emit nozzle droplets and collapse cleared weeds; combines animate crop-colored unloading streams into silos and the cargo pad, whose crop crates or staged hay bales later lift into the visiting VTOL
 - six toy-like tree silhouettes—including rainforest canopy, layered jungle, normal woodland, and dry woodland forms—that sway in the wind, plus environment-dependent voxel stones
 - camera-relative fixed virtual stick in the lower-left: press and drag the visible control toward the vehicle's intended screen-space direction
 - cycle-vehicle button above the fixed movement control on the left edge that briefly pauses driving while the camera lifts and glides to the next owned vehicle
 - jump button; no ramps required
 - falling and automatic tractor rescue
-- pause menu with a controls reference, saved debug unlock overrides, an active-milestone override that switches milestones and clears the selected milestone's delivery progress, and a confirmed restart action that deletes the saved farm before generating a new one
-- keyboard fallback: WASD/arrows to drive, Space to jump, Q/E for front/rear tools, V to cycle vehicles, F to cycle seed, B for construction, and Escape to leave a special view or open the menu. In build mode, drag a new building onto clear level land, then tap and hold-drag its draft to reposition it. Confirm permanently commits a silo. For a barn, choose Draw pen and circle the desired pasture while including the glowing doorway and its three ground tiles; edit the generated corners or segments, use Repaint border for a fresh lasso, use Undo to return to barn placement, and use final Confirm to permanently commit the barn and pen. Exiting build mode cancels and removes unconfirmed construction; completed buildings cannot be relocated. Nearby gameplay popups only operate completed silos and barns
+- pause menu with a controls reference, a live Debug time-of-day slider, a 28° low-FOV drive-camera default with session-only 38°/30°/28°/24° comparison presets, saved debug unlock overrides, an active-milestone override that switches milestones and clears the selected milestone's delivery progress, and a confirmed restart action that deletes the saved farm before generating a new one
+- keyboard fallback: WASD/arrows to drive, Space to jump, Q/E for front/rear tools, V to cycle vehicles, F to cycle seed, `[` / `]` to rotate the drive camera, B for construction, and Escape to leave a special view or open the menu. In build mode, drag a new building onto clear level land, then tap and hold-drag its draft to reposition it. Confirm permanently commits a silo. For a barn, choose Draw pen and circle the desired pasture while including the glowing doorway and its three ground tiles; edit the generated corners or segments, use Repaint border for a fresh lasso, use Undo to return to barn placement, and use final Confirm to permanently commit the barn and pen. Exiting build mode cancels and removes unconfirmed construction; completed buildings cannot be relocated. Nearby gameplay popups only operate completed silos and barns
 - Rapier kinematic capsule controller with ground snapping, wall-contact jumping, and fixed 60 Hz simulation
 - seamless terrain collision meshes with solid plateau walls and lower island layers
 
 ## Code layout
 
 - `main.js` — rendering, fleet gameplay, camera modes, and gameplay loop
+- `environment.js` — persistent day/night clock, sky, celestial lighting, fog, and animated shadows
 - `physics.js` — Rapier world, seamless static meshes, and active-vehicle character controller
 - `world-generator.js` — procedural islands, environmental fields, terrain meshes, and collider inputs
 - `cargo-port.js` — procedural cargo hub, staged cargo, and recurring VTOL flight cycle
 - `progression.js` — delivery milestone requirements, acceptance, completion, and pickup rollover
 - `persistence.js` — versioned browser-local save loading, writing, validation, and deletion
-- `crops.js` — crop environmental profiles and pure suitability/growth/yield calculations
+- `crops.js` — crop identifiers and display names
 - `equipment.js` — shared rear/front attachment catalog, gates, and loadout validation
 - `forage.js` — loose cut-grass state plus persistent instanced hay bales
 - `buildings.js` — building placement/edit operations, silo state, cattle-barn lifecycle, and building/fence colliders
@@ -57,7 +58,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - `tractor.js` — persistent vehicle and swappable attachment visuals
 - `vehicles.js` — owned fleet order, vehicle capabilities, and default per-instance loadouts
 - `farm-assets.js` — reusable procedural vehicle and equipment factories shared by gameplay and UI previews
-- `ui.js` — touch and keyboard controls, HUD, workshop, menus, and suitability controls
+- `ui.js` — touch and keyboard controls, HUD, workshop, construction controls, and menus
 - `shared.js` — shared Three.js materials, constants, and mesh helpers
 
 ## Run

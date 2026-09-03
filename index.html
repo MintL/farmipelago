@@ -180,6 +180,8 @@
       pointer-events: auto;
       position: absolute;
       z-index: 6;
+      width: 158px;
+      max-width: calc(100vw - 24px);
       display: grid;
       grid-template-columns: 32px minmax(0, 1fr) 32px;
       align-items: center;
@@ -191,6 +193,11 @@
       transform: translate(-50%, calc(-100% - 8px));
       backdrop-filter: blur(16px) saturate(120%);
       -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #siloInventory[data-kind="cattle-barn"] {
+      width: min(260px, calc(100vw - 24px));
+      min-width: 0;
+      grid-template-columns: minmax(0, 1fr);
     }
     #siloInventory button {
       width: 32px;
@@ -230,8 +237,45 @@
     }
     #siloActions button:active { background: var(--glass-soft); color: var(--ink); }
     #siloActions button .icon { width: 18px; height: 18px; }
-    #barnStorageRows { grid-column: 1 / -1; display: grid; gap: 5px; min-width: 220px; padding: 9px 11px; }
-    #barnStorageRows > div { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
+    #constructionPopup {
+      pointer-events: auto;
+      position: absolute;
+      z-index: 7;
+      width: max-content;
+      max-width: calc(100vw - 24px);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transform: translate(-50%, calc(-100% - 8px));
+    }
+    #constructionPopup button {
+      flex: 0 0 auto;
+      height: 40px;
+      border: 1px solid var(--line);
+      background: var(--glass-strong);
+      box-shadow: 0 12px 30px rgba(5, 10, 9, .22);
+      color: var(--accent-strong);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+      backdrop-filter: blur(16px) saturate(120%);
+      -webkit-backdrop-filter: blur(16px) saturate(120%);
+    }
+    #constructionPopup button:active { background: var(--glass-soft); }
+    #constructionPopup button:disabled { opacity: .46; }
+    #constructionUndo {
+      width: 40px;
+      min-width: 40px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border-radius: 50%;
+    }
+    #constructionUndo .icon { width: 18px; height: 18px; }
+    #constructionCancel { width: 78px; min-width: 78px; padding: 0 14px; border-radius: 13px; color: var(--muted) !important; }
+    #constructionConfirm { width: 104px; min-width: 104px; padding: 0 17px; overflow: hidden; border-radius: 13px; }
+    #barnStorageRows { width: 100%; min-width: 0; grid-column: 1 / -1; display: grid; gap: 5px; padding: 9px 11px; }
+    #barnStorageRows > div { min-width: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr) max-content; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
     #barnStorageRows .icon { width: 18px; height: 18px; color: var(--accent-strong); }
     #barnStorageRows strong { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
     #viewHint {
@@ -293,18 +337,22 @@
     #buildPalette {
       pointer-events: auto;
       position: absolute;
-      top: calc(var(--safe-top) + 56px);
-      right: var(--safe-right);
-      width: 164px;
+      left: 50%;
+      bottom: var(--safe-bottom);
+      width: min(344px, calc(100vw - 28px));
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
       padding: 9px;
       border: 1px solid var(--line);
       border-radius: 15px;
       background: var(--glass-strong);
       box-shadow: 0 14px 35px rgba(8, 14, 13, .24);
+      transform: translateX(-50%);
       backdrop-filter: blur(16px) saturate(120%);
       -webkit-backdrop-filter: blur(16px) saturate(120%);
     }
-    #buildPalette .eyebrow { display: block; margin: 1px 4px 7px; }
+    #buildPalette[data-option-count="1"] { width: 172px; grid-template-columns: minmax(0, 1fr); }
     .buildingOption {
       width: 100%;
       min-height: 58px;
@@ -324,8 +372,7 @@
     .buildingOption small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     .buildingOption em { padding: 3px 5px; border-radius: 999px; background: rgba(82, 102, 72, .12); color: var(--accent-strong); font-size: 9px; font-style: normal; font-weight: 800; }
     .buildingOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .18); }
-    #redrawPen { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--accent-strong); font-size: 10px; font-weight: 760; }
-    #buildPalette p { margin: 8px 4px 1px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    #repaintPen { position: absolute; left: 50%; bottom: calc(100% + 8px); width: 142px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--glass-strong); box-shadow: 0 10px 24px rgba(8, 14, 13, .2); color: var(--accent-strong); font-size: 10px; font-weight: 760; transform: translateX(-50%); }
 
     #stickZone {
       pointer-events: auto;
@@ -862,7 +909,6 @@
       #milestoneTitle { font-size: 10px; }
       #suitabilityToggle, #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
       #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 136px; padding: 8px 9px; }
-      #buildPalette { top: calc(var(--safe-top) + 50px); }
       #performanceBadge { top: calc(var(--safe-top) + 48px); }
       #stickZone { width: 108px; height: 108px; --stick-travel: 30px; }
       #stickKnob { width: 48px; height: 48px; margin: -24px; }
@@ -881,7 +927,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.113</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.125</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -923,8 +969,14 @@
       <button id="nextSiloCrop" type="button" aria-label="Next stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
       <div id="barnStorageRows" hidden></div>
     </aside>
+    <div id="constructionPopup" hidden aria-live="polite">
+      <button id="constructionCancel" type="button">Cancel</button>
+      <button id="constructionUndo" type="button" aria-label="Back to building placement" title="Back to building placement">
+        <svg class="icon" aria-hidden="true"><use href="#icon-undo"></use></svg>
+      </button>
+      <button id="constructionConfirm" type="button">Confirm</button>
+    </div>
     <aside id="buildPalette" hidden aria-label="Building menu">
-      <span class="eyebrow">Buildings</span>
       <button id="siloOption" class="buildingOption" type="button" data-building-id="silo" aria-pressed="false">
         <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
         <span><strong>Silo</strong><small>Grain storage</small></span><em>Free</em>
@@ -933,8 +985,7 @@
         <svg class="icon" aria-hidden="true"><use href="#icon-cattle-barn"></use></svg>
         <span><strong>Cattle Barn</strong><small>Barn + custom pen</small></span><em>Free</em>
       </button>
-      <button id="redrawPen" type="button">Redraw selected pen</button>
-      <p>Select a building and place it on clear level land. After placing a cattle barn, draw its fence back to the other barn anchor.</p>
+      <button id="repaintPen" type="button">Repaint border</button>
     </aside>
 
     <div id="stickZone" aria-hidden="true">
@@ -1036,7 +1087,7 @@
               <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
               <strong>Storage / cargo</strong><span>Use nearby popups to transfer silo crops, feed a carried bale, load barn milk, or deliver eligible cargo</span>
               <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
-              <strong>Buildings</strong><span>Choose a building and place it on clear land. After placing a Cattle Barn, draw its snapped pen from one barn anchor to the other; select fence parts to edit or redraw it</span>
+              <strong>Buildings</strong><span>Use the build button to choose a structure from the bottom tray</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
             </div>
             <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
@@ -1103,7 +1154,14 @@
     <symbol id="icon-baler" viewBox="0 0 24 24"><path d="M5 8h12l2 4v7H5zM8 11h7v5H8zM3 16h2M19 16h2M6 6h8" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
     <symbol id="icon-bale-fork" viewBox="0 0 24 24"><path d="M6 4v13M18 4v13M6 7h12M6 17h12M9 17v5M15 17v5" /></symbol>
     <symbol id="icon-hay-bale" viewBox="0 0 24 24"><path d="M4 7h16v12H4z" fill="#d1ae52" stroke="#80652f" /><path d="M8 7v12M16 7v12" stroke="#6f8b45" stroke-width="2" /><path d="M6 10h2M10 10h4M17 10h1M5 15h3M10 15h4M17 15h2" stroke="#f0d277" /></symbol>
-    <symbol id="icon-cow" viewBox="0 0 24 24"><path d="M5 9h11v8H5zM16 11h3l2 2v4h-5M7 17v3M14 17v3M8 9 6 6M14 9l2-3" /><circle cx="18.5" cy="14" r=".7" fill="currentColor" /></symbol>
+    <symbol id="icon-cow" viewBox="0 0 24 24">
+      <path d="M7 9c0-2.2 1.8-3.8 4-3.8h2c2.2 0 4 1.6 4 3.8v6.2c0 3-2.1 4.8-5 4.8s-5-1.8-5-4.8Z" fill="#f1e6ca" stroke="currentColor" />
+      <path d="M7.2 9.2 3.8 7.5c-.3 2.2.7 3.5 3.2 3.7M16.8 9.2l3.4-1.7c.3 2.2-.7 3.5-3.2 3.7M8.2 6.4 6.7 3.8M15.8 6.4l1.5-2.6" />
+      <path d="M8.4 8.2c1.4-.8 2.7-.3 3.2 1.3-.8 1.2-2.1 1.7-3.6 1.1Z" fill="#765345" stroke="none" />
+      <circle cx="9.5" cy="12.4" r=".75" fill="currentColor" stroke="none" /><circle cx="14.5" cy="12.4" r=".75" fill="currentColor" stroke="none" />
+      <path d="M8.7 15.1c0-1.1 1.1-1.8 3.3-1.8s3.3.7 3.3 1.8v1.2c0 1.2-1.2 2-3.3 2s-3.3-.8-3.3-2Z" fill="#d9a38d" stroke="currentColor" />
+      <circle cx="10.6" cy="15.8" r=".5" fill="currentColor" stroke="none" /><circle cx="13.4" cy="15.8" r=".5" fill="currentColor" stroke="none" />
+    </symbol>
     <symbol id="icon-cattle-barn" viewBox="0 0 24 24"><path d="M3 10 12 3l9 7v11H3zM8 21v-8h8v8M8 8h8M10 13l4 4M14 13l-4 4" /></symbol>
     <symbol id="icon-milk" viewBox="0 0 24 24"><path d="M8 4h8l1 4v12H7V8zM8 8h9M10 4V2h4v2" /><path d="M9 13c2-2 4 2 6 0v4c-2 2-4-2-6 0z" fill="#eef4ee" /></symbol>
     <symbol id="icon-milk-tank" viewBox="0 0 24 24"><path d="M5 8h12a4 4 0 0 1 0 8H5zM3 12h2M17 16v2M8 16v2M5 18h14" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
@@ -1120,8 +1178,9 @@
     <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6Z" /></symbol>
     <symbol id="icon-controls" viewBox="0 0 24 24"><path d="M8 9h8a5 5 0 0 1 5 5v2a3 3 0 0 1-5 2l-2-2h-4l-2 2a3 3 0 0 1-5-2v-2a5 5 0 0 1 5-5Z" /><path d="M7 13h4M9 11v4M16 12h.01M18 14h.01" /></symbol>
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
+    <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M4 12h9a6 6 0 0 1 6 6" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=cattle-20260902-7"></script>
+  <script type="module" src="./main.js?v=construction-20260902-13"></script>
 </body>
 </html>

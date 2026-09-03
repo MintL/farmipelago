@@ -307,9 +307,9 @@ Harvested crop enters the combine's internal storage.
 
 Cattle are the first implemented livestock system and connect directly to the existing physical hay and vehicle-logistics loops.
 
-After Livestock preparation, the player can place a Cattle Barn on clear level terrain. The barn permanently anchors one custom pen. The player draws the pasture freehand from one barn-side anchor to the other; input resolves to an editable, grid-snapped orthogonal fence along tile boundaries. The enclosed ground must be continuous clear grass at the barn's level. Every four valid pasture tiles provide one hard capacity slot, and edits that would reduce capacity below the current herd are rejected.
+After Livestock preparation, the player can place a Cattle Barn on clear level terrain. Before committing it, the player may reposition the barn and choose **Draw pen**. The barn doorway lights brightly and a broad three-tile ground gate extends in front of it; the player roughly circles those tiles and the pasture they want with one continuous gesture. The lasso closes automatically, trims unusable edge land, keeps the continuous area connected to the gate, and resolves to an editable, grid-snapped orthogonal fence. Fixed connector sections begin at the midpoint of the barn's left and right walls, so the barn itself closes the pasture entrance. Fence generation and editing reject segments that pass through the barn or another building. Every four valid pasture tiles provide one hard capacity slot. An Undo action abandons the provisional pen and returns to movable barn placement; final Confirm permanently commits both barn and pen.
 
-The first valid pen grants two adult cows. Cows are individual persistent animals that wander between neighboring valid pen tiles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
+Final barn confirmation grants two adult cows. A provisional pen never starts livestock simulation. Once confirmed, cows are individual persistent animals that wander between neighboring valid pen tiles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
 
 Existing physical 3,600 L hay bales are deposited at the barn and converted to shared herd feed. Hay supports full milk production and automatic herd growth. Without hay, cattle continue grazing without depleting terrain and produce at 20% of the fed rate; herd growth pauses and cattle never starve or die.
 
@@ -372,7 +372,8 @@ Current silo behavior:
 
 - silos are free in the prototype
 - they have physical collision
-- they can be repositioned while in build mode
+- a placed silo remains a movable construction draft until its contextual Confirm action is used
+- confirmation permanently fixes the silo in place and enables crop storage gameplay
 - each silo stores crop volumes by crop type
 - contents persist in the save
 - a nearby popup shows stored crop amounts
@@ -386,11 +387,15 @@ This is the first implemented building-placement and farm-storage system.
 
 The game now has an implemented construction mode rather than buildings being entirely unresolved.
 
-A round build button opens a dedicated elevated, pannable construction view. The player selects a building and drags it onto valid terrain.
+A round build button opens a dedicated elevated, pannable construction view. Available buildings appear as a single-row tray centered along the bottom of the screen. Selecting a type immediately creates a draft at the nearest suitable clear site around the current view, after which the player can reposition it before confirmation or remove it with a contextual Cancel action. The tray stays visually compact and does not carry barn-placement instructional copy.
 
 The player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn**.
 
-Placed buildings use a deliberate hold-and-drag gesture for repositioning so a quick tap remains available for selection. A Cattle Barn can move only while it has neither a pen nor animals; once either exists, attempting to move the barn shows a construction warning instead. Its pen remains independently editable through snapped corner and segment dragging, with a full redraw fallback. The barn is incomplete and produces nothing until a valid pen is committed.
+Buildings are designed freely before commitment, but become permanent once confirmed. A pulsing lime edge outline visually distinguishes every unconfirmed building from the normal treatment used by completed structures; confirmation removes that outline permanently. Placed drafts use a deliberate hold-and-drag gesture for repositioning so a quick tap remains available for selection. A Grain Silo remains movable until its contextual Confirm action is used, and it cannot store or transfer crops before that confirmation.
+
+Cattle Barn construction has two stages. The player first positions the movable barn draft and chooses **Draw pen**. The barn then stays fixed while the player lassos the desired pasture, edits the generated fence through snapped corner and segment dragging, or uses **Repaint border** to create a new candidate. Repainting does not destroy the existing provisional pen unless the new lasso is valid. An Undo action removes the entire provisional pen and returns to movable barn placement. Final Confirm commits both barn and pen permanently, removes all editing controls, grants the two starter cows and enables normal livestock interactions and simulation.
+
+Permanent commitment makes scarce clear, level land and future farm layout part of the Farmipelago puzzle, while the draft phases let the player experiment before making an irreversible choice. Leaving construction mode is an explicit cancellation boundary: every unconfirmed silo or barn, including provisional pen geometry, is removed. A refresh while construction mode is still active preserves the current draft phase without confirming it.
 
 The permanent starter structures are:
 
@@ -596,7 +601,7 @@ The playable prototype currently proves the following major systems together:
 - crop storage in litres
 - persistent placeable silos
 - trailer-based transport
-- cattle barns, editable custom pens and persistent herds
+- cattle barns, draft-editable permanently confirmed custom pens and persistent herds
 - hay-fed milk production with grazing fallback
 - Water / Milk Tank transport and milk delivery
 - cargo-hub deliveries

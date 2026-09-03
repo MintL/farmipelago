@@ -16,7 +16,7 @@ const TICKER_STEP_LITRES = 10;
 const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 
-export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onBarnFeed, onBarnLoadMilk, onPenRedraw, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onBarnFeed, onBarnLoadMilk, onPenRepaint, onBuildingTypeSelected, onConstructionPrimaryAction, onConstructionCancel, onConstructionUndo, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -31,6 +31,8 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let cinematicActive = false;
   let selectedBuilding = null;
   let buildHint = '';
+  let constructionUiState = null;
+  let constructionUiSignature = '';
   let insideBarn = false;
   let overlayState = null;
   let stickPointer = null;
@@ -105,7 +107,11 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const buildingToggle = document.querySelector('#buildingToggle');
   const buildPalette = document.querySelector('#buildPalette');
   const buildingOptions = [...document.querySelectorAll('[data-building-id]')];
-  const redrawPen = document.querySelector('#redrawPen');
+  const repaintPen = document.querySelector('#repaintPen');
+  const constructionPopup = document.querySelector('#constructionPopup');
+  const constructionCancel = document.querySelector('#constructionCancel');
+  const constructionUndo = document.querySelector('#constructionUndo');
+  const constructionConfirm = document.querySelector('#constructionConfirm');
   const barnStorageRows = document.querySelector('#barnStorageRows');
   const viewHint = document.querySelector('#viewHint');
   const cropSelector = document.querySelector('#cropSelector');
@@ -115,7 +121,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const vehicleName = document.querySelector('#vehicleName');
   const vehicleIdentity = document.querySelector('#vehicleIdentity');
   const applyLoadout = document.querySelector('#applyLoadout');
-  const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints, siloInventoryElement];
+  const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints, siloInventoryElement, constructionPopup];
 
   document.body.tabIndex = -1;
   const setInputMode = mode => { document.body.dataset.inputMode = mode; };
@@ -324,7 +330,11 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const renderSiloInventory = () => {
     const cropsInSilo = siloInventory?.crops || [];
     siloInventoryElement.hidden = !siloInventory;
-    if (!siloInventory) return;
+    if (!siloInventory) {
+      delete siloInventoryElement.dataset.kind;
+      return;
+    }
+    siloInventoryElement.dataset.kind = siloInventory.kind;
     const machine = siloInventory.machine;
     const cattleBarn = siloInventory.kind === 'cattle-barn';
     const cargoPad = siloInventory.kind === 'cargo';
@@ -336,7 +346,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       const barn = siloInventory.barn;
       barnStorageRows.replaceChildren();
       for (const [icon, label, value] of [
-        ['cow', 'Herd', `${barn.herd} / ${barn.capacity}`],
+        ['cow', 'Cows', `${barn.herd} / ${barn.capacity}`],
         ['hay-bale', 'Hay', `${formatLitres(barn.hayLitres)} / ${formatLitres(barn.hayCapacity)}`],
         ['milk', 'Milk', `${formatLitres(barn.milkLitres)} / ${formatLitres(barn.milkCapacity)}`],
       ]) {
@@ -400,6 +410,15 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     siloInventoryElement.setAttribute('aria-label', cargoPad
       ? `Cargo pad: ${formatRequirementAmount(crop.amount, crop.unit)} of ${formatRequirementAmount(crop.target, crop.unit)} ${itemName} delivered`
       : `Silo inventory: ${formatLitres(crop.amount)} ${itemName}`);
+  };
+
+  const positionStoragePopup = (x, y, minimumTop, bottomMargin) => {
+    const popupHalfWidth = siloInventoryElement.getBoundingClientRect().width * .5;
+    const horizontalMargin = popupHalfWidth + 12;
+    siloInventoryElement.style.left = `${innerWidth <= horizontalMargin * 2
+      ? innerWidth * .5
+      : Math.max(horizontalMargin, Math.min(innerWidth - horizontalMargin, x))}px`;
+    siloInventoryElement.style.top = `${Math.max(minimumTop, Math.min(innerHeight - bottomMargin, y))}px`;
   };
 
   const cycleSiloCrop = direction => {
@@ -478,23 +497,53 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     document.body.dataset.viewMode = buildMode ? 'build' : cropOverlayEnabled ? 'overlay' : 'drive';
   };
 
+  const renderConstructionPopup = () => {
+    const state = constructionUiState;
+    const visible = buildMode && state && !state.hidden;
+    constructionPopup.hidden = !visible;
+    if (!state) return;
+    constructionUndo.hidden = state.phase !== 'pen-draft';
+    constructionConfirm.textContent = state.primaryLabel;
+    constructionConfirm.disabled = state.primaryAction === 'confirm' && !state.canConfirm;
+    constructionConfirm.setAttribute('aria-label', state.primaryLabel);
+    const popupHalfWidth = constructionPopup.getBoundingClientRect().width * .5;
+    const horizontalMargin = popupHalfWidth + 12;
+    if (Number.isFinite(state.x)) constructionPopup.style.left = `${innerWidth <= horizontalMargin * 2
+      ? innerWidth * .5
+      : Math.max(horizontalMargin, Math.min(innerWidth - horizontalMargin, state.x))}px`;
+    if (Number.isFinite(state.y)) constructionPopup.style.top = `${Math.max(70, Math.min(innerHeight - 48, state.y))}px`;
+  };
+
+  const constructionHint = () => {
+    const state = constructionUiState;
+    if (!state) {
+      if (selectedBuilding) return 'DRAG ON LAND TO PLACE';
+      return 'SELECT A BUILDING · DRAG EMPTY GROUND TO PAN';
+    }
+    if (state.type === 'silo') return 'MOVE SILO OR CONFIRM PLACEMENT';
+    return '';
+  };
+
   const renderBuildMode = () => {
     buildingToggle.setAttribute('aria-pressed', String(buildMode));
     buildingToggle.setAttribute('aria-label', buildMode ? 'Leave building mode' : 'Open building menu');
     buildingToggle.title = buildMode ? 'Leave building mode' : 'Buildings';
     buildPalette.hidden = !buildMode;
+    let visibleOptions = 0;
     for (const option of buildingOptions) {
       const type = option.dataset.buildingId;
       const locked = type === 'cattle-barn' && !unlockedGates.has('building:cattle-barn');
       option.hidden = locked;
       option.disabled = locked;
+      if (!locked) visibleOptions++;
       option.setAttribute('aria-pressed', String(selectedBuilding === type));
     }
-    redrawPen.hidden = !unlockedGates.has('building:cattle-barn');
+    buildPalette.dataset.optionCount = String(visibleOptions);
+    repaintPen.hidden = constructionUiState?.type !== 'cattle-barn' || constructionUiState.inputMode !== 'edit';
     viewHint.textContent = buildMode && buildHint ? buildHint : buildMode
-      ? selectedBuilding === 'cattle-barn' ? 'PLACE BARN · THEN DRAW PEN FROM BARN · RELEASE TO FINISH'
-        : selectedBuilding ? 'DRAG ON LAND TO PLACE · WASD / ARROWS TO PAN' : 'SELECT A BUILDING OR FENCE · DRAG EMPTY GROUND TO PAN'
+      ? constructionHint()
       : 'DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE';
+    renderConstructionPopup();
     renderCropOverlay();
   };
 
@@ -518,7 +567,11 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       notifyCropOverlay();
     }
     buildMode = enabled;
-    if (!buildMode) selectedBuilding = null;
+    if (!buildMode) {
+      selectedBuilding = null;
+      constructionUiState = null;
+      constructionUiSignature = '';
+    }
     clearInput();
     renderBuildMode();
     onBuildModeChange(buildMode);
@@ -784,7 +837,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   });
   panSurface.addEventListener('pointerup', event => {
     if (event.pointerId === buildPointer) {
-      onBuildPointerEnd?.();
+      onBuildPointerEnd?.({ x: event.clientX, y: event.clientY });
       buildPointer = null;
     }
     clearPan(event);
@@ -829,10 +882,14 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   for (const option of buildingOptions) option.addEventListener('click', () => {
     if (!buildMode || option.disabled) return;
     const type = option.dataset.buildingId;
-    selectedBuilding = selectedBuilding === type ? null : type;
+    onBuildingTypeSelected?.(type);
+    selectedBuilding = null;
     renderBuildMode();
   });
-  redrawPen.addEventListener('click', () => { if (buildMode) onPenRedraw?.(); });
+  repaintPen.addEventListener('click', () => { if (buildMode) onPenRepaint?.(); });
+  constructionConfirm.addEventListener('click', () => { if (buildMode && !constructionConfirm.disabled) onConstructionPrimaryAction?.(); });
+  constructionCancel.addEventListener('click', () => { if (buildMode) onConstructionCancel?.(); });
+  constructionUndo.addEventListener('click', () => { if (buildMode) onConstructionUndo?.(); });
   document.querySelector('#previousCrop').addEventListener('click', () => {
     cropIndex = (cropIndex + availableCropIds().length - 1) % availableCropIds().length;
     renderCropOverlay();
@@ -1010,6 +1067,16 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       buildHint = String(nextHint || '');
       if (buildMode) renderBuildMode();
     },
+    setConstructionPopup(nextState) {
+      const nextSignature = nextState
+        ? [nextState.buildingId, nextState.type, nextState.phase, nextState.inputMode, nextState.primaryAction, nextState.primaryLabel, nextState.canConfirm].join(':')
+        : '';
+      const stateChanged = nextSignature !== constructionUiSignature;
+      constructionUiSignature = nextSignature;
+      constructionUiState = nextState ? { ...nextState } : null;
+      if (buildMode && stateChanged) renderBuildMode();
+      else renderConstructionPopup();
+    },
     clearBuildingSelection() {
       selectedBuilding = null;
       renderBuildMode();
@@ -1100,10 +1167,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         };
         const signature = Object.values(barn).join(':');
         siloInventory = { id: nextInventory.id, kind: nextInventory.kind, machine, barn, crops: [], signature };
-        siloInventoryElement.style.left = `${Math.max(112, Math.min(innerWidth - 112, nextInventory.x))}px`;
-        siloInventoryElement.style.top = `${Math.max(150, Math.min(innerHeight - 74, nextInventory.y))}px`;
         if (previousId !== nextInventory.id || previousKind !== nextInventory.kind || previousSignature !== signature) renderSiloInventory();
         else siloInventoryElement.hidden = false;
+        positionStoragePopup(nextInventory.x, nextInventory.y, 150, 74);
         return;
       }
       const cropsInSilo = Array.isArray(nextInventory.items)
@@ -1174,10 +1240,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         carriedCropId,
         autoSelectCarriedCrop: !samePopup || siloInventory?.carriedCropId !== carriedCropId,
       };
-      siloInventoryElement.style.left = `${Math.max(86, Math.min(innerWidth - 86, nextInventory.x))}px`;
-      siloInventoryElement.style.top = `${Math.max(104, Math.min(innerHeight - 54, nextInventory.y))}px`;
       if (changed) renderSiloInventory();
       else siloInventoryElement.hidden = false;
+      positionStoragePopup(nextInventory.x, nextInventory.y, 104, 54);
     },
     setMilestone: renderMilestone,
     setDebugUnlockables(nextUnlockables) {

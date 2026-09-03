@@ -2,16 +2,61 @@ import { THREE, TILE, box, gridKey } from './shared.js?v=bale-wrapper-20260902-1
 import { cropIds } from './crops.js?v=bale-wrapper-20260902-1';
 import {
   BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES, STARTER_COW_COUNT,
-  barnPenAnchors, computePenGeometry, cornerToWorld, createCattleBarnVisual,
-  createCowVisual, createPenPreview, createPenVisual, normalizeCattleBarnState,
+  barnPenAnchors, barnPenConnectorSegments, computePenGeometry, cornerToWorld, createCattleBarnVisual,
+  createCowVisual, createPenGateVisual, createPenLassoPreview, createPenPreview,
+  createPenVisual, normalizeCattleBarnState, penGeometryFromLasso,
   reconcileCattleBarnAnimals, removeCollinearVertices, snapPenPoint, updateCattleBarn,
-} from './livestock.js?v=cattle-20260902-1';
+} from './livestock.js?v=construction-20260902-8';
 
 const SILO_RADIUS = 1.05;
 const SILO_HEIGHT = 3.7;
 const CATTLE_BARN_RADIUS = 1.45;
 const CATTLE_BARN_HEIGHT = 2.25;
 const BUILDING_HOLD_MS = 280;
+const CONSTRUCTION_PHASES = new Set(['draft', 'pen-draft', 'complete']);
+
+const isDraft = building => building?.constructionPhase === 'draft';
+const isPenDraft = building => building?.constructionPhase === 'pen-draft';
+const isComplete = building => building?.constructionPhase === 'complete';
+
+function createConstructionOutline(root) {
+  const material = new THREE.LineBasicMaterial({
+    color: 0xd9ff78,
+    transparent: true,
+    opacity: .82,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const lines = [];
+  root.traverse(part => {
+    if (!part.isMesh || !part.castShadow || !part.geometry) return;
+    const line = new THREE.LineSegments(new THREE.EdgesGeometry(part.geometry, 24), material);
+    line.name = 'construction-outline';
+    line.scale.setScalar(1.012);
+    line.renderOrder = 8;
+    part.add(line);
+    lines.push(line);
+  });
+  return {
+    animate(elapsed) { material.opacity = .58 + (Math.sin(elapsed * 4.5) * .5 + .5) * .36; },
+    dispose() {
+      for (const line of lines) {
+        line.removeFromParent();
+        line.geometry.dispose();
+      }
+      material.dispose();
+      lines.length = 0;
+    },
+  };
+}
+
+function normalizedConstructionPhase(saved) {
+  if (saved?.type === 'silo' && ['draft', 'complete'].includes(saved?.constructionPhase)) return saved.constructionPhase;
+  if (saved?.type === 'cattle-barn' && CONSTRUCTION_PHASES.has(saved?.constructionPhase)) return saved.constructionPhase;
+  if (saved?.type === 'silo' || saved?.pen?.vertices?.length >= 4 || saved?.animals?.length) return 'complete';
+  return 'draft';
+}
 
 function normalizedContents(contents) {
   return Object.fromEntries(cropIds.flatMap(cropId => {
@@ -24,14 +69,15 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
   let parent = null;
   let operation = null;
   let selected = null;
-  let redrawRequested = null;
+  let repaintRequested = null;
+  let buildMode = false;
   let nextCowId = 1;
   const nextIds = { silo: 1, 'cattle-barn': 1 };
   const buildings = new Map();
 
   const definitions = {
-    silo: { radius: SILO_RADIUS, height: SILO_HEIGHT, createVisual: createSilo },
-    'cattle-barn': { radius: CATTLE_BARN_RADIUS, height: CATTLE_BARN_HEIGHT, createVisual: createCattleBarnVisual },
+    silo: { radius: SILO_RADIUS, height: SILO_HEIGHT, popupHeight: 4.05, createVisual: createSilo },
+    'cattle-barn': { radius: CATTLE_BARN_RADIUS, height: CATTLE_BARN_HEIGHT, popupHeight: 3.15, createVisual: createCattleBarnVisual },
   };
 
   const addBuilding = (type, savedId) => {
@@ -41,7 +87,10 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     const savedNumber = Number(id.match(new RegExp(`^${type}-(\\d+)$`))?.[1]);
     if (Number.isInteger(savedNumber)) nextIds[type] = Math.max(nextIds[type], savedNumber + 1);
     const visual = definition.createVisual();
-    const building = { id, type, visual, placed: false, site: null };
+    const building = {
+      id, type, visual, placed: false, site: null, constructionPhase: 'draft',
+      constructionOutline: createConstructionOutline(visual.group),
+    };
     if (type === 'silo') building.contents = {};
     else Object.assign(building, normalizeCattleBarnState(null));
     visual.group.userData.building = building;
@@ -54,6 +103,37 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     const site = getSiteAt(point.x, point.z, definitions[type].radius);
     if (site) return { ...site, valid: true };
     return { x: point.x, y: 0, z: point.z, valid: false };
+  };
+
+  const automaticSiteFor = (type, preferredPoint = {}) => {
+    const terrain = getTerrain();
+    if (!terrain?.size || !definitions[type]) return null;
+    const preferredX = Number.isFinite(preferredPoint.x) ? preferredPoint.x : 0;
+    const preferredZ = Number.isFinite(preferredPoint.z) ? preferredPoint.z : 0;
+    const excluded = occupiedTileKeys(null);
+    const clearGrass = (gx, gz, levelY) => {
+      const tile = terrain.get(gridKey(gx, gz));
+      return tile && !tile.water && !tile.reserved && !tile.ploughed && !tile.crop && !tile.hasTree
+        && Math.abs(tile.topY - levelY) <= .01 && !excluded.has(gridKey(gx, gz));
+    };
+    const candidates = [...terrain.values()].sort((a, b) =>
+      Math.hypot(a.x - preferredX, a.z - preferredZ) - Math.hypot(b.x - preferredX, b.z - preferredZ)
+    );
+    for (const tile of candidates) {
+      const site = placementFor(tile, type);
+      if (!site.valid || tile.ploughed || tile.crop) continue;
+      if (type === 'cattle-barn') {
+        const gx = Math.round(site.x / TILE), gz = Math.round(site.z / TILE);
+        if (![-1, 0, 1].every(dx => clearGrass(gx + dx, gz + 2, site.y))) continue;
+        let pastureTiles = 0;
+        for (let dx = -4; dx <= 4; dx++) {
+          for (let dz = 2; dz <= 6; dz++) if (clearGrass(gx + dx, gz + dz, site.y)) pastureTiles++;
+        }
+        if (pastureTiles < STARTER_COW_COUNT * 4) continue;
+      }
+      return site;
+    }
+    return null;
   };
 
   const colliderFor = building => building.type === 'silo'
@@ -87,15 +167,47 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     building.fenceColliderIds = [];
   };
 
+  const ensureGateVisual = building => {
+    if (building.gateVisual) return building.gateVisual;
+    building.gateVisual = createPenGateVisual(building.site);
+    parent?.add(building.gateVisual.group);
+    return building.gateVisual;
+  };
+
+  const clearGateVisual = building => {
+    if (building.gateVisual) parent?.remove(building.gateVisual.group);
+    building.gateVisual = null;
+  };
+
+  const clearConstructionOutline = building => {
+    building.constructionOutline?.dispose();
+    building.constructionOutline = null;
+  };
+
+  const removeBuilding = building => {
+    if (building.placed) clearBuildingColliders(building);
+    clearPenVisual(building);
+    clearGateVisual(building);
+    clearConstructionOutline(building);
+    for (const animal of building.animals || []) animal.visual?.group.removeFromParent();
+    parent?.remove(building.visual.group);
+    buildings.delete(building.id);
+  };
+
   const rebuildPen = (building, geometry) => {
     clearPenVisual(building);
+    clearGateVisual(building);
     building.derived = geometry;
     if (!geometry?.valid) return;
     building.visual.setPenComplete?.(true);
     building.penVisual = createPenVisual(geometry, building.site.y, building, true);
     parent?.add(building.penVisual.group);
-    building.fenceColliderIds = geometry.segments.map((segment, index) => {
-      const a = cornerToWorld(segment.a), b = cornerToWorld(segment.b);
+    const colliderSegments = [
+      ...geometry.segments.map(segment => ({ a: cornerToWorld(segment.a), b: cornerToWorld(segment.b) })),
+      ...barnPenConnectorSegments(building.site),
+    ];
+    building.fenceColliderIds = colliderSegments.map((segment, index) => {
+      const { a, b } = segment;
       const horizontal = Math.abs(b.x - a.x) > .01;
       const length = horizontal ? Math.abs(b.x - a.x) : Math.abs(b.z - a.z);
       const id = `${building.id}:fence:${index}`;
@@ -109,8 +221,35 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     reconcileCattleBarnAnimals(building, { parent, terrain: getTerrain() });
   };
 
+  const grantStarterCows = building => {
+    if (building.starterCowsGranted || !building.derived?.valid) return;
+    building.starterCowsGranted = true;
+    building.nextCowId = Math.max(building.nextCowId, nextCowId);
+    for (let index = 0; index < STARTER_COW_COUNT; index++) {
+      const tile = building.derived.tiles[index % building.derived.tiles.length];
+      building.animals.push({
+        id: `cow-${building.nextCowId++}`, stage: 'adult', age: 0, tileKey: gridKey(tile.gx, tile.gz),
+        targetTileKey: null, moveProgress: 0, heading: index * Math.PI, idleSeconds: .8 + index,
+        jitterX: index ? .08 : -.08, jitterZ: index ? -.06 : .06, visual: createCowVisual('adult'),
+      });
+      parent?.add(building.animals.at(-1).visual.group);
+    }
+    nextCowId = Math.max(nextCowId, building.nextCowId);
+    reconcileCattleBarnAnimals(building, { parent, terrain: getTerrain() });
+  };
+
   const clearBuildingColliders = building => {
     setCollider(building.id, null);
+  };
+
+  const removeOperationPreview = preview => {
+    if (!preview) return;
+    parent?.remove(preview);
+    preview.traverse?.(part => {
+      part.geometry?.dispose?.();
+      if (Array.isArray(part.material)) part.material.forEach(material => material.dispose?.());
+      else part.material?.dispose?.();
+    });
   };
 
   const restoreBuildingMove = current => {
@@ -135,9 +274,9 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
   const promoteBuildingMove = current => {
     if (current.kind !== 'hold-building') return;
     const building = current.building;
-    if (building.type === 'cattle-barn' && (building.pen || building.animals.length)) {
-      current.kind = 'blocked-building-move';
-      onHint('BARN CANNOT MOVE AFTER A PEN OR CATTLE ARE ADDED');
+    if (!isDraft(building)) {
+      current.kind = 'select-building';
+      onHint('');
       return;
     }
     current.kind = 'move-building';
@@ -147,31 +286,33 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
   };
 
   const setPreview = (building, vertices, valid = false) => {
-    if (operation?.preview) parent?.remove(operation.preview);
+    if (operation?.preview) removeOperationPreview(operation.preview);
     const preview = createPenPreview(vertices, building.site.y, valid);
     parent?.add(preview);
     operation.preview = preview;
   };
 
-  const appendManhattan = (vertices, target) => {
-    const next = [...vertices];
-    const last = next.at(-1);
-    if (!last || (last.cx === target.cx && last.cz === target.cz)) return next;
-    if (last.cx !== target.cx && last.cz !== target.cz) {
-      const previous = next.at(-2);
-      const continueHorizontal = previous && previous.cz === last.cz;
-      next.push(continueHorizontal ? { cx: target.cx, cz: last.cz } : { cx: last.cx, cz: target.cz });
+  const updatePenLasso = (current, point) => {
+    const last = current.samples.at(-1);
+    if (!last || Math.hypot(point.x - last.x, point.z - last.z) >= TILE * .2) {
+      current.samples.push({ x: point.x, z: point.z });
     }
-    next.push({ cx: target.cx, cz: target.cz });
-    return removeCollinearVertices(next);
+    current.result = penGeometryFromLasso(current.samples, getTerrain(), current.building.site, {
+      occupiedTileKeys: occupiedTileKeys(current.building), minimumCapacity: STARTER_COW_COUNT,
+    });
+    if (current.preview) removeOperationPreview(current.preview);
+    current.preview = createPenLassoPreview(current.samples, current.result, current.building.site.y);
+    parent?.add(current.preview);
+    onHint('');
   };
 
-  const beginPenDraw = building => {
-    const [start, finish] = barnPenAnchors(building.site);
-    operation = { kind: 'draw-pen', building, vertices: [start], finish, oldPen: building.pen ? { vertices: building.pen.vertices.map(vertex => ({ ...vertex })) } : null, preview: null };
-    setPreview(building, operation.vertices);
+  const beginPenLasso = (building, point) => {
+    if (!isPenDraft(building) || !building.placed) return false;
+    operation = { kind: 'lasso-pen', building, samples: [], result: null, preview: null };
+    building.penVisual && (building.penVisual.group.visible = false);
+    ensureGateVisual(building);
+    updatePenLasso(operation, point);
     selected = building;
-    onHint('DRAW PEN FROM BARN · RELEASE NEAR THE OTHER ANCHOR');
     return true;
   };
 
@@ -188,7 +329,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       updateBuildingMove(operation, point);
       return;
     }
-    if (operation.kind === 'blocked-building-move') return;
+    if (operation.kind === 'select-building') return;
     if (operation.kind === 'place-building') {
       const site = placementFor(point, building.type);
       building.site = site;
@@ -196,11 +337,12 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       building.visual.setDragging(site.valid);
       return;
     }
-    const snapped = snapPenPoint(point);
-    if (operation.kind === 'draw-pen') {
-      operation.vertices = appendManhattan(operation.vertices, snapped);
+    if (operation.kind === 'lasso-pen') {
+      updatePenLasso(operation, point);
+      return;
     }
-    else if (operation.kind === 'move-corner') {
+    const snapped = snapPenPoint(point);
+    if (operation.kind === 'move-corner') {
       const original = operation.original;
       const index = operation.index;
       const previous = original[index - 1], corner = original[index], next = original[index + 1];
@@ -233,13 +375,11 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
         operation.vertices[nextIndex].cx = snapped.cx;
       }
     }
-    const previewVertices = operation.kind === 'draw-pen'
-      ? appendManhattan(operation.vertices, operation.finish)
-      : operation.vertices;
-    const geometry = penGeometry(building, previewVertices, building.animals.length || STARTER_COW_COUNT);
+    const geometry = penGeometry(building, operation.vertices, building.animals.length || STARTER_COW_COUNT);
+    operation.geometry = geometry;
     setPreview(building, operation.vertices, geometry.valid);
     onHint(geometry.valid
-      ? `PEN CAPACITY ${geometry.capacity} · RELEASE NEAR BARN ANCHOR`
+      ? `PEN CAPACITY ${geometry.capacity} · RELEASE TO USE`
       : geometry.reason.toUpperCase());
   };
 
@@ -249,30 +389,59 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       for (const building of buildings.values()) {
         parent.add(building.visual.group);
         if (building.penVisual) parent.add(building.penVisual.group);
+        if (building.gateVisual) parent.add(building.gateVisual.group);
       }
     },
     setBuildMode(enabled) {
+      buildMode = enabled;
       if (!enabled) {
         this.cancelDrag();
+        let discarded = false;
+        for (const building of [...buildings.values()]) {
+          if (isComplete(building)) continue;
+          removeBuilding(building);
+          discarded = true;
+        }
         selected = null;
-        redrawRequested = null;
+        repaintRequested = null;
         onHint('');
+        if (discarded) onChange();
       }
-      for (const building of buildings.values()) building.penVisual?.setEditing(enabled && building === selected);
+      for (const building of buildings.values()) building.penVisual?.setEditing(enabled && building === selected && isPenDraft(building));
+    },
+    placeBuilding(type, preferredPoint) {
+      if (!buildMode || !definitions[type]) return false;
+      this.cancelDrag();
+      const site = automaticSiteFor(type, preferredPoint);
+      if (!site) {
+        onHint('NO CLEAR BUILDING SITE AVAILABLE');
+        return false;
+      }
+      const building = addBuilding(type);
+      building.site = { ...site, valid: true };
+      building.placed = true;
+      building.visual.group.position.set(site.x, site.y, site.z);
+      building.visual.drop();
+      setCollider(building.id, colliderFor(building));
+      selected = building;
+      onHint('');
+      onChange();
+      return true;
     },
     beginDrag(point, type, hit = null) {
       const hitBuilding = hit?.building || (hit?.id ? hit : null);
-      if (redrawRequested?.placed) {
-        const building = redrawRequested;
-        redrawRequested = null;
-        return beginPenDraw(building);
+      if (repaintRequested?.placed && isPenDraft(repaintRequested)) {
+        const building = repaintRequested;
+        repaintRequested = null;
+        return beginPenLasso(building, point);
       }
-      if (!hitBuilding && selected?.type === 'cattle-barn' && selected.placed && !selected.pen) return beginPenDraw(selected);
+      if (selected?.type === 'cattle-barn' && isPenDraft(selected) && !selected.pen
+        && (!hitBuilding || hitBuilding === selected)) return beginPenLasso(selected, point);
       if (hitBuilding) {
         selected = hitBuilding;
-        for (const building of buildings.values()) building.penVisual?.setEditing(building === selected);
+        for (const building of buildings.values()) building.penVisual?.setEditing(building === selected && isPenDraft(building));
         const penPart = hit?.penPart;
-        if (hitBuilding.type === 'cattle-barn' && penPart) {
+        if (hitBuilding.type === 'cattle-barn' && isPenDraft(hitBuilding) && hitBuilding.pen && penPart) {
           if (penPart.type === 'corner' && (penPart.index === 0 || penPart.index === hitBuilding.pen.vertices.length - 1)) return true;
           const vertices = hitBuilding.pen.vertices.map(vertex => ({ ...vertex }));
           operation = {
@@ -287,7 +456,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
           grabOffset: { x: point.x - hitBuilding.site.x, z: point.z - hitBuilding.site.z },
           startedAt: performance.now(), preview: null,
         };
-        onHint('HOLD TO MOVE BUILDING');
+        onHint(isDraft(hitBuilding) ? 'HOLD TO MOVE BUILDING' : '');
         return true;
       }
       const building = addBuilding(type);
@@ -304,9 +473,9 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       if (!operation) return false;
       const current = operation;
       const building = current.building;
-      if (current.preview) parent?.remove(current.preview);
+      if (current.preview) removeOperationPreview(current.preview);
       operation = null;
-      if (current.kind === 'blocked-building-move') return false;
+      if (current.kind === 'select-building') return false;
       onHint('');
       if (current.kind === 'hold-building') return false;
       if (current.kind === 'move-building') {
@@ -320,33 +489,25 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
         onChange();
         return true;
       }
-      if (current.kind === 'draw-pen') {
-        const last = current.vertices.at(-1);
-        if (Math.hypot(last.cx - current.finish.cx, last.cz - current.finish.cz) <= 1.05) current.vertices = appendManhattan(current.vertices, current.finish);
-        const geometry = penGeometry(building, current.vertices, building.animals.length || STARTER_COW_COUNT);
-        if (!geometry.valid || !sameCorner(current.vertices.at(-1), current.finish)) return false;
-        building.pen = { vertices: geometry.vertices.map(vertex => ({ ...vertex })) };
-        if (!building.starterCowsGranted) {
-          building.starterCowsGranted = true;
-          building.nextCowId = Math.max(building.nextCowId, nextCowId);
-          for (let index = 0; index < STARTER_COW_COUNT; index++) {
-            const tile = geometry.tiles[index % geometry.tiles.length];
-            building.animals.push({
-              id: `cow-${building.nextCowId++}`, stage: 'adult', age: 0, tileKey: gridKey(tile.gx, tile.gz),
-              targetTileKey: null, moveProgress: 0, heading: index * Math.PI, idleSeconds: .8 + index,
-              jitterX: index ? .08 : -.08, jitterZ: index ? -.06 : .06, visual: createCowVisual('adult'),
-            });
-            parent?.add(building.animals.at(-1).visual.group);
-          }
-          nextCowId = Math.max(nextCowId, building.nextCowId);
+      if (current.kind === 'lasso-pen') {
+        const geometry = current.result;
+        if (!geometry?.valid) {
+          if (building.penVisual) building.penVisual.group.visible = true;
+          ensureGateVisual(building);
+          onHint((geometry?.reason || 'Circle the pasture again').toUpperCase());
+          return false;
         }
+        building.pen = { vertices: geometry.vertices.map(vertex => ({ ...vertex })) };
         rebuildPen(building, geometry);
         onChange();
         return true;
       }
       if (current.kind === 'move-corner' || current.kind === 'move-segment') {
-        const geometry = penGeometry(building, current.vertices, building.animals.length);
-        if (!geometry.valid) return false;
+        const geometry = current.geometry || penGeometry(building, current.vertices, building.animals.length || STARTER_COW_COUNT);
+        if (!geometry.valid) {
+          onHint(geometry.reason.toUpperCase());
+          return false;
+        }
         building.pen = { vertices: geometry.vertices.map(vertex => ({ ...vertex })) };
         rebuildPen(building, geometry);
         onChange();
@@ -361,6 +522,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
         }
         else {
           parent?.remove(building.visual.group);
+          clearConstructionOutline(building);
           buildings.delete(building.id);
           if (selected === building) selected = null;
         }
@@ -371,24 +533,29 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       building.visual.drop();
       setCollider(building.id, colliderFor(building));
       onChange();
-      if (building.type === 'cattle-barn') selected = building;
-      return building.type === 'cattle-barn' ? 'cattle-barn' : true;
+      selected = building;
+      return true;
     },
     cancelDrag() {
       if (!operation) return;
       const current = operation;
       const building = current.building;
-      if (current.preview) parent?.remove(current.preview);
+      if (current.preview) removeOperationPreview(current.preview);
       operation = null;
       onHint('');
-      if (current.kind === 'hold-building') return;
+      if (current.kind === 'hold-building' || current.kind === 'select-building') return;
       if (current.kind === 'move-building') {
         restoreBuildingMove(current);
         return;
       }
-      if (current.kind.startsWith('draw-') || current.kind.startsWith('move-corner') || current.kind.startsWith('move-segment')) return;
+      if (current.kind === 'lasso-pen') {
+        if (building.penVisual) building.penVisual.group.visible = true;
+        return;
+      }
+      if (current.kind.startsWith('move-corner') || current.kind.startsWith('move-segment')) return;
       if (!building.placed) {
         parent?.remove(building.visual.group);
+        clearConstructionOutline(building);
         buildings.delete(building.id);
         if (selected === building) selected = null;
       }
@@ -404,7 +571,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       while (current) {
         if (current.userData.building) {
           selected = current.userData.building;
-          for (const building of buildings.values()) building.penVisual?.setEditing(building === selected);
+          for (const building of buildings.values()) building.penVisual?.setEditing(building === selected && isPenDraft(building));
           return { building: selected, penPart: current.userData.penPart || null };
         }
         current = current.parent;
@@ -415,13 +582,15 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       for (const building of buildings.values()) {
         if (building.placed) setCollider(building.id, null);
         clearPenVisual(building);
+        clearGateVisual(building);
+        clearConstructionOutline(building);
         for (const animal of building.animals || []) animal.visual?.group.removeFromParent();
         parent?.remove(building.visual.group);
       }
       buildings.clear();
       operation = null;
       selected = null;
-      redrawRequested = null;
+      repaintRequested = null;
       nextIds.silo = nextIds['cattle-barn'] = 1;
       nextCowId = 1;
     },
@@ -429,9 +598,11 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       return [...buildings.values()]
         .filter(building => building.placed)
         .map(building => building.type === 'silo' ? {
-          id: building.id, type: building.type, x: building.site.x, z: building.site.z, contents: { ...building.contents },
+          id: building.id, type: building.type, x: building.site.x, z: building.site.z,
+          constructionPhase: building.constructionPhase, contents: { ...building.contents },
         } : {
           id: building.id, type: building.type, x: building.site.x, z: building.site.z,
+          constructionPhase: building.constructionPhase,
           pen: building.pen ? { vertices: building.pen.vertices.map(vertex => ({ ...vertex })) } : null,
           hayLitres: building.hayLitres, milkLitres: building.milkLitres,
           birthProgress: building.birthProgress, starterCowsGranted: building.starterCowsGranted,
@@ -452,9 +623,19 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
         const building = addBuilding(saved.type, saved.id);
         building.site = site;
         building.placed = true;
+        building.constructionPhase = normalizedConstructionPhase(saved);
         if (building.type === 'silo') building.contents = normalizedContents(saved.contents);
         else {
           Object.assign(building, normalizeCattleBarnState(saved));
+          if (isDraft(building)) {
+            building.pen = null;
+            building.animals = [];
+            building.starterCowsGranted = false;
+          }
+          else if (isPenDraft(building)) {
+            building.animals = [];
+            building.starterCowsGranted = false;
+          }
           for (const animal of building.animals) {
             const number = Number(animal.id.match(/^cow-(\d+)$/)?.[1]);
             if (Number.isInteger(number)) nextCowId = Math.max(nextCowId, number + 1);
@@ -467,8 +648,17 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
         if (building.pen) {
           const geometry = penGeometry(building, building.pen.vertices, building.animals.length || STARTER_COW_COUNT);
           if (geometry.valid) rebuildPen(building, geometry);
-          else building.pen = null;
+          else {
+            building.pen = null;
+            building.derived = null;
+            building.visual.setPenComplete?.(false);
+          }
         }
+        else {
+          building.visual.setPenComplete?.(false);
+          if (isPenDraft(building)) ensureGateVisual(building);
+        }
+        if (isComplete(building)) clearConstructionOutline(building);
       }
     },
     animate(elapsed, dt = 0) {
@@ -476,8 +666,14 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       for (const building of buildings.values()) {
         building.visual.setSelected(building === selected);
         building.visual.animate(elapsed, operation?.building === building);
-        building.penVisual?.setEditing(building === selected);
-        if (building.type === 'cattle-barn' && building.placed && !(operation?.kind === 'move-building' && operation.building === building)) {
+        building.constructionOutline?.animate(elapsed);
+        building.penVisual?.setEditing(buildMode && building === selected && isPenDraft(building));
+        if (building.gateVisual) {
+          building.gateVisual.group.visible = buildMode && building === selected && isPenDraft(building)
+            && (!building.pen || repaintRequested === building || (operation?.kind === 'lasso-pen' && operation.building === building));
+          building.gateVisual.animate(elapsed);
+        }
+        if (building.type === 'cattle-barn' && building.placed && isComplete(building)) {
           building.nextCowId = Math.max(building.nextCowId, nextCowId);
           updateCattleBarn(building, dt, elapsed, { parent, terrain: getTerrain(), onChange });
           nextCowId = Math.max(nextCowId, building.nextCowId);
@@ -490,7 +686,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     siloAt(x, z, range = 2.45) {
       let closest = null;
       for (const building of buildings.values()) {
-        if (building.type !== 'silo' || !building.placed) continue;
+        if (building.type !== 'silo' || !building.placed || !isComplete(building)) continue;
         const distance = Math.hypot(x - building.site.x, z - building.site.z);
         if (distance > range || (closest && distance >= closest.distance)) continue;
         closest = { building, distance };
@@ -515,7 +711,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       const storedAmount = cropIds.includes(cropId)
         ? Math.max(0, Math.floor(Number(amount) || 0))
         : 0;
-      if (!building || building.type !== 'silo' || !building.placed || !storedAmount) return null;
+      if (!building || building.type !== 'silo' || !building.placed || !isComplete(building) || !storedAmount) return null;
       building.contents[cropId] = (building.contents[cropId] || 0) + storedAmount;
       building.visual.receive(elapsed);
       if (notify) onChange();
@@ -523,7 +719,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     },
     takeFrom(siloId, cropId, requestedAmount, notify = true) {
       const building = buildings.get(siloId);
-      const available = building?.type === 'silo' && building.placed
+      const available = building?.type === 'silo' && building.placed && isComplete(building)
         ? Math.max(0, Math.floor(Number(building.contents[cropId]) || 0))
         : 0;
       const amount = Math.min(available, Math.max(0, Math.floor(Number(requestedAmount) || 0)));
@@ -542,7 +738,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     cattleBarnAt(x, z, range = 3.05) {
       let closest = null;
       for (const building of buildings.values()) {
-        if (building.type !== 'cattle-barn' || !building.placed || !building.pen || !building.derived?.valid) continue;
+        if (building.type !== 'cattle-barn' || !building.placed || !isComplete(building) || !building.pen || !building.derived?.valid) continue;
         const distance = Math.hypot(x - building.site.x, z - building.site.z);
         if (distance <= range && (!closest || distance < closest.distance)) closest = { building, distance };
       }
@@ -550,7 +746,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     },
     cattleBarn(id) {
       const building = buildings.get(id);
-      return building?.type === 'cattle-barn' ? building : null;
+      return building?.type === 'cattle-barn' && building.placed && isComplete(building) ? building : null;
     },
     cattleBarnSummary(id) {
       const building = this.cattleBarn(id);
@@ -578,14 +774,112 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       if (notify) onChange();
       return amount;
     },
-    redrawSelected() {
-      if (selected?.type !== 'cattle-barn' || !selected.placed) return false;
-      redrawRequested = selected;
+    repaintSelected() {
+      if (selected?.type !== 'cattle-barn' || !selected.placed || !isPenDraft(selected)) return false;
+      this.cancelDrag();
+      if (!selected.pen) return false;
+      repaintRequested = selected;
+      ensureGateVisual(selected);
+      onHint('');
       return true;
     },
     isPastureAt(x, z) {
       const key = gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5));
       return [...buildings.values()].some(building => building.type === 'cattle-barn' && building.derived?.tileSet?.has(key));
+    },
+    constructionState() {
+      if (!selected?.placed || isComplete(selected)) return null;
+      const phase = selected.constructionPhase;
+      const primaryAction = selected.type === 'cattle-barn' && phase === 'draft' ? 'draw-pen' : 'confirm';
+      return {
+        buildingId: selected.id,
+        type: selected.type,
+        phase,
+        x: selected.site.x,
+        y: selected.site.y,
+        z: selected.site.z,
+        popupHeight: definitions[selected.type].popupHeight,
+        primaryAction,
+        primaryLabel: primaryAction === 'draw-pen' ? 'Draw pen' : 'Confirm',
+        canConfirm: phase === 'pen-draft'
+          ? Boolean(selected.pen && selected.derived?.valid
+            && repaintRequested !== selected && !(operation?.kind === 'lasso-pen' && operation.building === selected))
+          : true,
+        inputMode: operation?.kind === 'lasso-pen' && operation.building === selected
+          ? 'lasso'
+          : repaintRequested === selected ? 'lasso-ready'
+            : phase === 'pen-draft' && selected.pen ? 'edit' : 'lasso-ready',
+        dragging: operation?.building === selected && ['place-building', 'move-building'].includes(operation.kind),
+      };
+    },
+    confirmSelectedConstruction() {
+      const building = selected;
+      if (!building?.placed || !building.site?.valid || isComplete(building) || operation?.building === building) return false;
+      if (building.type === 'silo' && isDraft(building)) {
+        building.constructionPhase = 'complete';
+        repaintRequested = null;
+        clearConstructionOutline(building);
+        onHint('');
+        onChange();
+        return true;
+      }
+      if (building.type !== 'cattle-barn') return false;
+      if (isDraft(building)) {
+        clearPenVisual(building);
+        building.pen = null;
+        building.derived = null;
+        building.visual.setPenComplete?.(false);
+        building.constructionPhase = 'pen-draft';
+        repaintRequested = building;
+        ensureGateVisual(building);
+        onHint('');
+        onChange();
+        return true;
+      }
+      if (!isPenDraft(building) || !building.pen || !building.derived?.valid) return false;
+      building.constructionPhase = 'complete';
+      repaintRequested = null;
+      clearConstructionOutline(building);
+      clearGateVisual(building);
+      building.penVisual?.setEditing(false);
+      grantStarterCows(building);
+      onHint('');
+      onChange();
+      return true;
+    },
+    cancelSelectedConstruction() {
+      const building = selected;
+      if (!building?.placed || isComplete(building)) return false;
+      this.cancelDrag();
+      repaintRequested = null;
+      removeBuilding(building);
+      selected = null;
+      onHint('');
+      onChange();
+      return true;
+    },
+    undoSelectedConstruction() {
+      const building = selected;
+      if (building?.type !== 'cattle-barn' || !building.placed || !isPenDraft(building)) return false;
+      this.cancelDrag();
+      repaintRequested = null;
+      clearPenVisual(building);
+      clearGateVisual(building);
+      building.pen = null;
+      building.derived = null;
+      building.visual.setPenComplete?.(false);
+      for (const animal of building.animals) animal.visual?.group.removeFromParent();
+      building.animals = [];
+      building.starterCowsGranted = false;
+      building.constructionPhase = 'draft';
+      onHint('');
+      onChange();
+      return true;
+    },
+    interactionLevel() {
+      return operation && ['lasso-pen', 'move-corner', 'move-segment'].includes(operation.kind)
+        ? operation.building.site.y
+        : 0;
     },
     isDragging: () => operation !== null,
   };

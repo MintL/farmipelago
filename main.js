@@ -2,14 +2,14 @@ import { THREE } from './shared.js?v=bale-wrapper-20260902-1';
 import { crops } from './crops.js?v=bale-wrapper-20260902-1';
 import { createPhysics } from './physics.js?v=persistence-20260831-1';
 import { createLoadoutPreview, createVehicle } from './tractor.js?v=cattle-20260902-2';
-import { createUi } from './ui.js?v=cattle-20260902-1';
-import { createBuildingManager } from './buildings.js?v=cattle-20260902-6';
+import { createUi } from './ui.js?v=construction-20260902-12';
+import { createBuildingManager } from './buildings.js?v=construction-20260902-13';
 import { generateFarm } from './world-generator.js?v=cattle-20260902-1';
 import { createMilestoneProgression } from './progression.js?v=cattle-20260902-1';
-import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=cattle-20260902-1';
+import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=construction-20260902-1';
 import { OWNED_VEHICLES, vehicleType } from './vehicles.js?v=cattle-20260902-1';
 import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from './equipment.js?v=cattle-20260902-1';
-import { HAY_BALE_LITRES } from './livestock.js?v=cattle-20260902-1';
+import { HAY_BALE_LITRES } from './livestock.js?v=construction-20260902-8';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
@@ -154,6 +154,7 @@ const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const buildWorldPoint = new THREE.Vector3();
 const siloPopupWorld = new THREE.Vector3();
+const constructionPopupWorld = new THREE.Vector3();
 function activeVehicle() {
   return fleet[activeVehicleIndex];
 }
@@ -422,9 +423,10 @@ function applyBuildMode(enabled) {
   else if (viewMode === 'build') setCameraView('drive');
 }
 
-function worldAtScreenPoint(point) {
+function worldAtScreenPoint(point, levelY = 0) {
   buildPointer.set(point.x / innerWidth * 2 - 1, -(point.y / innerHeight) * 2 + 1);
   buildRaycaster.setFromCamera(buildPointer, camera);
+  buildPlane.constant = -(Number.isFinite(levelY) ? levelY : 0);
   return buildRaycaster.ray.intersectPlane(buildPlane, buildWorldPoint) ? buildWorldPoint.clone() : null;
 }
 
@@ -439,9 +441,33 @@ function buildingAtScreenPoint(point) {
 }
 
 function beginBuildingDrag(point) {
-  const worldPoint = worldAtScreenPoint(point);
-  if (!worldPoint || !buildings) return false;
-  return buildings.beginDrag(worldPoint, ui.buildState().selectedBuilding, buildingAtScreenPoint(point));
+  if (!buildings) return false;
+  const hit = buildingAtScreenPoint(point);
+  const construction = buildings.constructionState();
+  const worldPoint = worldAtScreenPoint(point, construction?.phase === 'pen-draft' ? construction.y : 0);
+  if (!worldPoint) return false;
+  return buildings.beginDrag(worldPoint, ui.buildState().selectedBuilding, hit);
+}
+
+function updateConstructionPopup() {
+  const state = buildings?.constructionState();
+  if (!state) {
+    ui?.setConstructionPopup(null);
+    return;
+  }
+  if (viewMode !== 'build' || state.dragging) {
+    ui?.setConstructionPopup({ ...state, hidden: true });
+    return;
+  }
+  constructionPopupWorld.set(state.x, state.y + state.popupHeight, state.z).project(camera);
+  const hidden = constructionPopupWorld.z < -1 || constructionPopupWorld.z > 1
+    || Math.abs(constructionPopupWorld.x) > 1 || Math.abs(constructionPopupWorld.y) > 1;
+  ui?.setConstructionPopup({
+    ...state,
+    hidden,
+    x: (constructionPopupWorld.x * .5 + .5) * innerWidth,
+    y: (-constructionPopupWorld.y * .5 + .5) * innerHeight,
+  });
 }
 
 function resetActiveVehicle() {
@@ -989,16 +1015,44 @@ ui = createUi({
   onSiloUnload: emptyIntoSilo,
   onBarnFeed: feedBarn,
   onBarnLoadMilk: loadMilkFromBarn,
-  onPenRedraw: () => buildings?.redrawSelected(),
+  onPenRepaint: () => {
+    const changed = buildings?.repaintSelected();
+    updateConstructionPopup();
+    return changed;
+  },
+  onBuildingTypeSelected: type => {
+    const changed = buildings?.placeBuilding(type, mapCameraTarget);
+    updateConstructionPopup();
+    return changed;
+  },
+  onConstructionPrimaryAction: () => {
+    const changed = buildings?.confirmSelectedConstruction();
+    updateConstructionPopup();
+    return changed;
+  },
+  onConstructionCancel: () => {
+    const changed = buildings?.cancelSelectedConstruction();
+    updateConstructionPopup();
+    return changed;
+  },
+  onConstructionUndo: () => {
+    const changed = buildings?.undoSelectedConstruction();
+    updateConstructionPopup();
+    return changed;
+  },
   onCargoDropOff: dropOffCargo,
   onCropOverlayChange: applyCropOverlay,
   onBuildModeChange: applyBuildMode,
   onBuildPointerStart: beginBuildingDrag,
   onBuildPointerMove: point => {
-    const worldPoint = worldAtScreenPoint(point);
+    const worldPoint = worldAtScreenPoint(point, buildings?.interactionLevel());
     if (worldPoint) buildings?.moveDrag(worldPoint);
   },
-  onBuildPointerEnd: () => { if (buildings?.endDrag() === true) ui.clearBuildingSelection(); },
+  onBuildPointerEnd: point => {
+    const worldPoint = worldAtScreenPoint(point, buildings?.interactionLevel());
+    if (worldPoint) buildings?.moveDrag(worldPoint);
+    if (buildings?.endDrag() === true) ui.clearBuildingSelection();
+  },
   onBuildPointerCancel: () => buildings?.cancelDrag(),
   onUnlockOverride: setUnlockOverride,
   onClearUnlockOverrides: clearUnlockOverrides,
@@ -1378,6 +1432,7 @@ function update(dt) {
   syncFleetVisuals(dt);
   farm?.animate(elapsed);
   buildings?.animate(elapsed, dt);
+  updateConstructionPopup();
   updateStoragePopup();
   clouds.animate(elapsed);
   if (elapsed - lastPoseCheckpoint >= poseCheckpointInterval) {

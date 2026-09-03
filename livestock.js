@@ -121,10 +121,44 @@ export function barnPenAnchors(site) {
   return [{ cx: gx - 2, cz: gz + 1 }, { cx: gx + 1, cz: gz + 1 }];
 }
 
+export function barnPenConnectorSegments(site) {
+  const [leftAnchor, rightAnchor] = barnPenAnchors(site).map(cornerToWorld);
+  const wallHalfWidth = 1.34;
+  return [
+    { a: { x: site.x - wallHalfWidth, z: site.z }, b: { x: leftAnchor.x, z: site.z } },
+    { a: { x: leftAnchor.x, z: site.z }, b: leftAnchor },
+    { a: { x: site.x + wallHalfWidth, z: site.z }, b: { x: rightAnchor.x, z: site.z } },
+    { a: { x: rightAnchor.x, z: site.z }, b: rightAnchor },
+  ];
+}
+
+const fenceCrossesBlockedTiles = (segments, blockedAt) => segments.some(segment => {
+  if (segment.a.cz === segment.b.cz) {
+    const start = Math.min(segment.a.cx, segment.b.cx);
+    const end = Math.max(segment.a.cx, segment.b.cx);
+    for (let cx = start; cx < end; cx++) {
+      if (blockedAt(cx + 1, segment.a.cz) && blockedAt(cx + 1, segment.a.cz + 1)) return true;
+    }
+    return false;
+  }
+  const start = Math.min(segment.a.cz, segment.b.cz);
+  const end = Math.max(segment.a.cz, segment.b.cz);
+  for (let cz = start; cz < end; cz++) {
+    if (blockedAt(segment.a.cx, cz + 1) && blockedAt(segment.a.cx + 1, cz + 1)) return true;
+  }
+  return false;
+});
+
 export function computePenGeometry(vertices, terrain, barnSite, context = {}) {
   const clean = removeCollinearVertices(vertices);
   const invalid = reason => ({ valid: false, reason, vertices: clean, tiles: [], tileSet: new Set(), capacity: 0, segments: [] });
   if (!isOrthogonal(clean) || hasSelfIntersection(clean)) return invalid('Pen must be a simple orthogonal shape');
+  const excluded = context.occupiedTileKeys || new Set();
+  const barnGx = Math.round(barnSite.x / TILE), barnGz = Math.round(barnSite.z / TILE);
+  const blockedAt = (gx, gz) => excluded.has(gridKey(gx, gz))
+    || (Math.abs(gx - barnGx) <= 1 && Math.abs(gz - barnGz) <= 1);
+  const visibleSegments = segmentsFor(clean).filter(segment => !segment.hidden);
+  if (fenceCrossesBlockedTiles(visibleSegments, blockedAt)) return invalid('Fence cannot pass through a building');
   const area = Math.abs(clean.reduce((sum, vertex, index) => {
     const next = clean[(index + 1) % clean.length];
     return sum + vertex.cx * next.cz - next.cx * vertex.cz;
@@ -135,8 +169,6 @@ export function computePenGeometry(vertices, terrain, barnSite, context = {}) {
   const minZ = Math.min(...clean.map(vertex => vertex.cz));
   const maxZ = Math.max(...clean.map(vertex => vertex.cz));
   const barnLevel = finite(barnSite?.y, NaN);
-  const excluded = context.occupiedTileKeys || new Set();
-  const barnGx = Math.round(barnSite.x / TILE), barnGz = Math.round(barnSite.z / TILE);
   const tiles = [];
   for (let gx = minX; gx <= maxX; gx++) {
     for (let gz = minZ; gz <= maxZ; gz++) {
@@ -163,6 +195,225 @@ export function computePenGeometry(vertices, terrain, barnSite, context = {}) {
   };
 }
 
+const lassoContains = (x, z, samples) => {
+  let inside = false;
+  for (let index = 0, previous = samples.length - 1; index < samples.length; previous = index++) {
+    const a = samples[index], b = samples[previous];
+    if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) inside = !inside;
+  }
+  return inside;
+};
+
+const neighborsOf = (gx, gz) => [[gx + 1, gz], [gx, gz + 1], [gx - 1, gz], [gx, gz - 1]];
+
+function connectedFrom(keys, starts) {
+  const connected = new Set();
+  const queue = starts.filter(key => keys.has(key));
+  while (queue.length) {
+    const key = queue.shift();
+    if (connected.has(key)) continue;
+    connected.add(key);
+    const [gx, gz] = key.split(',').map(Number);
+    for (const [nx, nz] of neighborsOf(gx, gz)) {
+      const neighbor = gridKey(nx, nz);
+      if (keys.has(neighbor) && !connected.has(neighbor)) queue.push(neighbor);
+    }
+  }
+  return connected;
+}
+
+function enclosedHoles(keys) {
+  const cells = [...keys].map(key => key.split(',').map(Number));
+  if (!cells.length) return [];
+  const minX = Math.min(...cells.map(cell => cell[0])) - 1;
+  const maxX = Math.max(...cells.map(cell => cell[0])) + 1;
+  const minZ = Math.min(...cells.map(cell => cell[1])) - 1;
+  const maxZ = Math.max(...cells.map(cell => cell[1])) + 1;
+  const outside = new Set();
+  const queue = [[minX, minZ]];
+  while (queue.length) {
+    const [gx, gz] = queue.shift();
+    const key = gridKey(gx, gz);
+    if (outside.has(key) || keys.has(key) || gx < minX || gx > maxX || gz < minZ || gz > maxZ) continue;
+    outside.add(key);
+    queue.push(...neighborsOf(gx, gz));
+  }
+  const holes = [];
+  const visited = new Set(outside);
+  for (let gx = minX + 1; gx < maxX; gx++) {
+    for (let gz = minZ + 1; gz < maxZ; gz++) {
+      const start = gridKey(gx, gz);
+      if (keys.has(start) || visited.has(start)) continue;
+      const hole = [];
+      const pending = [[gx, gz]];
+      while (pending.length) {
+        const [hx, hz] = pending.shift();
+        const key = gridKey(hx, hz);
+        if (visited.has(key) || keys.has(key) || hx <= minX || hx >= maxX || hz <= minZ || hz >= maxZ) continue;
+        visited.add(key);
+        hole.push({ gx: hx, gz: hz });
+        pending.push(...neighborsOf(hx, hz));
+      }
+      if (hole.length) holes.push({ cells: hole, bounds: { minX, maxX, minZ, maxZ } });
+    }
+  }
+  return holes;
+}
+
+function openHole(keys, hole, protectedKeys) {
+  const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  let best = null;
+  for (const cell of hole.cells) {
+    for (const [dx, dz] of directions) {
+      const path = [];
+      let gx = cell.gx, gz = cell.gz;
+      while (gx >= hole.bounds.minX && gx <= hole.bounds.maxX && gz >= hole.bounds.minZ && gz <= hole.bounds.maxZ) {
+        gx += dx; gz += dz;
+        const key = gridKey(gx, gz);
+        if (keys.has(key)) path.push(key);
+      }
+      if (!path.length || path.some(key => protectedKeys.has(key))) continue;
+      if (!best || path.length < best.length) best = path;
+    }
+  }
+  if (!best) return false;
+  best.forEach(key => keys.delete(key));
+  return true;
+}
+
+function boundaryLoops(keys) {
+  const edges = [];
+  const add = (a, b, direction) => edges.push({ a, b, direction });
+  for (const key of keys) {
+    const [gx, gz] = key.split(',').map(Number);
+    if (!keys.has(gridKey(gx, gz - 1))) add({ cx: gx - 1, cz: gz - 1 }, { cx: gx, cz: gz - 1 }, 0);
+    if (!keys.has(gridKey(gx + 1, gz))) add({ cx: gx, cz: gz - 1 }, { cx: gx, cz: gz }, 1);
+    if (!keys.has(gridKey(gx, gz + 1))) add({ cx: gx, cz: gz }, { cx: gx - 1, cz: gz }, 2);
+    if (!keys.has(gridKey(gx - 1, gz))) add({ cx: gx - 1, cz: gz }, { cx: gx - 1, cz: gz - 1 }, 3);
+  }
+  const pointKey = point => `${point.cx},${point.cz}`;
+  const outgoing = new Map();
+  edges.forEach((edge, index) => {
+    const key = pointKey(edge.a);
+    if (!outgoing.has(key)) outgoing.set(key, []);
+    outgoing.get(key).push(index);
+  });
+  const used = new Set();
+  const rank = new Map([[1, 0], [0, 1], [3, 2], [2, 3]]);
+  const loops = [];
+  for (let startIndex = 0; startIndex < edges.length; startIndex++) {
+    if (used.has(startIndex)) continue;
+    const start = edges[startIndex].a;
+    const loop = [{ ...start }];
+    let currentIndex = startIndex;
+    let closed = false;
+    let safety = edges.length + 1;
+    while (safety-- > 0) {
+      const current = edges[currentIndex];
+      used.add(currentIndex);
+      if (sameVertex(current.b, start)) {
+        closed = true;
+        break;
+      }
+      loop.push({ ...current.b });
+      const candidates = (outgoing.get(pointKey(current.b)) || []).filter(index => !used.has(index));
+      if (!candidates.length) return [];
+      currentIndex = candidates.sort((a, b) => {
+        const turnA = (edges[a].direction - current.direction + 4) % 4;
+        const turnB = (edges[b].direction - current.direction + 4) % 4;
+        return rank.get(turnA) - rank.get(turnB);
+      })[0];
+    }
+    if (!closed) return [];
+    loops.push(loop);
+  }
+  return loops;
+}
+
+function penVerticesFromTiles(keys, barnSite) {
+  const [left, right] = barnPenAnchors(barnSite);
+  const loop = boundaryLoops(keys).find(candidate =>
+    candidate.some(vertex => sameVertex(vertex, left)) && candidate.some(vertex => sameVertex(vertex, right))
+  );
+  if (!loop) return null;
+  const leftIndex = loop.findIndex(vertex => sameVertex(vertex, left));
+  const rightIndex = loop.findIndex(vertex => sameVertex(vertex, right));
+  const path = (from, to) => {
+    const result = [{ ...loop[from] }];
+    for (let index = (from + 1) % loop.length; index !== (to + 1) % loop.length; index = (index + 1) % loop.length) {
+      result.push({ ...loop[index] });
+    }
+    return result;
+  };
+  const forward = path(leftIndex, rightIndex);
+  const backward = path(rightIndex, leftIndex);
+  const isGate = vertices => vertices.every(vertex => vertex.cz === left.cz)
+    && vertices.reduce((sum, vertex, index) => index ? sum + Math.abs(vertex.cx - vertices[index - 1].cx) : 0, 0) === 3;
+  if (isGate(forward)) return removeCollinearVertices(backward.reverse());
+  if (isGate(backward)) return removeCollinearVertices(forward);
+  return null;
+}
+
+export function penGeometryFromLasso(samples, terrain, barnSite, context = {}) {
+  const gateGx = Math.round(barnSite.x / TILE), gateGz = Math.round(barnSite.z / TILE) + 2;
+  const gateTiles = [-1, 0, 1].map(dx => ({ gx: gateGx + dx, gz: gateGz, key: gridKey(gateGx + dx, gateGz) }));
+  const base = { valid: false, reason: 'Circle the pasture', vertices: [], tiles: [], tileSet: new Set(), capacity: 0, segments: [], selectedTiles: [], trimmedTiles: [], gateTiles };
+  if (!Array.isArray(samples) || samples.length < 3) return base;
+  const minX = Math.min(...samples.map(sample => sample.x));
+  const maxX = Math.max(...samples.map(sample => sample.x));
+  const minZ = Math.min(...samples.map(sample => sample.z));
+  const maxZ = Math.max(...samples.map(sample => sample.z));
+  const candidates = [];
+  for (let gx = Math.floor(minX / TILE) - 1; gx <= Math.ceil(maxX / TILE) + 1; gx++) {
+    for (let gz = Math.floor(minZ / TILE) - 1; gz <= Math.ceil(maxZ / TILE) + 1; gz++) {
+      const x = gx * TILE, z = gz * TILE;
+      if (!lassoContains(x, z, samples)) continue;
+      const key = gridKey(gx, gz);
+      candidates.push({ gx, gz, x, z, key, tile: terrain?.get(key) || null });
+    }
+  }
+  const candidateKeys = new Set(candidates.map(candidate => candidate.key));
+  if (!gateTiles.every(tile => candidateKeys.has(tile.key))) return { ...base, reason: 'Include the glowing barn gate', trimmedTiles: candidates };
+  const excluded = context.occupiedTileKeys || new Set();
+  const levelY = finite(barnSite.y, NaN);
+  const barnGx = Math.round(barnSite.x / TILE), barnGz = Math.round(barnSite.z / TILE);
+  const validTile = candidate => {
+    const tile = candidate.tile;
+    const inBarn = Math.abs(candidate.gx - barnGx) <= 1 && Math.abs(candidate.gz - barnGz) <= 1;
+    return tile && !tile.water && !tile.reserved && !tile.ploughed && !tile.crop && !tile.hasTree
+      && Math.abs(tile.topY - levelY) <= .01 && !inBarn && !excluded.has(candidate.key);
+  };
+  if (!gateTiles.every(gate => validTile(candidates.find(candidate => candidate.key === gate.key)))) {
+    return { ...base, reason: 'The barn gate needs clear level grass', trimmedTiles: candidates };
+  }
+  const validKeys = new Set(candidates.filter(validTile).map(candidate => candidate.key));
+  let selectedKeys = connectedFrom(validKeys, gateTiles.map(tile => tile.key));
+  const protectedKeys = new Set(gateTiles.map(tile => tile.key));
+  for (let attempts = 0; attempts < 24; attempts++) {
+    const hole = enclosedHoles(selectedKeys)[0];
+    if (!hole) break;
+    if (!openHole(selectedKeys, hole, protectedKeys)) {
+      return { ...base, reason: 'Repaint without enclosing blocked land', trimmedTiles: candidates };
+    }
+    selectedKeys = connectedFrom(selectedKeys, gateTiles.map(tile => tile.key));
+  }
+  if (enclosedHoles(selectedKeys).length) return { ...base, reason: 'The pasture shape is too complex', trimmedTiles: candidates };
+  const selectedTiles = candidates.filter(candidate => selectedKeys.has(candidate.key)).map(candidate => candidate.tile);
+  const trimmedTiles = candidates.filter(candidate => !selectedKeys.has(candidate.key));
+  const minimum = context.minimumCapacity ?? STARTER_COW_COUNT;
+  if (Math.floor(selectedTiles.length / PEN_TILES_PER_COW) < minimum) {
+    return { ...base, reason: `Circle more clear grass for ${minimum} cattle`, selectedTiles, trimmedTiles };
+  }
+  const vertices = penVerticesFromTiles(selectedKeys, barnSite);
+  if (!vertices) return { ...base, reason: 'Repaint a simpler border', selectedTiles, trimmedTiles };
+  const geometry = computePenGeometry(vertices, terrain, barnSite, context);
+  if (!geometry.valid || geometry.tileSet.size !== selectedKeys.size
+    || [...selectedKeys].some(key => !geometry.tileSet.has(key))) {
+    return { ...base, reason: geometry.reason || 'Repaint a simpler border', selectedTiles, trimmedTiles };
+  }
+  return { ...geometry, selectedTiles, trimmedTiles, gateTiles };
+}
+
 export function createCattleBarnVisual() {
   const group = new THREE.Group();
   const spring = new THREE.Group();
@@ -185,13 +436,7 @@ export function createCattleBarnVisual() {
   const ringMaterial = validMaterial.clone();
   const ring = new THREE.Mesh(new THREE.RingGeometry(1.65, 1.75, 32), ringMaterial);
   ring.rotation.x = -Math.PI * .5; ring.position.y = .02; ring.visible = false; group.add(ring);
-  const anchors = new THREE.Group();
-  for (const x of [-1.5, 1.5]) {
-    const marker = new THREE.Mesh(new THREE.SphereGeometry(.18, 10, 8), validMaterial.clone());
-    marker.position.set(x, .16, 1.5); anchors.add(marker);
-  }
-  anchors.visible = false; group.add(anchors);
-  let dragging = false, valid = true, droppedAt = null, penComplete = false;
+  let dragging = false, valid = true, droppedAt = null;
   const updateAppearance = () => {
     ringMaterial.color.copy((valid ? validMaterial : invalidMaterial).color);
     for (const material of [redMaterial, darkMaterial, creamMaterial]) {
@@ -202,8 +447,8 @@ export function createCattleBarnVisual() {
   return {
     group,
     setDragging(nextValid) { dragging = true; valid = nextValid; ring.visible = true; updateAppearance(); },
-    setSelected(nextSelected) { if (!dragging) ring.visible = nextSelected; anchors.visible = nextSelected && !penComplete; },
-    setPenComplete(complete) { penComplete = Boolean(complete); if (penComplete) anchors.visible = false; },
+    setSelected(nextSelected) { if (!dragging) ring.visible = nextSelected; },
+    setPenComplete() {},
     drop() { dragging = false; valid = true; droppedAt = null; updateAppearance(); },
     settle() { dragging = false; valid = true; updateAppearance(); },
     animate(elapsed, active) {
@@ -225,15 +470,12 @@ export function createPenVisual(geometry, levelY, building, editing = false) {
   const group = new THREE.Group();
   group.name = `${building.id}-pen`;
   const parts = [];
-  geometry.segments.forEach((segment, index) => {
-    const a = cornerToWorld(segment.a), b = cornerToWorld(segment.b);
+  const fenceSegmentGroup = (a, b) => {
     const horizontal = Math.abs(b.x - a.x) > .01;
     const length = horizontal ? Math.abs(b.x - a.x) : Math.abs(b.z - a.z);
     const segmentGroup = new THREE.Group();
     segmentGroup.position.set((a.x + b.x) * .5, levelY, (a.z + b.z) * .5);
     if (!horizontal) segmentGroup.rotation.y = Math.PI * .5;
-    segmentGroup.userData.building = building;
-    segmentGroup.userData.penPart = { type: 'segment', index };
     const posts = Math.max(1, Math.round(length / TILE));
     for (let postIndex = 0; postIndex <= posts; postIndex++) {
       const post = box(.12, .82, .12, fenceDark);
@@ -243,7 +485,14 @@ export function createPenVisual(geometry, levelY, building, editing = false) {
     for (const y of [.3, .62]) {
       const rail = box(length, .1, .1, fenceWood); rail.position.y = y; segmentGroup.add(rail);
     }
-    const hit = box(length + .18, .95, .34, validMaterial, false, false);
+    return { segmentGroup, horizontal, length };
+  };
+  geometry.segments.forEach((segment, index) => {
+    const a = cornerToWorld(segment.a), b = cornerToWorld(segment.b);
+    const { segmentGroup, length } = fenceSegmentGroup(a, b);
+    segmentGroup.userData.building = building;
+    segmentGroup.userData.penPart = { type: 'segment', index };
+    const hit = box(length + .28, 1.05, .62, validMaterial, false, false);
     hit.material = hit.material.clone(); hit.material.opacity = 0; hit.visible = editing;
     hit.position.y = .48;
     hit.userData.building = building;
@@ -252,17 +501,107 @@ export function createPenVisual(geometry, levelY, building, editing = false) {
     group.add(segmentGroup);
     parts.push(hit);
   });
+  for (const connector of barnPenConnectorSegments(building.site)) {
+    group.add(fenceSegmentGroup(connector.a, connector.b).segmentGroup);
+  }
+  const handleHits = [];
   const handles = geometry.vertices.map((vertex, index) => {
     const world = cornerToWorld(vertex);
-    const handle = new THREE.Mesh(new THREE.SphereGeometry(.19, 10, 8), validMaterial.clone());
+    const fixed = index === 0 || index === geometry.vertices.length - 1;
+    const handle = new THREE.Mesh(new THREE.SphereGeometry(fixed ? .2 : .27, 12, 9), (fixed ? fenceDark : validMaterial).clone());
     handle.position.set(world.x, levelY + .92, world.z);
     handle.visible = editing;
     handle.userData.building = building;
     handle.userData.penPart = { type: 'corner', index };
     group.add(handle);
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(.44, 10, 8), validMaterial.clone());
+    hit.material.opacity = 0;
+    hit.visible = editing;
+    hit.position.copy(handle.position);
+    hit.userData.building = building;
+    hit.userData.penPart = { type: 'corner', index };
+    group.add(hit);
+    handleHits.push(hit);
     return handle;
   });
-  return { group, parts, handles, setEditing(enabled) { [...parts, ...handles].forEach(part => { part.visible = enabled; }); } };
+  return { group, parts, handles, setEditing(enabled) { [...parts, ...handles, ...handleHits].forEach(part => { part.visible = enabled; }); } };
+}
+
+export function createPenGateVisual(site) {
+  const group = new THREE.Group();
+  group.name = 'barn-pen-gate-cue';
+  group.position.set(site.x, site.y, site.z);
+  const groundMaterial = new THREE.MeshBasicMaterial({ color: 0xb9f36d, transparent: true, opacity: .38, depthWrite: false });
+  const doorMaterial = new THREE.MeshBasicMaterial({ color: 0xd9ff83, transparent: true, opacity: .9, depthWrite: false });
+  const paneMaterial = doorMaterial.clone();
+  paneMaterial.opacity = .2;
+  const gx = Math.round(site.x / TILE), gz = Math.round(site.z / TILE) + 2;
+  for (const dx of [-1, 0, 1]) {
+    const tile = box(TILE * .88, .025, TILE * .88, groundMaterial, false, false);
+    tile.position.set((gx + dx) * TILE - site.x, .035, gz * TILE - site.z);
+    group.add(tile);
+  }
+  const path = box(.72, .03, 1.02, groundMaterial, false, false);
+  path.position.set(0, .045, 1.48);
+  group.add(path);
+  const door = new THREE.Group();
+  door.position.set(0, 0, 1.025);
+  const pane = box(1.05, 1.22, .025, paneMaterial, false, false);
+  pane.position.y = .66;
+  door.add(pane);
+  for (const x of [-.58, .58]) {
+    const side = box(.09, 1.38, .055, doorMaterial, false, false);
+    side.position.set(x, .69, .015);
+    door.add(side);
+  }
+  const top = box(1.25, .09, .055, doorMaterial, false, false);
+  top.position.set(0, 1.38, .015);
+  door.add(top);
+  const beacon = new THREE.Mesh(new THREE.TorusGeometry(.3, .075, 8, 20), doorMaterial);
+  beacon.rotation.x = Math.PI * .5;
+  beacon.position.set(0, 1.72, .16);
+  door.add(beacon);
+  group.add(door);
+  return {
+    group,
+    animate(elapsed) {
+      const pulse = Math.sin(elapsed * 4) * .5 + .5;
+      groundMaterial.opacity = .32 + pulse * .28;
+      doorMaterial.opacity = .7 + pulse * .3;
+      paneMaterial.opacity = .14 + pulse * .2;
+      door.scale.setScalar(1 + pulse * .035);
+    },
+  };
+}
+
+export function createPenLassoPreview(samples, result, levelY) {
+  const group = new THREE.Group();
+  group.name = 'pen-lasso-preview';
+  const addTiles = (tiles, material) => {
+    for (const entry of tiles || []) {
+      const gx = entry.gx ?? entry.tile?.gx;
+      const gz = entry.gz ?? entry.tile?.gz;
+      if (!Number.isFinite(gx) || !Number.isFinite(gz)) continue;
+      const tile = box(TILE * .86, .02, TILE * .86, material, false, false);
+      tile.position.set(gx * TILE, finite(entry.topY ?? entry.tile?.topY, levelY) + .045, gz * TILE);
+      group.add(tile);
+    }
+  };
+  const selectedMaterial = validMaterial.clone(); selectedMaterial.opacity = .28;
+  const trimmedMaterial = invalidMaterial.clone(); trimmedMaterial.color.setHex(0xd89343); trimmedMaterial.opacity = .3;
+  addTiles(result?.selectedTiles, selectedMaterial);
+  addTiles(result?.trimmedTiles, trimmedMaterial);
+  if (samples.length > 1) {
+    const points = samples.map(sample => new THREE.Vector3(sample.x, levelY + .12, sample.z));
+    points.push(points[0].clone());
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.LineBasicMaterial({ color: result?.valid ? 0x7eb650 : 0xd45d52, transparent: true, opacity: .9 }),
+    );
+    group.add(line);
+  }
+  if (result?.valid) group.add(createPenPreview(result.vertices, levelY, true));
+  return group;
 }
 
 export function createPenPreview(vertices, levelY, valid = false) {

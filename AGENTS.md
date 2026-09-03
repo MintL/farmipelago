@@ -2,20 +2,25 @@
 
 ## Project at a glance
 
-This is a small, phone-first 3D farming prototype. It is plain browser ES
-modules: there is no package manager, bundler, linter, or automated test suite.
-Three.js and Rapier are loaded from pinned jsDelivr ESM URLs, so an internet
-connection is required while running the game.
+This is a small, phone-first 3D farming game built with plain JavaScript ES
+modules and Vite. Three.js and Rapier are pinned npm dependencies. There is no
+framework, linter, or automated test suite.
 
-Serve the repository with a static HTTP server (do not open `index.html`
-directly):
+Install dependencies and start the Vite development server (do not open
+`index.html` directly):
 
 ```bash
-python3 -m http.server 8080
+npm install
+npm run dev
 ```
 
-Open `http://localhost:8080`. Test both desktop keyboard input and a narrow,
+Open the URL printed by Vite, normally `http://localhost:5173`. Use
+`npm run dev -- --host 0.0.0.0` when testing from another device on the LAN.
+Test both desktop keyboard input and a narrow,
 touch-sized viewport when changing interaction or layout.
+
+Run `npm run build` before handing off a change. Deploy the generated `dist/`
+directory to static hosting; do not deploy the unbuilt source directory.
 
 ### Browser automation workaround
 

@@ -1,7 +1,7 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from './shared.js?v=water-splash-base-20260903-1';
-import { crops } from './crops.js?v=fixed-crop-yield-20260903-1';
-import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=water-splash-base-20260903-1';
-import { createForageSystem } from './forage.js?v=bale-wrapper-20260902-1';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from './shared.js';
+import { crops } from './crops.js';
+import { cargoDeckContains, createCargoPort } from './cargo-port.js';
+import { createForageSystem } from './forage.js';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;

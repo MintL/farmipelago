@@ -1,4 +1,4 @@
-export { TRAILER_STORAGE_CAPACITY } from './equipment.js?v=cattle-20260902-1';
+export { TRAILER_STORAGE_CAPACITY } from './equipment.js';
 
 export const VEHICLE_TYPES = {
   tractor: {

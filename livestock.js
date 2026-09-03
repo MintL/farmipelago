@@ -1,4 +1,4 @@
-import { THREE, TILE, box, gridKey, mats } from './shared.js?v=workshop-voxels-20260903-1';
+import { THREE, TILE, box, gridKey, mats } from './shared.js';
 
 export const STARTER_COW_COUNT = 2;
 export const PEN_TILES_PER_COW = 4;

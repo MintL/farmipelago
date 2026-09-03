@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Vite output and local cache
+dist/
+.vite/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Local environment overrides
+.env.local
+.env.*.local
+
+# Package-manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# macOS
+.DS_Store

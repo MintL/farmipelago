@@ -63,14 +63,27 @@ A phone-first Three.js prototype for driving and farming across generated floati
 
 ## Run
 
-The prototype imports Three.js and Rapier from jsDelivr, so it needs an internet connection.
+Farmipelago uses Vite with locally installed, pinned Three.js and Rapier dependencies.
 
-Serve this folder with any static HTTP server, for example:
+Install dependencies and start the development server:
 
 ```bash
-python3 -m http.server 8080
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:8080` on desktop, or expose the server on your LAN and open it from a phone.
+Open the URL printed by Vite, normally `http://localhost:5173`. Voxel Studio is available at `/voxel-studio.html` on the same server.
 
-For a phone-only test, deploying the folder to any static host also works.
+To test from a phone on the same network, expose the development server on the LAN:
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+Create an optimized static production build with:
+
+```bash
+npm run build
+```
+
+Deploy the generated `dist/` directory to any static host. To inspect that build locally, run `npm run preview`.

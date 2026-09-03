@@ -1,4 +1,4 @@
-import { mats, THREE } from './shared.js?v=water-splash-base-20260903-1';
+import { mats, THREE } from './shared.js';
 
 export const DAY_CYCLE_SECONDS = 10 * 60;
 export const DEFAULT_DAY_PHASE = 10 / 24;

@@ -1,12 +1,12 @@
-import { THREE, TILE, box, gridKey } from './shared.js?v=workshop-voxels-20260903-1';
-import { cropIds } from './crops.js?v=fixed-crop-yield-20260903-1';
+import { THREE, TILE, box, gridKey } from './shared.js';
+import { cropIds } from './crops.js';
 import {
   BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES, STARTER_COW_COUNT,
   barnPenAnchors, barnPenConnectorSegments, computePenGeometry, cornerToWorld, createCattleBarnVisual,
   createCowVisual, createPenGateVisual, createPenLassoPreview, createPenPreview,
   createPenVisual, normalizeCattleBarnState, penGeometryFromLasso,
   reconcileCattleBarnAnimals, removeCollinearVertices, snapPenPoint, updateCattleBarn,
-} from './livestock.js?v=construction-20260902-8';
+} from './livestock.js';
 
 const SILO_RADIUS = 1.05;
 const SILO_HEIGHT = 3.7;

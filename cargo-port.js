@@ -1,4 +1,4 @@
-import { THREE, createVoxelLantern, createVoxelModel, mats } from './shared.js?v=water-splash-base-20260903-1';
+import { THREE, createVoxelLantern, createVoxelModel, mats } from './shared.js';
 
 const DECK_HEIGHT = .18;
 const DECK_CLEARANCE = .04;

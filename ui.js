@@ -1,6 +1,6 @@
-import { cropIds, crops } from './crops.js?v=fixed-crop-yield-20260903-1';
-import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=cattle-20260902-1';
-import { dayPhaseLabel, DEFAULT_DAY_PHASE } from './environment.js?v=water-splash-base-20260903-1';
+import { cropIds, crops } from './crops.js';
+import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js';
+import { dayPhaseLabel, DEFAULT_DAY_PHASE } from './environment.js';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', icon: 'plough' },

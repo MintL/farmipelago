@@ -1,4 +1,4 @@
-import { THREE } from './shared.js?v=20260903-voxel-studio-2';
+import { THREE } from './shared.js';
 
 const DB_NAME = 'farmipelago-voxel-studio';
 const DB_VERSION = 1;
@@ -550,12 +550,6 @@ function frame() {
 }
 
 async function init() {
-  // Let Add-to-home-screen/installed launches use standalone mode where supported.
-  const manifest = document.createElement('link');
-  manifest.rel = 'manifest';
-  manifest.href = './voxel-studio.webmanifest?v=20260903-1';
-  document.head.appendChild(manifest);
-
   const mobileCapable = document.createElement('meta');
   mobileCapable.name = 'mobile-web-app-capable';
   mobileCapable.content = 'yes';

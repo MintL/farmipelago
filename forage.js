@@ -1,4 +1,4 @@
-import { TILE, THREE, gridKey, mats } from './shared.js?v=workshop-voxels-20260903-1';
+import { TILE, THREE, gridKey, mats } from './shared.js';
 
 const INITIAL_BALE_CAPACITY = 32;
 

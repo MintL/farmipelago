@@ -1,4 +1,4 @@
-import { box, mats, THREE } from './shared.js?v=workshop-voxels-20260903-1';
+import { box, mats, THREE } from './shared.js';
 
 const previewMats = {
   green: new THREE.MeshStandardMaterial({ color: 0x6eab37, roughness: .7 }),

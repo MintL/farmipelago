@@ -1,5 +1,5 @@
-import { THREE, TILE, box, gridKey } from './shared.js?v=bale-wrapper-20260902-1';
-import { cropIds } from './crops.js?v=bale-wrapper-20260902-1';
+import { THREE, TILE, box, gridKey } from './shared.js?v=workshop-voxels-20260903-1';
+import { cropIds } from './crops.js?v=fixed-crop-yield-20260903-1';
 import {
   BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES, STARTER_COW_COUNT,
   barnPenAnchors, barnPenConnectorSegments, computePenGeometry, cornerToWorld, createCattleBarnVisual,
@@ -65,7 +65,10 @@ function normalizedContents(contents) {
   }));
 }
 
-export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onChange = () => {}, onHint = () => {} }) {
+export function createBuildingManager({
+  getSiteAt, getTerrain, setCollider, registerOccluder = () => {}, unregisterOccluder = () => {},
+  onChange = () => {}, onHint = () => {},
+}) {
   let parent = null;
   let operation = null;
   let selected = null;
@@ -76,8 +79,8 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
   const buildings = new Map();
 
   const definitions = {
-    silo: { radius: SILO_RADIUS, height: SILO_HEIGHT, popupHeight: 4.05, createVisual: createSilo },
-    'cattle-barn': { radius: CATTLE_BARN_RADIUS, height: CATTLE_BARN_HEIGHT, popupHeight: 3.15, createVisual: createCattleBarnVisual },
+    silo: { radius: SILO_RADIUS, footprintSpan: 1, height: SILO_HEIGHT, popupHeight: 4.05, createVisual: createSilo },
+    'cattle-barn': { radius: CATTLE_BARN_RADIUS, footprintSpan: 1, height: CATTLE_BARN_HEIGHT, popupHeight: 3.15, createVisual: createCattleBarnVisual },
   };
 
   const addBuilding = (type, savedId) => {
@@ -145,7 +148,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     for (const building of buildings.values()) {
       if (!building.placed || building === except) continue;
       const gx = Math.round(building.site.x / TILE), gz = Math.round(building.site.z / TILE);
-      const span = building.type === 'cattle-barn' ? 1 : 1;
+      const span = definitions[building.type].footprintSpan;
       for (let dx = -span; dx <= span; dx++) for (let dz = -span; dz <= span; dz++) keys.add(gridKey(gx + dx, gz + dz));
       if (building.type === 'cattle-barn') for (const key of building.derived?.tileSet || []) keys.add(key);
     }
@@ -184,7 +187,19 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     building.constructionOutline = null;
   };
 
+  const registerBuildingOccluder = building => {
+    if (!building.placed || !isComplete(building) || building.occluderRegistered) return;
+    building.occluderRegistered = registerOccluder(building.visual.group) !== false;
+  };
+
+  const unregisterBuildingOccluder = building => {
+    if (!building.occluderRegistered) return;
+    unregisterOccluder(building.visual.group);
+    building.occluderRegistered = false;
+  };
+
   const removeBuilding = building => {
+    unregisterBuildingOccluder(building);
     if (building.placed) clearBuildingColliders(building);
     clearPenVisual(building);
     clearGateVisual(building);
@@ -388,6 +403,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       parent = nextParent;
       for (const building of buildings.values()) {
         parent.add(building.visual.group);
+        registerBuildingOccluder(building);
         if (building.penVisual) parent.add(building.penVisual.group);
         if (building.gateVisual) parent.add(building.gateVisual.group);
       }
@@ -580,6 +596,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
     },
     clear() {
       for (const building of buildings.values()) {
+        unregisterBuildingOccluder(building);
         if (building.placed) setCollider(building.id, null);
         clearPenVisual(building);
         clearGateVisual(building);
@@ -658,7 +675,10 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
           building.visual.setPenComplete?.(false);
           if (isPenDraft(building)) ensureGateVisual(building);
         }
-        if (isComplete(building)) clearConstructionOutline(building);
+        if (isComplete(building)) {
+          clearConstructionOutline(building);
+          registerBuildingOccluder(building);
+        }
       }
     },
     animate(elapsed, dt = 0) {
@@ -787,6 +807,15 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       const key = gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5));
       return [...buildings.values()].some(building => building.type === 'cattle-barn' && building.derived?.tileSet?.has(key));
     },
+    isBuildingAt(x, z) {
+      const gx = Math.floor(x / TILE + .5), gz = Math.floor(z / TILE + .5);
+      return [...buildings.values()].some(building => {
+        if (!building.placed) return false;
+        const span = definitions[building.type].footprintSpan;
+        const buildingGx = Math.round(building.site.x / TILE), buildingGz = Math.round(building.site.z / TILE);
+        return Math.abs(gx - buildingGx) <= span && Math.abs(gz - buildingGz) <= span;
+      });
+    },
     constructionState() {
       if (!selected?.placed || isComplete(selected)) return null;
       const phase = selected.constructionPhase;
@@ -819,6 +848,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
         building.constructionPhase = 'complete';
         repaintRequested = null;
         clearConstructionOutline(building);
+        registerBuildingOccluder(building);
         onHint('');
         onChange();
         return true;
@@ -843,6 +873,7 @@ export function createBuildingManager({ getSiteAt, getTerrain, setCollider, onCh
       clearGateVisual(building);
       building.penVisual?.setEditing(false);
       grantStarterCows(building);
+      registerBuildingOccluder(building);
       onHint('');
       onChange();
       return true;

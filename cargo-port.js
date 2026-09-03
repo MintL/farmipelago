@@ -1,4 +1,4 @@
-import { THREE, box, mats } from './shared.js?v=bale-wrapper-20260902-1';
+import { THREE, createVoxelLantern, createVoxelModel, mats } from './shared.js?v=water-splash-base-20260903-1';
 
 const DECK_HEIGHT = .18;
 const DECK_CLEARANCE = .04;
@@ -29,13 +29,19 @@ export function cargoDeckContains(site, x, z, margin = 0) {
     Math.abs(localZ - DECK_CENTER_Z) <= DECK_DEPTH * .5 + margin;
 }
 
-export function createCargoPort(site) {
+export function createCargoPort(site, worldSeed = 0) {
   const group = new THREE.Group();
+  const padRoot = new THREE.Group();
   const staticGroup = new THREE.Group();
   const cargoGroup = new THREE.Group();
   const craftRoot = new THREE.Group();
   const colliders = [];
   const outwardYaw = Math.atan2(site.outward.x, site.outward.z);
+  let lanternRandomState = (Number(worldSeed) ^ Math.imul(Math.round(site.x * 97), 0x45d9f3b) ^ Math.imul(Math.round(site.z * 101), 0x119de1f3)) >>> 0;
+  const lanternRandom = () => {
+    lanternRandomState = (Math.imul(lanternRandomState, 1664525) + 1013904223) >>> 0;
+    return lanternRandomState / 0x100000000;
+  };
   let loadRatio = 0;
   let phase = 'cooldown';
   let phaseTime = 0;
@@ -49,7 +55,12 @@ export function createCargoPort(site) {
   const deckBaseY = site.y + DECK_CLEARANCE;
   group.position.set(site.x, deckBaseY, site.z);
   group.rotation.y = outwardYaw;
-  group.add(staticGroup, cargoGroup, craftRoot);
+  padRoot.name = 'cargo-pad';
+  padRoot.userData.occlusionIgnoreAtVehicle = vehicleState => Boolean(vehicleState.grounded)
+    && cargoDeckContains(site, vehicleState.x, vehicleState.z, .35)
+    && vehicleState.y <= site.y + DECK_CLEARANCE + DECK_HEIGHT + .35;
+  padRoot.add(staticGroup, cargoGroup);
+  group.add(padRoot, craftRoot);
 
   const deckMaterial = new THREE.MeshStandardMaterial({ color: 0x46535a, roughness: .82, metalness: .16 });
   const deckEdgeMaterial = new THREE.MeshStandardMaterial({ color: 0x26343a, roughness: .78, metalness: .22 });
@@ -59,7 +70,14 @@ export function createCargoPort(site) {
   const glassMaterial = new THREE.MeshStandardMaterial({ color: 0x78c7da, emissive: 0x174452, emissiveIntensity: .28, roughness: .2, metalness: .12 });
   const lightMaterial = new THREE.MeshStandardMaterial({ color: 0xffe990, emissive: 0xffb82d, emissiveIntensity: 1.5, roughness: .35 });
   const redLightMaterial = new THREE.MeshStandardMaterial({ color: 0xff6b55, emissive: 0xa51f18, emissiveIntensity: 1.45, roughness: .35 });
-  const materials = [deckMaterial, deckEdgeMaterial, markingMaterial, cargoMaterial, cargoDarkMaterial, glassMaterial, lightMaterial, redLightMaterial];
+  const lanternGlowMaterial = new THREE.MeshStandardMaterial({ color: 0xffdfa0, emissive: 0xffa62e, emissiveIntensity: .25, roughness: .38 });
+  markingMaterial.name = 'cargo-marking-light';
+  lightMaterial.name = 'cargo-warm-light';
+  redLightMaterial.name = 'cargo-red-light';
+  lanternGlowMaterial.name = 'cargo-lantern-glow';
+  const materials = [deckMaterial, deckEdgeMaterial, markingMaterial, cargoMaterial, cargoDarkMaterial, glassMaterial, lightMaterial, redLightMaterial, lanternGlowMaterial];
+  const lanternLights = [];
+  let nightMaterials = null;
 
   const localToWorld = (x, z) => ({
     x: site.x + x * Math.cos(outwardYaw) + z * Math.sin(outwardYaw),
@@ -80,50 +98,101 @@ export function createCargoPort(site) {
     });
   };
 
-  const addStaticBox = (width, height, depth, material, x, y, z, collider = false) => {
-    const mesh = box(width, height, depth, material);
-    mesh.position.set(x, y + height * .5, z);
-    staticGroup.add(mesh);
-    if (collider) addCollider(x, y, z, width, height, depth);
-    return mesh;
+  const deckParts = [];
+  const addDeckVoxels = (material, at, size) => deckParts.push({ material, at, size });
+  const markingCells = new Set();
+  for (let gx = 0; gx < 25; gx++) for (let gz = 0; gz < 27; gz++) {
+    const distance = Math.hypot(gx - 12, gz - 14);
+    if ((distance >= 5.7 && distance <= 6.7) ||
+      (gx === 12 && Math.abs(gz - 14) <= 2) || (gz === 14 && Math.abs(gx - 12) <= 2)) {
+      markingCells.add(`${gx},${gz}`);
+    }
+  }
+  for (let gz = 0; gz < 27; gz++) {
+    let start = 0;
+    while (start < 25) {
+      const marked = markingCells.has(`${start},${gz}`);
+      let end = start + 1;
+      while (end < 25 && markingCells.has(`${end},${gz}`) === marked) end++;
+      addDeckVoxels(marked ? markingMaterial : deckMaterial, [start, 0, gz], [end - start, 1, 1]);
+      start = end;
+    }
+  }
+  addDeckVoxels(deckEdgeMaterial, [0, 1, 26], [25, 1, 1]);
+  for (const edgeX of [0, 24]) {
+    addDeckVoxels(deckEdgeMaterial, [edgeX, 1, 16], [1, 2, 10]);
+    addDeckVoxels(markingMaterial, [edgeX, 1, 3], [1, 3, 1]);
+  }
+  addDeckVoxels(cargoDarkMaterial, [2, 1, 0], [7, 1, 4]);
+  addDeckVoxels(deckEdgeMaterial, [2, 2, 1], [2, 5, 2]);
+  staticGroup.add(createVoxelModel(deckParts, {
+    name: 'cargo-pad-model',
+    origin: [-12.5, 0, -3],
+  }));
+
+  const addHangingLantern = (name, poleX, poleTopY, poleZ, yaw) => {
+    const { group: lantern } = createVoxelLantern({
+      glowMaterial: lanternGlowMaterial,
+      hanging: true,
+      name,
+    });
+    lantern.position.set(
+      poleX - Math.sin(yaw) * .5,
+      poleTopY - .8,
+      poleZ - Math.cos(yaw) * .5,
+    );
+    lantern.rotation.y = yaw;
+    const light = new THREE.PointLight(0xffb653, 0, 5, 2);
+    light.position.set(0, .1, 0);
+    light.castShadow = false;
+    lantern.add(light);
+    lanternLights.push(light);
+    staticGroup.add(lantern);
   };
 
-  addStaticBox(DECK_WIDTH, DECK_HEIGHT, DECK_DEPTH, deckMaterial, 0, 0, DECK_CENTER_Z, true);
-  addStaticBox(5.05, .13, .16, deckEdgeMaterial, 0, DECK_HEIGHT, 4.77, true);
+  addHangingLantern('cargo-pole-lantern', -1.9, 1.4, -.2, lanternRandom() * Math.PI * 2);
+
+  // Gameplay collision keeps the established dimensions and positions even
+  // though the visible pad now resolves to the small construction grid.
+  addCollider(0, 0, DECK_CENTER_Z, DECK_WIDTH, DECK_HEIGHT, DECK_DEPTH);
+  addCollider(0, DECK_HEIGHT, 4.77, 5.05, .13, .16);
   for (const x of [-2.37, 2.37]) {
-    addStaticBox(.16, .32, 2.1, deckEdgeMaterial, x, DECK_HEIGHT, 3.66, true);
-    addStaticBox(.22, .5, .22, markingMaterial, x, DECK_HEIGHT, .05, true);
+    addCollider(x, DECK_HEIGHT, 3.66, .16, .32, 2.1);
+    addCollider(x, DECK_HEIGHT, .05, .22, .5, .22);
   }
-  addStaticBox(1.45, .12, .72, cargoDarkMaterial, -1.5, DECK_HEIGHT, -.14, true);
-  addStaticBox(.38, 1.18, .38, deckEdgeMaterial, -2.0, DECK_HEIGHT, -.1, true);
-  addStaticBox(.52, .12, .52, lightMaterial, -2.0, DECK_HEIGHT + 1.18, -.1);
+  addCollider(-1.5, DECK_HEIGHT, -.14, 1.45, .12, .72);
+  addCollider(-2.0, DECK_HEIGHT, -.1, .38, 1.18, .38);
 
-  for (let index = 0; index < 12; index++) {
-    const angle = index / 12 * Math.PI * 2;
-    const stripe = addStaticBox(.5, .035, .14, markingMaterial, Math.sin(angle) * 1.48, DECK_HEIGHT + .006, 2.3 + Math.cos(angle) * 1.48);
-    stripe.rotation.y = angle;
-  }
-  const centerMark = addStaticBox(.22, .04, 1.05, markingMaterial, 0, DECK_HEIGHT + .008, 2.3);
-  const crossMark = addStaticBox(1.05, .04, .22, markingMaterial, 0, DECK_HEIGHT + .009, 2.3);
-  centerMark.castShadow = crossMark.castShadow = false;
-
-  for (const [x, z] of [[-2.18, .35], [2.18, .35], [-2.18, 4.45], [2.18, 4.45]]) {
-    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(.09, .12, .2, 8), lightMaterial);
-    beacon.position.set(x, DECK_HEIGHT + .1, z);
-    beacon.castShadow = true;
-    staticGroup.add(beacon);
-    addCollider(x, DECK_HEIGHT, z, .2, .2, .2);
-  }
+  const companionAnchors = [[-2.16, .48], [2.16, .48], [-2.16, 4.32], [2.16, 4.32]];
+  const [companionAnchorX, companionAnchorZ] = companionAnchors[Math.floor(lanternRandom() * companionAnchors.length)];
+  const companionX = companionAnchorX + (lanternRandom() - .5) * .18;
+  const companionZ = companionAnchorZ + (lanternRandom() - .5) * .24;
+  const companionPole = createVoxelModel([
+    { material: deckEdgeMaterial, at: [0, 0, 0], size: [2, 6, 2] },
+  ], { name: 'cargo-companion-lantern-pole', origin: [-1, 0, -1] });
+  companionPole.position.set(companionX, DECK_HEIGHT, companionZ);
+  staticGroup.add(companionPole);
+  addHangingLantern(
+    'cargo-companion-lantern',
+    companionX,
+    DECK_HEIGHT + 1.2,
+    companionZ,
+    lanternRandom() * Math.PI * 2,
+  );
+  addCollider(companionX, DECK_HEIGHT, companionZ, .38, 1.2, .38);
 
   const crates = [];
   for (const [index, position] of [[0, [1.48, .39, -.05]], [1, [1.95, .39, -.05]], [2, [1.72, .81, -.05]]]) {
-    const crate = new THREE.Group();
-    const body = box(.42, .42, .42, cargoMaterial);
-    const bandX = box(.47, .08, .46, cargoDarkMaterial);
-    const bandZ = box(.46, .08, .47, cargoDarkMaterial);
-    bandX.position.y = bandZ.position.y = .03;
-    bandZ.rotation.y = Math.PI * .5;
-    crate.add(body, bandX, bandZ);
+    const crateParts = [];
+    for (let vx = 0; vx < 2; vx++) for (let vy = 0; vy < 2; vy++) for (let vz = 0; vz < 2; vz++) {
+      const darkCorner = (vx + vy + vz) % 3 === 0;
+      crateParts.push({
+        material: darkCorner ? cargoDarkMaterial : cargoMaterial,
+        at: [vx, vy, vz],
+        size: [1, 1, 1],
+      });
+    }
+    const crate = createVoxelModel(crateParts, { name: 'cargo-crate', origin: [-1, -1, -1] });
     crate.position.set(...position);
     crate.userData.basePosition = new THREE.Vector3(...position);
     crate.userData.pop = 0;
@@ -134,21 +203,13 @@ export function createCargoPort(site) {
 
   const stagedBales = [];
   for (const [index, position] of [[0, [1.28, .48, -.05]], [1, [1.96, .48, -.05]], [2, [1.28, 1.07, -.05]], [3, [1.96, 1.07, -.05]]]) {
-    const bale = new THREE.Group();
-    const body = box(.82, .56, 1.15, mats.bale);
-    bale.add(body);
-    for (const offset of [-.27, .27]) {
-      for (const y of [-.292, .292]) {
-        const band = box(.86, .035, .13, mats.baleBand);
-        band.position.set(0, y, offset);
-        bale.add(band);
-      }
-      for (const x of [-.422, .422]) {
-        const band = box(.035, .56, .13, mats.baleBand);
-        band.position.set(x, 0, offset);
-        bale.add(band);
-      }
-    }
+    const bale = createVoxelModel([
+      { material: mats.bale, at: [0, 0, 0], size: [4, 3, 1] },
+      { material: mats.baleBand, at: [0, 0, 1], size: [4, 3, 1] },
+      { material: mats.bale, at: [0, 0, 2], size: [4, 3, 2] },
+      { material: mats.baleBand, at: [0, 0, 4], size: [4, 3, 1] },
+      { material: mats.bale, at: [0, 0, 5], size: [4, 3, 1] },
+    ], { name: 'cargo-hay-bale', origin: [-2, -1.5, -3] });
     bale.position.set(...position);
     bale.userData.basePosition = new THREE.Vector3(...position);
     bale.userData.pop = 0;
@@ -162,12 +223,12 @@ export function createCargoPort(site) {
   const milkBandMaterial = new THREE.MeshStandardMaterial({ color: 0x6fa9bd, roughness: .68, metalness: .16 });
   materials.push(milkMaterial, milkBandMaterial);
   for (const [index, position] of [[0, [1.25, .42, -.05]], [1, [1.7, .42, -.05]], [2, [2.15, .42, -.05]], [3, [1.7, .92, -.05]]]) {
-    const can = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(.18, .22, .55, 10), milkMaterial);
-    body.castShadow = true; can.add(body);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(.2, .035, 5, 10), milkBandMaterial);
-    band.rotation.x = Math.PI * .5; band.position.y = .08; can.add(band);
-    const cap = box(.18, .08, .18, milkBandMaterial); cap.position.y = .32; can.add(cap);
+    const can = createVoxelModel([
+      { material: milkBandMaterial, at: [0, 0, 0], size: [2, 1, 2] },
+      { material: milkMaterial, at: [0, 1, 0], size: [2, 1, 2] },
+      { material: milkBandMaterial, at: [0, 2, 0], size: [2, 1, 2] },
+      { material: milkBandMaterial, at: [0, 3, 0], size: [1, 1, 1] },
+    ], { name: 'cargo-milk-can', origin: [-1, -1, -1] });
     can.position.set(...position); can.userData.basePosition = new THREE.Vector3(...position); can.userData.pop = 0; can.visible = false;
     cargoGroup.add(can); stagedMilk[index] = can;
   }
@@ -211,6 +272,7 @@ export function createCargoPort(site) {
 
   return {
     group,
+    occluders: [padRoot, craftRoot],
     colliders,
     isNear(x, z, range = 3.15) {
       return Math.hypot(x - site.x, z - site.z) <= range;
@@ -234,6 +296,27 @@ export function createCargoPort(site) {
     setCargoKind(nextKind) {
       cargoKind = ['hay-bale', 'milk'].includes(nextKind) ? nextKind : 'crops';
       this.setLoadRatio(loadRatio);
+    },
+    setNightAmount(amount, lanternAmountInput = amount) {
+      const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
+      const lanternAmount = THREE.MathUtils.clamp(Number(lanternAmountInput) || 0, 0, 1);
+      if (!nightMaterials) {
+        nightMaterials = { marking: new Set(), warm: new Set(), red: new Set(), lantern: new Set() };
+        group.traverse(child => {
+          const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+          for (const material of childMaterials) {
+            if (material?.name === 'cargo-marking-light') nightMaterials.marking.add(material);
+            else if (material?.name === 'cargo-warm-light') nightMaterials.warm.add(material);
+            else if (material?.name === 'cargo-red-light') nightMaterials.red.add(material);
+            else if (material?.name === 'cargo-lantern-glow') nightMaterials.lantern.add(material);
+          }
+        });
+      }
+      nightMaterials.marking.forEach(material => { material.emissiveIntensity = .18 + nightAmount * .16; });
+      nightMaterials.warm.forEach(material => { material.emissiveIntensity = 1.5 + nightAmount * 1.3; });
+      nightMaterials.red.forEach(material => { material.emissiveIntensity = 1.45 + nightAmount * .75; });
+      nightMaterials.lantern.forEach(material => { material.emissiveIntensity = .25 + lanternAmount * 2.75; });
+      lanternLights.forEach(light => { light.intensity = lanternAmount * 6; });
     },
     requestPickup(camera) {
       pickupQueued = true;
@@ -341,9 +424,6 @@ export function createCargoPort(site) {
       });
       const flightPower = phase === 'dwell' || phase === 'pickup' ? .48 : 1;
       craft.animate(dt, flightPower, phase === 'dwell' || phase === 'pickup', phase === 'pickup' ? phaseTime / PICKUP_SECONDS : 0);
-      for (const [index, beacon] of staticGroup.children.filter(child => child.geometry?.type === 'CylinderGeometry').entries()) {
-        beacon.scale.y = .88 + Math.sin(phaseTime * 4 + index) * .12;
-      }
       return { shipmentPickedUp, departed };
     },
     dispose() {
@@ -354,47 +434,87 @@ export function createCargoPort(site) {
 
 function createVtol(mats) {
   const group = new THREE.Group();
+  const modelRoot = new THREE.Group();
   const rotors = [];
-  const body = box(2.35, 1.25, 3.25, mats.cargoMaterial); body.position.y = 1.28; group.add(body);
-  const belly = box(1.82, .5, 2.5, mats.cargoDarkMaterial); belly.position.set(0, .58, .2); group.add(belly);
-  const roof = box(1.72, .32, 1.7, mats.markingMaterial); roof.position.set(0, 2.05, .15); group.add(roof);
-  const cockpit = box(1.72, .72, .12, mats.glassMaterial); cockpit.position.set(0, 1.5, -1.68); cockpit.rotation.x = -.18; group.add(cockpit);
-  const hatchPivot = new THREE.Group(); hatchPivot.position.set(0, 1.53, 1.66); group.add(hatchPivot);
-  const hatch = box(1.35, .76, .08, mats.cargoDarkMaterial); hatch.position.y = -.38; hatchPivot.add(hatch);
-  const tail = box(.72, .72, 1.05, mats.cargoMaterial); tail.position.set(0, 1.36, 2.08); group.add(tail);
-  const tailFin = box(.15, .88, .72, mats.markingMaterial); tailFin.position.set(0, 2.0, 2.14); group.add(tailFin);
+  group.add(modelRoot);
+  modelRoot.position.y = .06;
 
-  for (const side of [-1, 1]) {
-    const boom = box(1.55, .18, .22, mats.deckEdgeMaterial); boom.position.set(side * 1.62, 1.62, .05); group.add(boom);
-    const skid = box(.12, .12, 2.2, mats.deckEdgeMaterial); skid.position.set(side * .82, .12, .2); group.add(skid);
-    for (const z of [-.72, 1.0]) {
-      const leg = box(.1, .52, .1, mats.deckEdgeMaterial); leg.position.set(side * .82, .36, z); leg.rotation.z = side * -.18; group.add(leg);
-    }
-    for (const z of [-.92, 1.03]) {
-      const pod = new THREE.Group();
-      pod.position.set(side * 2.18, 1.66, z);
-      group.add(pod);
-      const housing = new THREE.Mesh(new THREE.CylinderGeometry(.62, .62, .32, 12), mats.cargoDarkMaterial);
-      housing.position.y = 0;
-      housing.castShadow = true;
-      pod.add(housing);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(.48, .08, 6, 12), mats.deckMaterial);
-      ring.rotation.x = Math.PI * .5;
-      ring.position.y = .19;
-      ring.castShadow = true;
-      pod.add(ring);
-      const rotor = new THREE.Group(); rotor.position.y = .23; pod.add(rotor);
-      const bladeA = box(1.02, .035, .1, mats.markingMaterial); rotor.add(bladeA);
-      const bladeB = box(.1, .035, 1.02, mats.markingMaterial); rotor.add(bladeB);
-      rotors.push(rotor);
-    }
-  }
+  const bodyParts = [
+    { material: mats.cargoDarkMaterial, at: [1, 2, 1], size: [10, 3, 14] },
+    { material: mats.cargoMaterial, at: [0, 5, 0], size: [12, 4, 16] },
+    { material: mats.cargoMaterial, at: [1, 9, 2], size: [10, 2, 12] },
+    { material: mats.markingMaterial, at: [2, 11, 4], size: [8, 2, 8] },
+    { material: mats.cargoDarkMaterial, at: [-1, 7, 4], size: [1, 1, 8] },
+    { material: mats.cargoDarkMaterial, at: [12, 7, 4], size: [1, 1, 8] },
+    { material: mats.glassMaterial, at: [2, 7, -1], size: [8, 3, 1] },
+    { material: mats.glassMaterial, at: [3, 10, 0], size: [6, 1, 1] },
+    { material: mats.cargoMaterial, at: [4, 5, 16], size: [4, 4, 6] },
+    { material: mats.markingMaterial, at: [5, 9, 18], size: [2, 3, 3] },
+    { material: mats.markingMaterial, at: [5, 12, 19], size: [2, 4, 2] },
+    { material: mats.deckEdgeMaterial, at: [1, 0, 2], size: [1, 1, 12] },
+    { material: mats.deckEdgeMaterial, at: [10, 0, 2], size: [1, 1, 12] },
+    { material: mats.deckEdgeMaterial, at: [1, 1, 3], size: [1, 1, 1] },
+    { material: mats.deckEdgeMaterial, at: [1, 1, 12], size: [1, 1, 1] },
+    { material: mats.deckEdgeMaterial, at: [10, 1, 3], size: [1, 1, 1] },
+    { material: mats.deckEdgeMaterial, at: [10, 1, 12], size: [1, 1, 1] },
+    { material: mats.deckEdgeMaterial, at: [-5, 8, 3], size: [5, 1, 2] },
+    { material: mats.deckEdgeMaterial, at: [12, 8, 3], size: [5, 1, 2] },
+    { material: mats.deckEdgeMaterial, at: [-5, 8, 13], size: [5, 1, 2] },
+    { material: mats.deckEdgeMaterial, at: [12, 8, 13], size: [5, 1, 2] },
+    { material: mats.lightMaterial, at: [5, 5, -1], size: [2, 1, 1] },
+    { material: mats.redLightMaterial, at: [-1, 8, 2], size: [1, 1, 1] },
+    { material: mats.lightMaterial, at: [12, 8, 2], size: [1, 1, 1] },
+  ];
+  modelRoot.add(createVoxelModel(bodyParts, {
+    name: 'cargo-vtol-body',
+    origin: [-6, 0, -9],
+  }));
 
-  const noseLight = box(.3, .16, .08, mats.lightMaterial); noseLight.position.set(0, 1.04, -1.76); group.add(noseLight);
-  for (const side of [-1, 1]) {
-    const light = box(.16, .14, .16, side < 0 ? mats.redLightMaterial : mats.lightMaterial);
-    light.position.set(side * 1.16, 1.62, -.9);
-    group.add(light);
+  const hatchPivot = new THREE.Group();
+  hatchPivot.position.set(0, 1.53, 1.66);
+  modelRoot.add(hatchPivot);
+  hatchPivot.add(createVoxelModel([
+    { material: mats.cargoDarkMaterial, at: [0, 0, 0], size: [6, 1, 1] },
+    { material: mats.cargoDarkMaterial, at: [0, 3, 0], size: [6, 1, 1] },
+    { material: mats.cargoDarkMaterial, at: [0, 1, 0], size: [1, 2, 1] },
+    { material: mats.cargoDarkMaterial, at: [5, 1, 0], size: [1, 2, 1] },
+    { material: mats.cargoMaterial, at: [1, 1, 0], size: [4, 2, 1] },
+  ], { name: 'cargo-vtol-hatch', origin: [-3, -4, -.5] }));
+
+  const podParts = [
+    { material: mats.cargoDarkMaterial, at: [1, 0, 0], size: [5, 2, 1] },
+    { material: mats.cargoDarkMaterial, at: [1, 0, 6], size: [5, 2, 1] },
+    { material: mats.cargoDarkMaterial, at: [0, 0, 1], size: [1, 2, 5] },
+    { material: mats.cargoDarkMaterial, at: [6, 0, 1], size: [1, 2, 5] },
+    { material: mats.deckMaterial, at: [2, 2, 1], size: [3, 1, 1] },
+    { material: mats.deckMaterial, at: [2, 2, 5], size: [3, 1, 1] },
+    { material: mats.deckMaterial, at: [1, 2, 2], size: [1, 1, 3] },
+    { material: mats.deckMaterial, at: [5, 2, 2], size: [1, 1, 3] },
+  ];
+  const rotorParts = [
+    { material: mats.markingMaterial, at: [2, 0, 2], size: [1, 1, 1] },
+    { material: mats.markingMaterial, at: [0, 0, 2], size: [2, 1, 1] },
+    { material: mats.markingMaterial, at: [3, 0, 2], size: [2, 1, 1] },
+    { material: mats.markingMaterial, at: [2, 0, 0], size: [1, 1, 2] },
+    { material: mats.markingMaterial, at: [2, 0, 3], size: [1, 1, 2] },
+  ];
+  for (const side of [-1, 1]) for (const z of [-1, 1]) {
+    const pod = new THREE.Group();
+    pod.position.set(side * 2.2, 1.66, z);
+    pod.add(createVoxelModel(podParts, {
+      name: 'cargo-vtol-fan-housing',
+      origin: [-3.5, -1, -3.5],
+    }));
+    const rotor = new THREE.Group();
+    rotor.position.y = .46;
+    rotor.add(createVoxelModel(rotorParts, {
+      name: 'cargo-vtol-rotor',
+      origin: [-2.5, -.5, -2.5],
+      receive: false,
+    }));
+    pod.add(rotor);
+    modelRoot.add(pod);
+    rotors.push(rotor);
   }
   group.scale.setScalar(.92);
 

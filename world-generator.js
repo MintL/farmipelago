@@ -1,22 +1,45 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, SOIL_DEPTH, TILE, box, gridKey, THREE } from './shared.js?v=bale-wrapper-20260902-1';
-import { cropStats as environmentalCropStats, crops } from './crops.js?v=bale-wrapper-20260902-1';
-import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=cattle-20260902-1';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from './shared.js?v=water-splash-base-20260903-1';
+import { crops } from './crops.js?v=fixed-crop-yield-20260903-1';
+import { cargoDeckContains, createCargoPort } from './cargo-port.js?v=water-splash-base-20260903-1';
 import { createForageSystem } from './forage.js?v=bale-wrapper-20260902-1';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;
 const BRIDGE_WIDTH = TILE * 1.25;
 const BRIDGE_THICKNESS = 0.18;
+const BRIDGE_OCCLUSION_END_CLEARANCE = TILE * 2.25;
+const BRIDGE_OCCLUSION_SIDE_CLEARANCE = TILE * .75;
+const BRIDGE_OCCLUSION_HEIGHT_CLEARANCE = TILE * .75;
 const STARTER_ISLAND_ID = 0;
-const BARN_TREE_CLEARANCE = 3.5 * TILE;
+const NORTH_ISLAND_ID = 1;
+const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;
+const WORKSHOP_YAW = Math.PI * 1.5;
 const WATER_DEPTH = .22;
 const ISLAND_LAYOUT_SCALE = 1.5;
 const STARTER_HUB_RADIUS = 7.2;
 const SECOND_STARTER_RADIUS = 7.0;
 const CROP_STAGE_SECONDS = 3;
 const GRASS_STAGE_SECONDS = 10;
+const TILE_YIELD_LITRES = 200;
 const WEED_CHANCE = .4;
 const READY_PULSE_SECONDS = 3.2;
+const PROP_SPREAD = TILE * .64;
+const TREE_CHANCE_CAP = .22;
+const ROCK_CHANCE_CAP = .12;
+const GROUND_COVER_CHANCE_CAP = .42;
+const GRASS_EDGE_CAP_DEPTH = .022;
+const GRASS_EDGE_CAP_HEIGHT = .05;
+const GRASS_EDGE_CAP_RECESS = .012;
+const SURFACE_TOP_LIFT = .002;
+const SURFACE_CELL_COUNT = Math.round(TILE / MODEL_VOXEL);
+const SURFACE_CELL_VARIATION = .1;
+const SURFACE_CELL_LEVELS = [-1, -.5, -.25, 0, 0, .25, .5, 1];
+const SNOW_COLOR = new THREE.Color(0xe8f0ed);
+const CONTACT_BED_HEIGHT = .008;
+const BARE_SOIL_COLOR = new THREE.Color(0x94795d);
+const PROP_DIRT_COLOR = new THREE.Color(0x82694f);
+const SOIL_STRATA_HEIGHT = .28;
+const SOIL_STRATA_COLORS = [0x896754, 0x8f6b55, 0x83614e, 0x8b6751].map(color => new THREE.Color(color));
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ease = value => value * value * (3 - 2 * value);
 
@@ -25,6 +48,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const terrainNoise = createPerlin(seed ^ 0x9e3779b9);
   const moistureNoise = createPerlin(seed ^ 0x243f6a88);
   const sunNoise = createPerlin(seed ^ 0xb7e15162);
+  // Ground wear has its own deterministic stream so it cannot perturb island
+  // generation or the established prop layout for a saved seed.
+  const wearNoise = createPerlin(seed ^ 0xa511e9b3);
+  const wearRandom = seededRandom(seed ^ 0x63d83595);
+  const contactRandom = seededRandom(seed ^ 0xc2b2ae35);
+  const propDirtRandom = seededRandom(seed ^ 0x27d4eb2f);
   const group = new THREE.Group();
   const terrain = new Map();
   const obstacles = [];
@@ -35,15 +64,19 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const foliageMaterials = new Map();
   const tallGrass = new THREE.Group();
   const groundCoverPlacements = [];
+  const contactBedPlacements = [];
+  const propDirtSpots = [];
   const water = new THREE.Group();
   const waterMotion = [];
   const waterfalls = [];
   const waterParticles = [];
+  const soilStrataMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
   const grainSplashMaterials = Object.fromEntries([
     ['corn', 0xf2c84b], ['wheat', 0xd9b65a], ['barley', 0xc9a552], ['canola', 0xf0ce32], ['soybean', 0xb78e48],
   ].map(([cropId, color]) => [cropId, new THREE.MeshBasicMaterial({ color, depthTest: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })]));
   let tallGrassGeometry = null;
-  let barnArea = null;
+  let workshopArea = null;
+  let setWorkshopNightAmount = () => {};
   let plantedCount = 0;
   let readyCount = 0;
   let weedCount = 0;
@@ -95,7 +128,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     };
     terrain.set(gridKey(gx, gz), {
       gx, gz, x, z, topY, baseY, islandId, radial, dirtDepth,
-      environment, normalGrassColor: null, surfaceBatch: null, surfaceInstance: -1,
+      environment, normalGrassColor: null, bareSoil: 0,
+      surfaceBatch: null, surfaceInstance: -1,
+      surfaceTopBatch: null, surfaceTopColorOffset: -1, surfaceTopColorCount: 0,
       tallGrass: null, groundCover: [], stones: [], hasTree: false, nearWater: 0,
       ploughed: false, water: false, reserved: false, noDecoration: false, crop: null,
       looseGrassLitres: 0,
@@ -105,19 +140,17 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const grassColorFor = tile => {
     const raised = tile.topY > tile.baseY + .01;
     const profile = environmentProfile(tile.environment);
-    const yellowing = (1 - profile.moisture) * (.45 + profile.sun * .55);
-    const wetShade = profile.wet * profile.shady;
-    const hue = THREE.MathUtils.lerp(.325, .155, yellowing);
-    const saturation = THREE.MathUtils.clamp(.40 + profile.moisture * .22 + profile.sunny * .08 - profile.veryDry * .08, .34, .68);
+    const dryWarmth = profile.dry * (.5 + profile.sunny * .5);
+    const wetDepth = profile.wet * (.6 + profile.shady * .4);
+    const hue = .285 - dryWarmth * .105 + wetDepth * .035;
+    const saturation = THREE.MathUtils.clamp(.52 + wetDepth * .08 + dryWarmth * .04, .48, .62);
     const lightness = THREE.MathUtils.clamp(
-      .43 + profile.sun * .08 + profile.veryDry * profile.sunny * .05 - wetShade * .18 - profile.shade * .035 + (raised ? .015 : 0),
-      .24,
-      .55,
+      .45 + (profile.sun - .5) * .045 - profile.shady * .018 - wetDepth * .015 +
+        dryWarmth * profile.sunny * .012 + (raised ? .006 : 0),
+      .415,
+      .48,
     );
-    const quantizedHue = Math.round(hue * 28) / 28;
-    const quantizedSaturation = Math.round(saturation * 12) / 12;
-    const quantizedLightness = Math.round(lightness * 14) / 14;
-    return new THREE.Color().setHSL(quantizedHue, quantizedSaturation, quantizedLightness);
+    return new THREE.Color().setHSL(hue, saturation, lightness);
   };
 
   const finalizeEnvironment = (cells, waterTiles) => {
@@ -136,12 +169,123 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   };
 
+  const wearLobes = [];
+  const addWearPatch = (tile, radius, strength) => {
+    if (!tile || tile.water) return;
+    const addLobe = (x, z, lobeRadius, lobeStrength) => wearLobes.push({
+      x, z, radius: lobeRadius, strength: lobeStrength,
+      islandId: tile.islandId, topY: tile.topY,
+    });
+    addLobe(tile.x, tile.z, radius, strength);
+    for (let index = 0; index < 2; index++) {
+      const angle = wearRandom() * Math.PI * 2;
+      const distance = radius * (.22 + wearRandom() * .3);
+      addLobe(
+        tile.x + Math.cos(angle) * distance,
+        tile.z + Math.sin(angle) * distance,
+        radius * (.42 + wearRandom() * .2),
+        strength * (.62 + wearRandom() * .18),
+      );
+    }
+  };
+
+  const bareSoilAt = (x, z, islandId, topY) => {
+    let amount = 0;
+    for (const lobe of wearLobes) {
+      if (lobe.islandId !== islandId || Math.abs(lobe.topY - topY) > .01) continue;
+      const distance = Math.hypot(x - lobe.x, z - lobe.z) / lobe.radius;
+      if (distance >= 1) continue;
+      const falloff = 1 - THREE.MathUtils.smoothstep(distance, .16, 1);
+      const breakup = .86 + normalizeNoise(wearNoise(x * .46 + 6.3, z * .46 - 12.7)) * .24;
+      amount = Math.max(amount, falloff * lobe.strength * breakup);
+    }
+    return THREE.MathUtils.clamp(amount, 0, 1);
+  };
+
+  const buildBareSoilWear = (workshopTile, cargoTile, bridgeGaps, islands) => {
+    addWearPatch(workshopTile, 2.75, .92);
+    addWearPatch(cargoTile, 2.35, .82);
+    for (const gap of bridgeGaps) {
+      addWearPatch(gap.from, 1.65 + wearRandom() * .25, .74);
+      addWearPatch(gap.to, 1.65 + wearRandom() * .25, .74);
+    }
+
+    for (const island of islands) {
+      const candidates = [...terrain.values()]
+        .filter(tile => tile.islandId === island.id && !tile.water && !tile.reserved && !tile.noDecoration && tile.radial > .62)
+        .filter(tile => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => {
+          const neighbor = terrain.get(gridKey(tile.gx + dx, tile.gz + dz));
+          return !neighbor || neighbor.topY < tile.topY - .01;
+        }))
+        .map(tile => ({ tile, score: wearRandom() + environmentProfile(tile.environment).dry * .3 }))
+        .sort((first, second) => second.score - first.score);
+      const patchCount = island.r > 6 ? 2 : 1;
+      for (const candidate of candidates.slice(0, patchCount)) {
+        const dry = environmentProfile(candidate.tile.environment).dry;
+        addWearPatch(candidate.tile, 1.15 + wearRandom() * .65, .46 + dry * .18);
+      }
+    }
+
+    for (const tile of terrain.values()) {
+      if (!tile.water) tile.bareSoil = bareSoilAt(tile.x, tile.z, tile.islandId, tile.topY);
+    }
+  };
+
+  const addPropDirt = (tile, x, z, scale = 1) => {
+    if (!tile || propDirtRandom() > .7) return;
+    const spotCount = propDirtRandom() < .32 ? 2 : 1;
+    for (let index = 0; index < spotCount; index++) {
+      const angle = propDirtRandom() * Math.PI * 2;
+      const distance = MODEL_VOXEL * (.28 + propDirtRandom() * .48) * scale;
+      propDirtSpots.push({
+        x: x + Math.cos(angle) * distance,
+        z: z + Math.sin(angle) * distance,
+        radius: MODEL_VOXEL * (.9 + propDirtRandom() * .45) * scale,
+        strength: .25 + propDirtRandom() * .14,
+        islandId: tile.islandId,
+        topY: tile.topY,
+      });
+    }
+  };
+
+  const propDirtAt = (x, z, islandId, topY) => {
+    let amount = 0;
+    for (const spot of propDirtSpots) {
+      if (spot.islandId !== islandId || Math.abs(spot.topY - topY) > .01) continue;
+      const distance = Math.hypot(x - spot.x, z - spot.z) / spot.radius;
+      if (distance >= 1) continue;
+      amount = Math.max(amount, (1 - THREE.MathUtils.smoothstep(distance, .12, 1)) * spot.strength);
+    }
+    return amount;
+  };
+
+  const groundCoverPlacement = (tile, type, minScale, scaleRange) => {
+    const scale = minScale + random() * scaleRange;
+    const placement = {
+      tile,
+      type,
+      offsetX: (random() - .5) * PROP_SPREAD,
+      offsetZ: (random() - .5) * PROP_SPREAD,
+      yaw: random() * Math.PI * 2,
+      mirrorX: random() < .5 ? -1 : 1,
+      scaleX: scale * (.92 + random() * .16),
+      scaleY: scale * (.9 + random() * .2),
+      scaleZ: scale * (.92 + random() * .16),
+    };
+    groundCoverPlacements.push(placement);
+    const soilTolerant = type === 'dryScrub' || type === 'yellowGrass';
+    const visible = tile.bareSoil <= .7 && (tile.bareSoil <= .42 || soilTolerant);
+    if (visible && soilTolerant) {
+      addPropDirt(tile, tile.x + placement.offsetX, tile.z + placement.offsetZ, scale);
+    }
+  };
+
   const addTallGrass = tile => {
-    groundCoverPlacements.push({ tile, type: 'brightGrass', yaw: random() * Math.PI * 2, scale: .85 + random() * .3 });
+    groundCoverPlacement(tile, 'brightGrass', .85, .3);
   };
 
   const addGroundCover = (tile, type) => {
-    groundCoverPlacements.push({ tile, type, yaw: random() * Math.PI * 2, scale: .82 + random() * .36 });
+    groundCoverPlacement(tile, type, .82, .36);
   };
 
   const buildGroundCover = () => {
@@ -149,9 +293,20 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const geometry = tallGrassGeometry ||= new THREE.BoxGeometry(1, 1, 1);
     const materials = groundCoverMaterials();
     const placementsByType = new Map();
+    const shadowCastingTypes = new Set(['leafyBush', 'dryScrub', 'yellowGrass', 'darkGrass', 'reeds']);
     for (const placement of groundCoverPlacements) {
+      const soilTolerant = placement.type === 'dryScrub' || placement.type === 'yellowGrass';
+      if (placement.tile.bareSoil > .7 || (placement.tile.bareSoil > .42 && !soilTolerant)) continue;
       if (!placementsByType.has(placement.type)) placementsByType.set(placement.type, []);
       placementsByType.get(placement.type).push(placement);
+      const radius = placement.type === 'leafyBush' ? .28 : placement.type === 'dryScrub' ? .24 : .18;
+      contactBedPlacements.push({
+        tile: placement.tile,
+        x: placement.tile.x + placement.offsetX,
+        z: placement.tile.z + placement.offsetZ,
+        radius: radius * Math.max(placement.scaleX, placement.scaleZ),
+        pieces: placement.type === 'leafyBush' ? 4 : 3,
+      });
     }
     const transform = new THREE.Object3D();
     const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -160,18 +315,24 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       design.forEach((part, partIndex) => {
         const mesh = new THREE.InstancedMesh(geometry, materials[part.material], placements.length);
         mesh.name = `ground-cover-${type}-${partIndex}`;
-        mesh.castShadow = false;
+        mesh.castShadow = shadowCastingTypes.has(type);
         mesh.receiveShadow = false;
         placements.forEach((placement, index) => {
           const cos = Math.cos(placement.yaw);
           const sin = Math.sin(placement.yaw);
+          const localX = part.x * placement.scaleX * placement.mirrorX;
+          const localZ = part.z * placement.scaleZ;
           transform.position.set(
-            placement.tile.x + (part.x * cos + part.z * sin) * placement.scale,
-            placement.tile.topY + part.y * placement.scale,
-            placement.tile.z + (-part.x * sin + part.z * cos) * placement.scale,
+            placement.tile.x + placement.offsetX + localX * cos + localZ * sin,
+            placement.tile.topY + part.y * placement.scaleY,
+            placement.tile.z + placement.offsetZ - localX * sin + localZ * cos,
           );
-          transform.rotation.set(part.rx || 0, placement.yaw + (part.ry || 0), part.rz || 0);
-          transform.scale.set(part.w * placement.scale, part.h * placement.scale, part.d * placement.scale);
+          transform.rotation.set(
+            part.rx || 0,
+            placement.yaw + (part.ry || 0) * placement.mirrorX,
+            (part.rz || 0) * placement.mirrorX,
+          );
+          transform.scale.set(part.w * placement.scaleX, part.h * placement.scaleY, part.d * placement.scaleZ);
           transform.updateMatrix();
           mesh.setMatrixAt(index, transform.matrix);
           placement.tile.groundCover.push({ mesh, index, hidden });
@@ -181,6 +342,49 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         tallGrass.add(mesh);
       });
     }
+  };
+
+  const buildContactBeds = () => {
+    const pieceCount = contactBedPlacements.reduce((sum, placement) => sum + placement.pieces, 0);
+    if (!pieceCount) return;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+    const mesh = new THREE.InstancedMesh(geometry, material, pieceCount);
+    const transform = new THREE.Object3D();
+    const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+    let instance = 0;
+    mesh.name = 'ground-contact-beds';
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    for (const placement of contactBedPlacements) {
+      const baseColor = (placement.tile.normalGrassColor || mats.grass.color).clone()
+        .lerp(BARE_SOIL_COLOR, placement.tile.bareSoil * .88);
+      for (let piece = 0; piece < placement.pieces; piece++) {
+        const angle = contactRandom() * Math.PI * 2;
+        const distance = placement.radius * (piece ? .18 + contactRandom() * .62 : contactRandom() * .22);
+        transform.position.set(
+          placement.x + Math.cos(angle) * distance,
+          placement.tile.topY + SURFACE_TOP_LIFT + CONTACT_BED_HEIGHT * .5,
+          placement.z + Math.sin(angle) * distance,
+        );
+        transform.rotation.set(0, Math.round(contactRandom() * 3) * Math.PI * .5, 0);
+        transform.scale.set(
+          placement.radius * (.7 + contactRandom() * .7),
+          CONTACT_BED_HEIGHT,
+          placement.radius * (.22 + contactRandom() * .2),
+        );
+        transform.updateMatrix();
+        mesh.setMatrixAt(instance, transform.matrix);
+        mesh.setColorAt(instance, baseColor.clone().multiplyScalar(.76 + contactRandom() * .09));
+        placement.tile.groundCover.push({ mesh, index: instance, hidden });
+        instance++;
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingBox();
+    mesh.computeBoundingSphere();
+    tallGrass.add(mesh);
   };
 
   const addLowerLayers = (cells, topY, radius) => {
@@ -206,75 +410,277 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   };
 
+  const soilStrata = (x, z, topY, height, width = TILE, depth = TILE) => {
+    const bottomY = topY - height;
+    const sections = [];
+    let sectionTop = topY;
+    while (sectionTop > bottomY + .001) {
+      const band = Math.floor((sectionTop - .0001) / SOIL_STRATA_HEIGHT);
+      const sectionBottom = Math.max(bottomY, band * SOIL_STRATA_HEIGHT);
+      const sectionHeight = sectionTop - sectionBottom;
+      sections.push({
+        x, y: sectionBottom + sectionHeight * .5, z, width, height: sectionHeight, depth, band,
+      });
+      sectionTop = sectionBottom;
+    }
+    return sections;
+  };
+
+  const soilStrataColor = section => {
+    const color = SOIL_STRATA_COLORS[Math.abs(section.band) % SOIL_STRATA_COLORS.length].clone();
+    const variation = terrainNoise(section.x * .08 + 41.7, section.z * .08 - 13.2);
+    return color.offsetHSL(variation * .006, 0, variation * .012);
+  };
+
   const addLowerLayerInstances = () => {
     const geometry = new THREE.BoxGeometry(TILE, LAYER_DEPTH, TILE);
     const transform = new THREE.Matrix4();
+    const lowerBlockKey = (x, y, z) =>
+      `${Math.round(x / TILE)},${Math.round(y / LAYER_DEPTH * 2)},${Math.round(z / TILE)}`;
+    const occupied = new Set(lowerBlocks.map(block => lowerBlockKey(block.x, block.y, block.z)));
+    const shellBlocks = lowerBlocks.filter(block => [
+      [TILE, 0, 0], [-TILE, 0, 0], [0, 0, TILE], [0, 0, -TILE],
+      [0, -LAYER_DEPTH, 0],
+    ].some(([dx, dy, dz]) => !occupied.has(lowerBlockKey(block.x + dx, block.y + dy, block.z + dz))));
     for (const material of [mats.soil, mats.stone, mats.stoneDark]) {
-      const blocks = lowerBlocks.filter(block => block.material === material);
+      const blocks = shellBlocks.filter(block => block.material === material);
       if (!blocks.length) continue;
-      const mesh = new THREE.InstancedMesh(geometry, material, blocks.length);
+      const renderedBlocks = material === mats.soil
+        ? blocks.flatMap(block => soilStrata(
+          block.x, block.z, block.y + block.height * .5,
+          block.height, block.width, block.depth,
+        ))
+        : blocks;
+      const mesh = new THREE.InstancedMesh(
+        geometry,
+        material === mats.soil ? soilStrataMaterial : material,
+        renderedBlocks.length,
+      );
       mesh.name = 'lower-layers';
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      blocks.forEach((block, index) => {
-        transform.makeTranslation(block.x, block.y, block.z);
+      renderedBlocks.forEach((block, index) => {
+        transform.makeScale(block.width / TILE, block.height / LAYER_DEPTH, block.depth / TILE);
+        transform.setPosition(block.x, block.y, block.z);
         mesh.setMatrixAt(index, transform);
+        if (material === mats.soil) mesh.setColorAt(index, soilStrataColor(block));
       });
       mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.computeBoundingBox();
       mesh.computeBoundingSphere();
       group.add(mesh);
     }
   };
 
+  const grassColorAtCorner = (tile, cornerX, cornerZ) => {
+    const color = new THREE.Color(0, 0, 0);
+    const xOffsets = cornerX < 0 ? [-1, 0] : [0, 1];
+    const zOffsets = cornerZ < 0 ? [-1, 0] : [0, 1];
+    let count = 0;
+    for (const dx of xOffsets) for (const dz of zOffsets) {
+      const neighbor = terrain.get(gridKey(tile.gx + dx, tile.gz + dz));
+      if (!neighbor || neighbor.water || neighbor.islandId !== tile.islandId || Math.abs(neighbor.topY - tile.topY) > .01) continue;
+      color.add(neighbor.normalGrassColor || mats.grass.color);
+      count++;
+    }
+    if (count) color.multiplyScalar(1 / count);
+    else color.copy(tile.normalGrassColor || mats.grass.color);
+    const x = tile.x + cornerX * TILE * .5;
+    const z = tile.z + cornerZ * TILE * .5;
+    return color.lerp(BARE_SOIL_COLOR, bareSoilAt(x, z, tile.islandId, tile.topY) * .88);
+  };
+
+  const surfaceCellVariationAt = (x, z) => {
+    const cellX = Math.floor(x / MODEL_VOXEL);
+    const cellZ = Math.floor(z / MODEL_VOXEL);
+    let value = (seed ^ Math.imul(cellX, 0x1f123bb5) ^ Math.imul(cellZ, 0x5f356495)) >>> 0;
+    value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+    value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+    value = (value ^ (value >>> 16)) >>> 0;
+    return SURFACE_CELL_LEVELS[value & 7] * SURFACE_CELL_VARIATION;
+  };
+
+  const plateauLevelFor = tile => Math.round((tile.topY - tile.baseY) / PLATEAU_BLOCK_HEIGHT);
+  const isSnowTile = tile => tile?.islandId === NORTH_ISLAND_ID && plateauLevelFor(tile) >= 2;
+  const isHighestNorthTerrace = tile => tile?.islandId === NORTH_ISLAND_ID && plateauLevelFor(tile) >= 3;
+
+  const surfaceCellColor = (tile, corners, column, row) => {
+    const u = (column + .5) / SURFACE_CELL_COUNT;
+    const v = (row + .5) / SURFACE_CELL_COUNT;
+    const north = corners[0].clone().lerp(corners[1], u);
+    const south = corners[2].clone().lerp(corners[3], u);
+    const color = north.lerp(south, v);
+    const x = tile.x - TILE * .5 + (column + .5) * MODEL_VOXEL;
+    const z = tile.z - TILE * .5 + (row + .5) * MODEL_VOXEL;
+    const variation = surfaceCellVariationAt(x, z);
+    if (isSnowTile(tile)) {
+      return SNOW_COLOR.clone().offsetHSL(variation * .01, 0, variation * .025);
+    }
+    const bareSoil = bareSoilAt(x, z, tile.islandId, tile.topY);
+    const propDirt = propDirtAt(x, z, tile.islandId, tile.topY);
+    const hsl = { h: 0, s: 0, l: 0 };
+    color.getHSL(hsl);
+    hsl.l *= 1 + variation * THREE.MathUtils.clamp(1 - bareSoil - propDirt * 1.5, 0, 1);
+    color.setHSL(hsl.h, hsl.s, THREE.MathUtils.clamp(hsl.l, 0, 1));
+    return color.lerp(PROP_DIRT_COLOR, propDirt);
+  };
+
+  const setTileTopColor = (tile, color) => {
+    const attribute = tile?.surfaceTopBatch?.geometry.getAttribute('color');
+    if (!attribute || tile.surfaceTopColorOffset < 0) return;
+    for (let index = 0; index < tile.surfaceTopColorCount; index++) {
+      attribute.setXYZ(tile.surfaceTopColorOffset + index, color.r, color.g, color.b);
+    }
+    attribute.needsUpdate = true;
+  };
+
   const addTerrainInstances = () => {
     const surfaceGeometry = new THREE.BoxGeometry(TILE, GRASS_TOP, TILE);
     const soilGeometry = new THREE.BoxGeometry(TILE, 1, TILE);
     const surfaceMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+    const surfaceTopMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
+    const edgeCapGeometry = new THREE.BoxGeometry(1, GRASS_EDGE_CAP_HEIGHT, 1);
+    const edgeCapMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
     const tilesByIsland = new Map();
+    const exposedEdges = [];
     for (const tile of terrain.values()) {
       if (tile.water) continue;
       if (!tilesByIsland.has(tile.islandId)) tilesByIsland.set(tile.islandId, []);
       tilesByIsland.get(tile.islandId).push(tile);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const neighbor = terrain.get(gridKey(tile.gx + dx, tile.gz + dz));
+        if (!neighbor || neighbor.topY < tile.topY - .01) exposedEdges.push({ tile, dx, dz });
+      }
     }
+    const exposedSoilTiles = new Set(exposedEdges.map(edge => edge.tile));
 
     for (const [islandId, tiles] of tilesByIsland) {
       const surface = new THREE.InstancedMesh(surfaceGeometry, surfaceMaterial, tiles.length);
-      const soil = new THREE.InstancedMesh(soilGeometry, mats.soil, tiles.length);
+      const soilSections = tiles.filter(tile => exposedSoilTiles.has(tile)).flatMap(tile => soilStrata(
+        tile.x, tile.z, tile.topY - GRASS_TOP, tile.dirtDepth,
+      ));
+      const soil = new THREE.InstancedMesh(soilGeometry, soilStrataMaterial, soilSections.length);
+      // Five-by-five top cells preserve the model-voxel scale while the
+      // instanced terrain boxes continue to provide grass side walls.
+      const cellsPerTile = SURFACE_CELL_COUNT * SURFACE_CELL_COUNT;
+      const verticesPerTile = cellsPerTile * 4;
+      const indicesPerTile = cellsPerTile * 6;
+      const topGeometry = new THREE.BufferGeometry();
+      const topPositions = new Float32Array(tiles.length * verticesPerTile * 3);
+      const topColors = new Float32Array(tiles.length * verticesPerTile * 3);
+      const topIndices = new Uint32Array(tiles.length * indicesPerTile);
+      const topColorAttribute = new THREE.BufferAttribute(topColors, 3).setUsage(THREE.DynamicDrawUsage);
+      topGeometry.setAttribute('position', new THREE.BufferAttribute(topPositions, 3));
+      topGeometry.setAttribute('color', topColorAttribute);
+      topGeometry.setIndex(new THREE.BufferAttribute(topIndices, 1));
+      const top = new THREE.Mesh(topGeometry, surfaceTopMaterial);
       const matrix = new THREE.Matrix4();
       surface.name = `terrain-surface-${islandId}`;
       soil.name = `terrain-soil-${islandId}`;
+      top.name = `terrain-surface-top-${islandId}`;
       surface.castShadow = surface.receiveShadow = true;
       soil.castShadow = soil.receiveShadow = true;
+      top.castShadow = false;
+      top.receiveShadow = true;
 
       tiles.forEach((tile, index) => {
         matrix.makeTranslation(tile.x, tile.topY - GRASS_TOP * .5, tile.z);
         surface.setMatrixAt(index, matrix);
-        surface.setColorAt(index, tile.normalGrassColor || mats.grass.color);
+        surface.setColorAt(index, isSnowTile(tile) ? SNOW_COLOR : tile.normalGrassColor || mats.grass.color);
         tile.surfaceBatch = surface;
         tile.surfaceInstance = index;
 
-        matrix.makeScale(1, tile.dirtDepth, 1);
-        matrix.setPosition(tile.x, tile.topY - GRASS_TOP - tile.dirtDepth * .5, tile.z);
+        const tileVertexOffset = index * verticesPerTile;
+        const grassCorners = [[-1, -1], [1, -1], [-1, 1], [1, 1]]
+          .map(([cornerX, cornerZ]) => grassColorAtCorner(tile, cornerX, cornerZ));
+        for (let row = 0; row < SURFACE_CELL_COUNT; row++) {
+          for (let column = 0; column < SURFACE_CELL_COUNT; column++) {
+            const cell = row * SURFACE_CELL_COUNT + column;
+            const vertexOffset = tileVertexOffset + cell * 4;
+            const positionOffset = vertexOffset * 3;
+            const left = tile.x - TILE * .5 + column * MODEL_VOXEL;
+            const right = left + MODEL_VOXEL;
+            const near = tile.z - TILE * .5 + row * MODEL_VOXEL;
+            const far = near + MODEL_VOXEL;
+            const positions = [[left, near], [right, near], [left, far], [right, far]];
+            const color = surfaceCellColor(tile, grassCorners, column, row);
+            positions.forEach(([x, z], cornerIndex) => {
+              const offset = positionOffset + cornerIndex * 3;
+              topPositions[offset] = x;
+              topPositions[offset + 1] = tile.topY + SURFACE_TOP_LIFT;
+              topPositions[offset + 2] = z;
+              topColors[offset] = color.r;
+              topColors[offset + 1] = color.g;
+              topColors[offset + 2] = color.b;
+            });
+            const indexOffset = index * indicesPerTile + cell * 6;
+            topIndices.set([
+              vertexOffset, vertexOffset + 2, vertexOffset + 1,
+              vertexOffset + 1, vertexOffset + 2, vertexOffset + 3,
+            ], indexOffset);
+          }
+        }
+        tile.surfaceTopBatch = top;
+        tile.surfaceTopColorOffset = tileVertexOffset;
+        tile.surfaceTopColorCount = verticesPerTile;
+
+      });
+
+      soilSections.forEach((section, index) => {
+        matrix.makeScale(section.width / TILE, section.height, section.depth / TILE);
+        matrix.setPosition(section.x, section.y, section.z);
         soil.setMatrixAt(index, matrix);
+        soil.setColorAt(index, soilStrataColor(section));
       });
 
       surface.instanceMatrix.needsUpdate = true;
       surface.instanceColor.needsUpdate = true;
       soil.instanceMatrix.needsUpdate = true;
+      soil.instanceColor.needsUpdate = true;
+      topColorAttribute.needsUpdate = true;
+      topGeometry.computeVertexNormals();
       surface.computeBoundingBox();
       surface.computeBoundingSphere();
       soil.computeBoundingBox();
       soil.computeBoundingSphere();
-      group.add(surface, soil);
+      topGeometry.computeBoundingBox();
+      topGeometry.computeBoundingSphere();
+      group.add(surface, soil, top);
     }
+
+    const edgeCaps = new THREE.InstancedMesh(edgeCapGeometry, edgeCapMaterial, exposedEdges.length);
+    const edgeCapTransform = new THREE.Matrix4();
+    edgeCaps.name = 'terrain-grass-edge-caps';
+    edgeCaps.castShadow = false;
+    edgeCaps.receiveShadow = true;
+    exposedEdges.forEach(({ tile, dx, dz }, index) => {
+      edgeCapTransform.makeScale(
+        dx ? GRASS_EDGE_CAP_DEPTH : TILE,
+        1,
+        dz ? GRASS_EDGE_CAP_DEPTH : TILE,
+      );
+      edgeCapTransform.setPosition(
+        tile.x + dx * (TILE * .5 - GRASS_EDGE_CAP_DEPTH * .5),
+        tile.topY - GRASS_EDGE_CAP_RECESS - GRASS_EDGE_CAP_HEIGHT * .5,
+        tile.z + dz * (TILE * .5 - GRASS_EDGE_CAP_DEPTH * .5),
+      );
+      edgeCaps.setMatrixAt(index, edgeCapTransform);
+      const edgeColor = isSnowTile(tile) ? SNOW_COLOR : tile.normalGrassColor || mats.grass.color;
+      edgeCaps.setColorAt(index, edgeColor.clone().multiplyScalar(isSnowTile(tile) ? .92 : .84));
+    });
+    edgeCaps.instanceMatrix.needsUpdate = true;
+    edgeCaps.instanceColor.needsUpdate = true;
+    edgeCaps.computeBoundingBox();
+    edgeCaps.computeBoundingSphere();
+    group.add(edgeCaps);
   };
 
   const addTree = (x, y, z, silhouette, large, profile) => {
     const tree = new THREE.Group();
     const sway = new THREE.Group();
     tree.add(sway);
-    const scale = large ? 1.5 : 1.14;
+    const scale = (large ? 1.5 : 1.14) * (.9 + random() * .2);
     const design = treeDesign(silhouette);
     const palette = treeFoliagePalette(profile);
     if (!foliageMaterials.has(palette.key)) {
@@ -310,9 +716,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     });
     tree.position.set(x, y, z);
     tree.rotation.y = random() * Math.PI * 2;
+    sway.scale.x = random() < .5 ? -1 : 1;
     group.add(tree);
     const tile = tileAt(x, z, terrain);
-    if (tile) tile.hasTree = true;
+    if (tile) {
+      tile.hasTree = true;
+      contactBedPlacements.push({ tile, x, z, radius: design.radius * scale * .82, pieces: 5 });
+    }
     trees.push({
       sway,
       phase: random() * Math.PI * 2,
@@ -330,88 +740,239 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       stone.add(piece);
     }
     stone.position.set(x, y + voxel * .45, z);
+    stone.rotation.y = random() * Math.PI * 2;
+    stone.scale.x = random() < .5 ? -1 : 1;
+    stone.scale.z = .88 + random() * .24;
     group.add(stone);
     const tile = tileAt(x, z, terrain);
-    if (tile) tile.stones.push(stone);
+    if (tile) {
+      tile.stones.push(stone);
+      contactBedPlacements.push({ tile, x, z, radius: .22 * scale, pieces: 3 });
+      addPropDirt(tile, x, z, scale);
+    }
   };
 
-  const addBarn = (x, y, z) => {
-    const barn = new THREE.Group();
+  const addWorkshop = (x, y, z) => {
+    const workshop = new THREE.Group();
     const width = TILE * 3;
     const depth = TILE * 3;
     const wallHeight = 2.25;
-    const roofHeight = .95;
     const wallThickness = .16;
     const doorwayWidth = TILE * 1.08;
     const frontWallWidth = (width - doorwayWidth) * .5;
-    const yaw = Math.PI * 1.5;
-    const roofPitch = Math.atan2(roofHeight, width * .5);
-    barn.name = 'barn';
-    barn.position.set(x, y, z);
-    barn.rotation.y = yaw;
-    group.add(barn);
-    barnArea = { x, z, width, depth, yaw };
+    const yaw = WORKSHOP_YAW;
+    workshop.name = 'starter-workshop';
+    workshop.position.set(x, y, z);
+    workshop.rotation.y = yaw;
+    group.add(workshop);
+    workshopArea = { x, z, width, depth, yaw, spawnClearanceWidth: width + 1.6, spawnClearanceDepth: depth + 1.7 };
 
-    const addWall = (wallWidth, wallDepth, localX, localZ) => {
-      const wall = box(wallWidth, wallHeight, wallDepth, mats.red);
-      wall.position.set(localX, wallHeight * .5, localZ);
-      barn.add(wall);
+    const localToWorld = (localX, localZ) => ({
+      x: x + localX * Math.cos(yaw) + localZ * Math.sin(yaw),
+      z: z - localX * Math.sin(yaw) + localZ * Math.cos(yaw),
+    });
+    const addStaticBox = (boxWidth, boxHeight, boxDepth, localX, localZ, baseY = 0) => {
+      const position = localToWorld(localX, localZ);
+      obstacles.push({
+        shape: 'box', x: position.x, y: y + baseY, z: position.z,
+        width: boxWidth, height: boxHeight, depth: boxDepth, yaw,
+      });
     };
     const wallEdgeX = width * .5 - wallThickness * .5;
     const wallEdgeZ = depth * .5 - wallThickness * .5;
-    addWall(width, wallThickness, 0, wallEdgeZ);
-    addWall(wallThickness, depth, -wallEdgeX, 0);
-    addWall(wallThickness, depth, wallEdgeX, 0);
-    for (const side of [-1, 1]) {
-      const localX = side * (doorwayWidth + frontWallWidth) * .5;
-      addWall(frontWallWidth, wallThickness, localX, -wallEdgeZ);
+    const windowBase = .86;
+    const windowHeight = .72;
+    const windowTop = windowBase + windowHeight;
+    const windowWallSegments = [
+      { depth: .42, z: -1.29 }, { depth: .72, z: 0 }, { depth: .42, z: 1.29 },
+    ];
+
+    const voxelParts = [];
+    const addVoxels = (material, at, size) => voxelParts.push({ material, at, size });
+
+    // The workshop occupies a 15 x 15 model-voxel footprint. Its stone base,
+    // walls, openings, trim, roof and contents all share that same grid.
+    addVoxels(mats.stoneDark, [-1, 0, -1], [17, 1, 17]);
+    for (let drivewayZ = -6; drivewayZ < -1; drivewayZ++) {
+      addVoxels(drivewayZ % 2 ? mats.stone : mats.stoneDark, [4, 0, drivewayZ], [7, 1, 1]);
+    }
+    for (const [chockX, material] of [[4, mats.bridgeDark], [10, mats.bridge]]) {
+      addVoxels(material, [chockX, 1, -7], [1, 1, 2]);
     }
 
-    const loft = box(.72, .38, .065, mats.bridgeDark);
-    loft.position.set(0, 1.72, -wallEdgeZ - .04);
-    barn.add(loft);
-    for (const side of [-1, 1]) {
-      const openDoor = box(doorwayWidth * .46, 1.42, .09, mats.bridgeDark);
-      openDoor.position.set(side * (doorwayWidth * .5 + .18), .71, -depth * .5 - .22);
-      openDoor.rotation.y = side * .8;
-      barn.add(openDoor);
+    // Four true one-voxel corner posts frame wall runs built around openings.
+    for (const cornerX of [0, 14]) for (const cornerZ of [0, 14]) {
+      addVoxels(mats.bridgeDark, [cornerX, 1, cornerZ], [1, 11, 1]);
+    }
+    addVoxels(mats.red, [1, 1, 0], [4, 10, 1]);
+    addVoxels(mats.red, [10, 1, 0], [4, 10, 1]);
+    addVoxels(mats.red, [5, 9, 0], [5, 2, 1]);
+    addVoxels(mats.bridgeDark, [1, 11, 0], [13, 1, 1]);
+
+    addVoxels(mats.red, [1, 1, 14], [13, 5, 1]);
+    addVoxels(mats.red, [1, 9, 14], [13, 2, 1]);
+    addVoxels(mats.red, [1, 6, 14], [4, 3, 1]);
+    addVoxels(mats.red, [10, 6, 14], [4, 3, 1]);
+    addVoxels(mats.bridgeDark, [1, 11, 14], [13, 1, 1]);
+
+    for (const sideX of [0, 14]) {
+      addVoxels(mats.red, [sideX, 1, 1], [1, 4, 13]);
+      addVoxels(mats.red, [sideX, 9, 1], [1, 2, 13]);
+      for (const [segmentZ, segmentDepth] of [[1, 2], [6, 3], [12, 2]]) {
+        addVoxels(mats.red, [sideX, 5, segmentZ], [1, 4, segmentDepth]);
+      }
+      addVoxels(mats.bridgeDark, [sideX, 11, 1], [1, 1, 13]);
     }
 
-    for (const side of [-1, 1]) {
-      const roof = box(width * .59, .18, depth + .24, mats.bridgeDark);
-      roof.position.set(side * width * .25, wallHeight + roofHeight * .47, 0);
-      roof.rotation.z = -side * roofPitch;
-      barn.add(roof);
+    // Recessed glazing is surrounded by full-voxel sills, lintels and jambs.
+    for (const sideX of [-1, 15]) for (const windowZ of [3, 9]) {
+      addVoxels(mats.cab, [sideX, 5, windowZ], [1, 4, 3]);
+      addVoxels(mats.bridgeDark, [sideX, 4, windowZ - 1], [1, 1, 5]);
+      addVoxels(mats.bridgeDark, [sideX, 9, windowZ - 1], [1, 1, 5]);
+      addVoxels(mats.bridgeDark, [sideX, 5, windowZ - 1], [1, 4, 1]);
+      addVoxels(mats.bridgeDark, [sideX, 5, windowZ + 3], [1, 4, 1]);
     }
+    addVoxels(mats.cab, [5, 6, 14], [5, 3, 1]);
+    addVoxels(mats.bridgeDark, [4, 5, 15], [7, 1, 1]);
+    addVoxels(mats.bridgeDark, [4, 9, 15], [7, 1, 1]);
+    addVoxels(mats.bridgeDark, [4, 6, 15], [1, 3, 1]);
+    addVoxels(mats.bridgeDark, [10, 6, 15], [1, 3, 1]);
 
-    const addWallCollider = (wallWidth, wallDepth, localX, localZ) => {
-      const cos = Math.cos(yaw);
-      const sin = Math.sin(yaw);
-      obstacles.push({
-        shape: 'box',
-        x: x + localX * cos + localZ * sin,
-        y,
-        z: z - localX * sin + localZ * cos,
-        width: wallWidth,
-        height: wallHeight,
-        depth: wallDepth,
-        yaw,
-      });
+    // The front bay uses a deep voxel frame and a recessed loft panel.
+    addVoxels(mats.bridgeDark, [4, 1, -1], [1, 8, 1]);
+    addVoxels(mats.bridgeDark, [10, 1, -1], [1, 8, 1]);
+    addVoxels(mats.bridgeDark, [4, 9, -1], [7, 1, 1]);
+    addVoxels(mats.bridgeDark, [6, 10, -1], [3, 2, 1]);
+
+    // Stepped gables and roof courses replace the former rotated roof slabs.
+    for (const [gableY, gableX, gableWidth] of [[12, 1, 14], [13, 3, 10], [14, 5, 6], [15, 7, 2]]) {
+      addVoxels(mats.red, [gableX, gableY, 0], [gableWidth, 1, 1]);
+      addVoxels(mats.red, [gableX, gableY, 14], [gableWidth, 1, 1]);
+    }
+    const roofCourses = [
+      { y: 12, left: -1, right: 15 },
+      { y: 13, left: 1, right: 13 },
+      { y: 14, left: 3, right: 11 },
+      { y: 15, left: 5, right: 9 },
+    ];
+    for (const course of roofCourses) {
+      for (const courseX of [course.left, course.right]) {
+        addVoxels(mats.bridgeDark, [courseX, course.y, 0], [2, 1, 15]);
+        addVoxels(mats.tractorCream, [courseX, course.y, -1], [2, 1, 1]);
+        addVoxels(mats.tractorCream, [courseX, course.y, 15], [2, 1, 1]);
+      }
+    }
+    addVoxels(mats.bridgeDark, [7, 16, 0], [2, 1, 15]);
+    addVoxels(mats.tractorCream, [7, 16, -1], [2, 1, 1]);
+    addVoxels(mats.tractorCream, [7, 16, 15], [2, 1, 1]);
+    addVoxels(mats.metal, [11, 15, 11], [2, 2, 2]);
+    addVoxels(mats.bridgeDark, [10, 17, 10], [4, 1, 4]);
+
+    // Workshop furniture is constructed from the same cells rather than from
+    // isolated furniture-sized boxes.
+    addVoxels(mats.bridge, [1, 4, 10], [6, 1, 2]);
+    addVoxels(mats.bridgeDark, [1, 1, 10], [1, 3, 2]);
+    addVoxels(mats.bridgeDark, [6, 1, 10], [1, 3, 2]);
+    addVoxels(mats.metal, [1, 5, 13], [4, 4, 1]);
+    for (const [toolX, material] of [[1, mats.tire], [3, mats.tractorAccent], [5, mats.tire]]) {
+      addVoxels(material, [toolX, 6, 12], [1, 2, 1]);
+      addVoxels(mats.metal, [toolX, 8, 12], [2, 1, 1]);
+    }
+    addVoxels(mats.tractorDark, [11, 1, 10], [3, 6, 3]);
+    addVoxels(mats.metal, [11, 7, 10], [3, 1, 3]);
+    addVoxels(mats.tractor, [9, 1, 4], [3, 3, 2]);
+    addVoxels(mats.metal, [8, 4, 4], [4, 1, 2]);
+
+    // Exterior service props: fuel pump, voxel-ring tyres, and stepped crates.
+    addVoxels(mats.stone, [-5, 0, 8], [4, 1, 5]);
+    addVoxels(mats.tractor, [-3, 1, 9], [2, 4, 2]);
+    addVoxels(mats.metal, [-4, 5, 8], [4, 1, 4]);
+    addVoxels(mats.headlamp, [-3, 3, 7], [2, 2, 1]);
+    addVoxels(mats.bridgeDark, [16, 0, 8], [5, 1, 5]);
+    for (const tyreY of [1, 2, 3]) {
+      addVoxels(mats.tire, [16, tyreY, 8], [3, 1, 1]);
+      addVoxels(mats.tire, [16, tyreY, 10], [3, 1, 1]);
+      addVoxels(mats.tire, [16, tyreY, 9], [1, 1, 1]);
+      addVoxels(mats.tire, [18, tyreY, 9], [1, 1, 1]);
+    }
+    addVoxels(mats.bridge, [16, 0, -1], [5, 1, 4]);
+    addVoxels(mats.red, [15, 1, 0], [3, 1, 3]);
+    addVoxels(mats.red, [15, 2, 1], [3, 1, 2]);
+    addVoxels(mats.bridgeDark, [15, 2, 0], [3, 1, 1]);
+    addVoxels(mats.tractorAccent, [18, 1, 0], [2, 3, 2]);
+    addVoxels(mats.metal, [18, 2, -1], [2, 1, 1]);
+
+    const workshopModel = createVoxelModel(voxelParts, {
+      name: 'starter-workshop-model',
+      origin: [-7.5, 0, -7.5],
+    });
+    workshop.add(workshopModel);
+
+    const lanternGlowMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffdfa0,
+      emissive: 0xffa62e,
+      emissiveIntensity: .25,
+      roughness: .38,
+    });
+    const { group: lantern, glowMesh: lanternGlowMesh } = createVoxelLantern({
+      glowMaterial: lanternGlowMaterial,
+      hanging: true,
+      name: 'starter-workshop-lantern',
+    });
+    lantern.position.set(0, 1.85, -1.7);
+    const lanternLight = new THREE.PointLight(0xffb653, 0, 5, 2);
+    lanternLight.position.set(0, .1, 0);
+    lanternLight.castShadow = false;
+    lantern.add(lanternLight);
+    workshop.add(lantern);
+    setWorkshopNightAmount = amount => {
+      const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
+      lanternGlowMesh.material.emissiveIntensity = .25 + nightAmount * 2.75;
+      lanternLight.intensity = nightAmount * 6;
     };
-    addWallCollider(width, wallThickness, 0, wallEdgeZ);
-    addWallCollider(wallThickness, depth, -wallEdgeX, 0);
-    addWallCollider(wallThickness, depth, wallEdgeX, 0);
+
+    for (const side of [-1, 1]) {
+      const doorParts = [
+        { material: mats.bridgeDark, at: [0, 0, 0], size: [2, 1, 1] },
+        { material: mats.bridgeDark, at: [0, 6, 0], size: [2, 1, 1] },
+        { material: mats.bridgeDark, at: [0, 1, 0], size: [1, 5, 1] },
+        { material: mats.red, at: [1, 1, 0], size: [1, 5, 1] },
+      ];
+      const openDoor = createVoxelModel(doorParts, {
+        name: 'starter-workshop-door',
+        origin: [-1, 0, -.5],
+      });
+      openDoor.position.set(side * .72, MODEL_VOXEL, -depth * .5 - MODEL_VOXEL);
+      openDoor.rotation.y = side * .8;
+      workshop.add(openDoor);
+    }
+
+    // Keep the established gameplay obstacles independent from the richer visuals.
+    addStaticBox(.54, .52, .42, .7, -.48, 0);
+    addStaticBox(.34, .92, .34, -2.0, .58, .07);
+    for (let index = 0; index < 3; index++) addStaticBox(.48, .18, .48, 1.98, .62, .06 + index * .17);
+    addStaticBox(.58, .42, .52, 1.8, -1.25, .09);
+    addStaticBox(.38, .56, .42, 2.17, -1.18, .09);
+
+    addStaticBox(width, wallHeight, wallThickness, 0, wallEdgeZ);
+    for (const side of [-1, 1]) {
+      const localX = side * wallEdgeX;
+      addStaticBox(wallThickness, windowBase, depth, localX, 0);
+      addStaticBox(wallThickness, wallHeight - windowTop, depth, localX, 0, windowTop);
+      windowWallSegments.forEach(segment =>
+        addStaticBox(wallThickness, windowHeight, segment.depth, localX, segment.z, windowBase));
+    }
     for (const side of [-1, 1]) {
       const localX = side * (doorwayWidth + frontWallWidth) * .5;
-      addWallCollider(frontWallWidth, wallThickness, localX, -wallEdgeZ);
+      addStaticBox(frontWallWidth, wallHeight, wallThickness, localX, -wallEdgeZ);
     }
   };
 
   const islandLayout = [
-    // Central hub: barn, vehicles, starter field, cargo pad.
+    // Central hub: workshop, vehicles, starter field, cargo pad.
     { cx: 0, cz: 0, h: 0, r: STARTER_HUB_RADIUS },
 
-    // Large second starter/farming island.
+    // Large northern farming island, with three terraces climbing northward.
     { cx: 1, cz: -16, h: 1, r: SECOND_STARTER_RADIUS },
 
     // Surrounding islands: deliberately mixed sizes.
@@ -430,9 +991,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     [4, 5],
     [1, 6],
   ];
-  let barnSite;
+  let workshopSite;
   let cargoSite;
-  let waterFeatureCount = 0;
+  let watercourseCount = 0;
   const islandGeneration = [];
 
   islands.forEach((island, id) => {
@@ -444,36 +1005,43 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       : plateauHeight(cell, island, angle);
     cells.forEach(cell => addTile(cell.gx, cell.gz, island.h + tileHeight(cell), id, cell.dist / island.r, island.h));
     addLowerLayers(cells, island.h, island.r);
-    const waterTiles = id > 1 && (id === 2 || id === 4 || random() < .25)
-      ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, true)
-      : new Set();
-    if (waterTiles.size) waterFeatureCount++;
+    const waterTiles = id === STARTER_ISLAND_ID
+      ? addStarterCoastLake(
+        cells, island, terrain, water, waterMotion, waterfalls, seededRandom(seed ^ 0x6a09e667)
+      )
+      : id > 1 && (id === 2 || id === 4 || random() < .25)
+        ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, true)
+        : new Set();
+    if (id !== STARTER_ISLAND_ID && waterTiles.size) watercourseCount++;
     finalizeEnvironment(cells, waterTiles);
-    islandGeneration.push({ island, id, cells, tileHeight, waterTiles });
+    islandGeneration.push({ island, id, cells, waterTiles });
   });
 
   const hubIsland = islands[STARTER_ISLAND_ID];
-  barnSite = findBarnSite(terrain, hubIsland);
-  cargoSite = findCargoSite(terrain, hubIsland, barnSite);
+  workshopSite = findWorkshopSite(terrain, hubIsland);
+  cargoSite = findCargoSite(terrain, hubIsland, workshopSite);
+  if (workshopSite) reserveWorkshopGround(terrain, workshopSite);
   reserveCargoApproach(terrain, cargoSite, hubIsland.id);
 
-  for (const [fromId, toId] of islandConnections) {
-    reserveBridgeLandings(terrain, closestIslandGap(terrain, fromId, toId));
-  }
+  const bridgeGaps = islandConnections
+    .map(([fromId, toId]) => closestIslandGap(terrain, fromId, toId))
+    .filter(Boolean);
+  bridgeGaps.forEach(gap => reserveBridgeLandings(terrain, gap));
+  const cargoGroundTile = cargoSite
+    ? terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)))
+    : null;
+  buildBareSoilWear(workshopSite, cargoGroundTile, bridgeGaps, islands);
 
-  islandGeneration.forEach(({ island, id, cells, tileHeight, waterTiles }) => {
-    const clearCells = cells.filter(candidate => {
+  islandGeneration.forEach(({ island, id, cells, waterTiles }) => {
+    const decorationCells = cells.filter(candidate => {
       const starterField = id === STARTER_ISLAND_ID && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
       const tile = terrain.get(gridKey(candidate.gx, candidate.gz));
       return candidate.dist > 1.1 && candidate.dist < island.r - .15 && !starterField &&
-        tileHeight(candidate) === 0 && !waterTiles.has(gridKey(candidate.gx, candidate.gz)) &&
-        !tile?.reserved && !tile?.noDecoration;
+        !waterTiles.has(gridKey(candidate.gx, candidate.gz)) &&
+        !tile?.reserved && !tile?.noDecoration && !isHighestNorthTerrace(tile);
     });
-    const grassPatches = chooseGrassPatches(clearCells, random, id === STARTER_ISLAND_ID ? 1 : 2);
-    for (const cell of clearCells) {
-      const x = cell.gx * TILE + (random() - .5) * .18;
-      const z = cell.gz * TILE + (random() - .5) * .18;
-      const y = terrain.get(gridKey(cell.gx, cell.gz))?.topY ?? island.h;
+    const grassPatches = chooseGrassPatches(decorationCells, random, id === STARTER_ISLAND_ID ? 1 : 2);
+    for (const cell of decorationCells) {
       const tile = terrain.get(gridKey(cell.gx, cell.gz));
       const profile = environmentProfile(tile.environment);
       const rainforest = profile.veryWet * profile.veryShady;
@@ -490,30 +1058,49 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         .25,
       );
       const starterDensityScale = id === STARTER_ISLAND_ID ? .16 : id === 1 ? .45 : 1;
-      const effectiveTreeChance = treeChance * starterDensityScale + (id === STARTER_ISLAND_ID ? .006 : 0);
-      const nearBarn = barnSite && id === STARTER_ISLAND_ID &&
-        Math.hypot(x - barnSite.x, z - barnSite.z) < BARN_TREE_CLEARANCE;
-      let blockingDecoration = false;
-      if (!nearBarn && random() < effectiveTreeChance) {
-        addTree(x, y, z, chooseTreeSilhouette(profile, random), random() < .25 + rainforest * .5, profile);
-        blockingDecoration = true;
-      }
-      else if (random() < rockChance) {
-        addStone(x, y, z, .8 + random() * .5);
-        blockingDecoration = true;
-      }
-
+      const effectiveTreeChance = Math.min(
+        treeChance * starterDensityScale + (id === STARTER_ISLAND_ID ? .006 : 0),
+        TREE_CHANCE_CAP,
+      );
+      const effectiveRockChance = Math.min(rockChance, ROCK_CHANCE_CAP);
       const groundChance = THREE.MathUtils.clamp(
         .12 + profile.wet * .20 + rainforest * .34 + profile.wet * profile.sunny * .22 + profile.dry * profile.sunny * .2 + profile.shady * .12,
         .12,
         .78,
       );
-      const effectiveGroundChance = groundChance * (id === STARTER_ISLAND_ID ? .70 : 1);
-      if (random() < effectiveGroundChance) {
-        addGroundCover(tile, chooseGroundCover(profile, tile.nearWater, random));
-      }
-      else if (!blockingDecoration && grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
-        addTallGrass(tile);
+      const effectiveGroundChance = Math.min(
+        groundChance * (id === STARTER_ISLAND_ID ? .70 : 1),
+        GROUND_COVER_CHANCE_CAP,
+      );
+      const clusterChance = THREE.MathUtils.clamp(
+        (effectiveTreeChance + effectiveRockChance + effectiveGroundChance) * .35,
+        .08,
+        .45,
+      );
+      const propAttempts = 1 + (random() < clusterChance ? 1 : 0) + (random() < clusterChance * .25 ? 1 : 0);
+      for (let propIndex = 0; propIndex < propAttempts; propIndex++) {
+        const x = cell.gx * TILE + (random() - .5) * PROP_SPREAD;
+        const z = cell.gz * TILE + (random() - .5) * PROP_SPREAD;
+        const y = tile?.topY ?? island.h;
+        const nearWorkshop = workshopSite && id === STARTER_ISLAND_ID &&
+          Math.hypot(x - workshopSite.x, z - workshopSite.z) < WORKSHOP_TREE_CLEARANCE;
+        let blockingDecoration = false;
+        if (!nearWorkshop && random() < effectiveTreeChance) {
+          addTree(x, y, z, chooseTreeSilhouette(profile, random), random() < .25 + rainforest * .5, profile);
+          blockingDecoration = true;
+        }
+        else if (random() < effectiveRockChance) {
+          addStone(x, y, z, .8 + random() * .5);
+          blockingDecoration = true;
+        }
+
+        if (random() < effectiveGroundChance) {
+          addGroundCover(tile, chooseGroundCover(profile, tile.nearWater, random));
+        }
+        else if (!blockingDecoration &&
+          grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
+          addTallGrass(tile);
+        }
       }
     }
   });
@@ -538,8 +1125,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
 
   addLowerLayerInstances();
 
-  if (barnSite) addBarn(barnSite.x, barnSite.topY, barnSite.z);
-  const cargoPort = createCargoPort(cargoSite);
+  if (workshopSite) addWorkshop(workshopSite.x, workshopSite.topY, workshopSite.z);
+  const cargoPort = createCargoPort(cargoSite, seed);
   group.add(cargoPort.group);
   obstacles.push(...cargoPort.colliders);
 
@@ -547,7 +1134,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     addBridgeBetween(islands[fromId], islands[toId], terrain, group, bridgeBlocks);
   }
 
-  if (!waterFeatureCount && attempt < 7) {
+  if (!watercourseCount && attempt < 7) {
     scene.remove(group);
     disposeObjectResources(group);
     return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange);
@@ -555,9 +1142,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
 
   addTerrainInstances();
   buildGroundCover();
+  buildContactBeds();
   const cropInstances = createCropInstances(terrain.size, group);
   const fieldEffects = createFieldEffects(group);
-  const cropOverlay = createCropOverlay(terrain, group);
   const refreshFurrowInstances = () => {
     const matrix = new THREE.Matrix4();
     let furrowCount = 0;
@@ -603,6 +1190,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     tile.ploughed = true;
     tile.surfaceBatch.setColorAt(tile.surfaceInstance, mats.ploughed.color);
     tile.surfaceBatch.instanceColor.needsUpdate = true;
+    setTileTopColor(tile, mats.ploughed.color);
     if (tile.tallGrass) tile.tallGrass.visible = false;
     for (const decoration of tile.groundCover) {
       decoration.mesh.setMatrixAt(decoration.index, decoration.hidden);
@@ -617,11 +1205,11 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   };
 
   const forage = createForageSystem(terrain, group, onChange);
-  const occlusion = createOcclusionSystem(group);
+  const occlusion = createOcclusionSystem(group, cargoPort.occluders);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const starterIsland = islands[STARTER_ISLAND_ID];
   const start = terrain.get(gridKey(starterIsland.cx, starterIsland.cz)) || terrain.values().next().value;
-  const vehicleSpawns = findVehicleSpawns(terrain, start, barnArea);
+  const vehicleSpawns = findVehicleSpawns(terrain, start, workshopArea);
   return {
     group,
     terrain,
@@ -629,6 +1217,10 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     seed,
     spawn: vehicleSpawns[0],
     vehicleSpawns,
+    setNightAmount(amount, lanternAmount = amount) {
+      setWorkshopNightAmount(lanternAmount);
+      cargoPort.setNightAmount(amount, lanternAmount);
+    },
     dispose() {
       forage.dispose();
       Object.values(grainSplashMaterials).forEach(material => material.dispose());
@@ -703,6 +1295,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     updateOcclusion(cameraPosition, vehicleState, delta) {
       occlusion.update(cameraPosition, vehicleState, delta);
     },
+    registerOccluder(object) {
+      return occlusion.register(object);
+    },
+    unregisterOccluder(object) {
+      return occlusion.unregister(object);
+    },
     farmingLevelNear(x, z) {
       const gx = Math.floor(x / TILE + .5);
       const gz = Math.floor(z / TILE + .5);
@@ -726,12 +1324,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
           if (!tile || tile.water || tile.hasTree || tile.reserved || Math.abs(tile.topY - center.topY) > .01) return null;
         }
       }
-      if (barnArea) {
-        const dx = center.x - barnArea.x;
-        const dz = center.z - barnArea.z;
-        const localX = dx * Math.cos(barnArea.yaw) - dz * Math.sin(barnArea.yaw);
-        const localZ = dx * Math.sin(barnArea.yaw) + dz * Math.cos(barnArea.yaw);
-        if (Math.abs(localX) < barnArea.width * .5 + radius && Math.abs(localZ) < barnArea.depth * .5 + radius) return null;
+      if (workshopArea) {
+        const dx = center.x - workshopArea.x;
+        const dz = center.z - workshopArea.z;
+        const localX = dx * Math.cos(workshopArea.yaw) - dz * Math.sin(workshopArea.yaw);
+        const localZ = dx * Math.sin(workshopArea.yaw) + dz * Math.cos(workshopArea.yaw);
+        if (Math.abs(localX) < workshopArea.width * .5 + radius && Math.abs(localZ) < workshopArea.depth * .5 + radius) return null;
       }
       for (const obstacle of buildingObstacles.values()) {
         if (Math.hypot(center.x - obstacle.x, center.z - obstacle.z) < radius + obstacle.radius + .25) return null;
@@ -757,19 +1355,6 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       onChange();
       return true;
     },
-    setCropOverlay(cropId) {
-      if (!crops[cropId]) return false;
-      cropOverlay.show(cropId);
-      return true;
-    },
-    hideCropOverlay() {
-      cropOverlay.hide();
-    },
-    cropStatsAt(x, z, cropId) {
-      const tile = tileAt(x, z, terrain);
-      const crop = crops[cropId];
-      return tile && crop ? environmentalCropStats(tile.environment, crop) : null;
-    },
     seedAt(x, z, levelY, elapsed, cropId = 'corn') {
       const tile = tileAtLevel(x, z, levelY, terrain);
       if (!tile || !tile.ploughed || tile.crop || !crops[cropId]) return false;
@@ -793,8 +1378,6 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     mowAt(x, z, levelY, elapsed) {
       const tile = tileAtLevel(x, z, levelY, terrain);
       if (tile?.crop?.cropId !== 'grass' || tile.crop.stage !== 4 || forage.hasForage(tile)) return 0;
-      const { suitability } = environmentalCropStats(tile.environment, crops.grass);
-      const yieldAmount = Math.round(50 + suitability * 150);
       tile.crop.stage = 1;
       tile.crop.stageStarted = elapsed;
       tile.crop.animationStarted = elapsed;
@@ -802,9 +1385,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       readyCount = Math.max(0, readyCount - 1);
       growingCrops.add(tile);
       cropInstancesDirty = true;
-      forage.addLoose(tile, yieldAmount);
+      forage.addLoose(tile, TILE_YIELD_LITRES);
       onChange();
-      return yieldAmount;
+      return TILE_YIELD_LITRES;
     },
     takeLooseGrassAt(x, z, levelY) {
       return forage.takeLooseAt(x, z, levelY);
@@ -829,18 +1412,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       if (tile?.crop?.stage !== 4 || tile.crop.cropId === 'grass') return false;
       const cropId = tile.crop.cropId;
       if (acceptedCropId && cropId !== acceptedCropId) return false;
-      const crop = crops[tile.crop.cropId] || crops.corn;
-      const { suitability } = environmentalCropStats(tile.environment, crop);
-      // A planted tile is one compact farm plot. Suitability determines its
-      // 50–200 L yield, keeping the combine's capacity meaningful at this scale.
-      const yieldAmount = Math.round(50 + suitability * 150);
       if (tile.crop.weeds) weedCount = Math.max(0, weedCount - 1);
       tile.crop = null;
       plantedCount = Math.max(0, plantedCount - 1);
       readyCount = Math.max(0, readyCount - 1);
       cropInstancesDirty = true;
       onChange();
-      return { cropId, yieldAmount, suitability, x: tile.x, y: tile.topY, z: tile.z };
+      return { cropId, yieldAmount: TILE_YIELD_LITRES, x: tile.x, y: tile.topY, z: tile.z };
     },
     persistentState(elapsed) {
       const tiles = [];
@@ -861,13 +1439,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       }
       return { seed, tiles, forage: forage.persistentState() };
     },
-    restorePersistentState(savedState, elapsed) {
+    restorePersistentState(savedState, elapsed, isBlockedAt = () => false) {
       if (!Array.isArray(savedState?.tiles)) return;
       const restoredKeys = new Set();
       for (const savedTile of savedState.tiles) {
         if (typeof savedTile?.key !== 'string' || restoredKeys.has(savedTile.key)) continue;
         const tile = terrain.get(savedTile.key);
-        if (!tile || tile.water || tile.hasTree || tile.reserved) continue;
+        if (!tile || tile.water || tile.hasTree || tile.reserved || isBlockedAt(tile.x, tile.z)) continue;
         restoredKeys.add(savedTile.key);
         if (savedTile.ploughed || savedTile.crop) ploughTile(tile, 0, false);
         const savedCrop = savedTile.crop;
@@ -894,13 +1472,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     cropStats() {
       return { planted: plantedCount, ready: readyCount, weeds: weedCount };
     },
-    insideBarn(x, z) {
-      if (!barnArea) return false;
-      const dx = x - barnArea.x;
-      const dz = z - barnArea.z;
-      const localX = dx * Math.cos(barnArea.yaw) - dz * Math.sin(barnArea.yaw);
-      const localZ = dx * Math.sin(barnArea.yaw) + dz * Math.cos(barnArea.yaw);
-      return Math.abs(localX) < barnArea.width * .5 - .2 && Math.abs(localZ) < barnArea.depth * .5 - .2;
+    insideWorkshop(x, z) {
+      if (!workshopArea) return false;
+      const dx = x - workshopArea.x;
+      const dz = z - workshopArea.z;
+      const localX = dx * Math.cos(workshopArea.yaw) - dz * Math.sin(workshopArea.yaw);
+      const localZ = dx * Math.sin(workshopArea.yaw) + dz * Math.cos(workshopArea.yaw);
+      return Math.abs(localX) < workshopArea.width * .5 - .2 && Math.abs(localZ) < workshopArea.depth * .5 - .2;
     },
     splashAt(x, z, impact) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
@@ -1271,62 +1849,6 @@ function updateInstances(mesh, count) {
   mesh.computeBoundingSphere();
 }
 
-function createCropOverlay(terrain, group) {
-  const tiles = [...terrain.values()].filter(tile => !tile.water);
-  const overlay = new THREE.Group();
-  overlay.name = 'crop-overlay';
-  overlay.visible = false;
-  const geometry = new THREE.PlaneGeometry(TILE * .94, TILE * .94);
-  geometry.rotateX(-Math.PI * .5);
-  const matrix = new THREE.Matrix4();
-  const colorFor = suitability => {
-    const color = new THREE.Color();
-    if (suitability < .5) color.setHSL(THREE.MathUtils.lerp(.02, .14, suitability * 2), .82, .52);
-    else color.setHSL(THREE.MathUtils.lerp(.14, .33, (suitability - .5) * 2), .76, .46);
-    return color;
-  };
-  const paletteSize = 16;
-  const palette = Array.from({ length: paletteSize }, (_, index) => {
-    const material = new THREE.MeshBasicMaterial({
-      color: colorFor(index / (paletteSize - 1)),
-      transparent: true,
-      opacity: .68,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    const mesh = new THREE.InstancedMesh(geometry, material, tiles.length);
-    mesh.count = 0;
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    mesh.renderOrder = 3;
-    overlay.add(mesh);
-    return mesh;
-  });
-  group.add(overlay);
-
-  return {
-    show(cropId) {
-      const crop = crops[cropId];
-      const counts = Array(paletteSize).fill(0);
-      for (const tile of tiles) {
-        const suitability = environmentalCropStats(tile.environment, crop).suitability;
-        const bucket = Math.round(suitability * (paletteSize - 1));
-        const mesh = palette[bucket];
-        matrix.makeTranslation(tile.x, tile.topY + .028, tile.z);
-        mesh.setMatrixAt(counts[bucket]++, matrix);
-      }
-      palette.forEach((mesh, index) => {
-        mesh.count = counts[index];
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.computeBoundingSphere();
-      });
-      overlay.visible = true;
-    },
-    hide() { overlay.visible = false; },
-  };
-}
-
 function tileAt(x, z, terrain) {
   return terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
 }
@@ -1337,16 +1859,40 @@ function tileAtLevel(x, z, levelY, terrain) {
   return tile;
 }
 
-function createOcclusionSystem(group) {
+function createOcclusionSystem(group, additionalObjects = []) {
   const ray = new THREE.Ray();
   const sightline = new THREE.Vector3();
   const hitPoint = new THREE.Vector3();
   let refreshElapsed = Infinity;
-  const entries = group.children
-    .filter(child => child.isGroup && child.name !== 'tall-grass' && child.name !== 'water' && child.name !== 'crop-overlay' && child.name !== 'field-effects' && child.name !== 'forage')
-    .map(object => ({ object, bounds: new THREE.Box3(), materials: cloneTransparentMaterials(object), opacity: 1, targetOpacity: 1 }));
+  const entries = [];
+  const excludedNames = new Set(['tall-grass', 'water', 'field-effects', 'forage', 'cargo-port']);
+  const register = object => {
+    if (!object || entries.some(entry => entry.object === object)) return false;
+    entries.push({
+      object,
+      bounds: new THREE.Box3(),
+      materials: cloneFadeMaterials(object),
+      ignoreAtVehicle: object.userData.occlusionIgnoreAtVehicle,
+      opacity: 1,
+      targetOpacity: 1,
+    });
+    return true;
+  };
+  const unregister = object => {
+    const index = entries.findIndex(entry => entry.object === object);
+    if (index === -1) return false;
+    entries.splice(index, 1);
+    return true;
+  };
+
+  group.children
+    .filter(child => child.isGroup && !excludedNames.has(child.name))
+    .forEach(register);
+  additionalObjects.forEach(register);
 
   return {
+    register,
+    unregister,
     update(cameraPosition, vehicleState, delta) {
       if (!cameraPosition || !vehicleState) return;
       refreshElapsed += delta;
@@ -1358,6 +1904,10 @@ function createOcclusionSystem(group) {
         if (sightlineLength >= .001) {
           ray.set(cameraPosition, sightline.multiplyScalar(1 / sightlineLength));
           for (const entry of entries) {
+            if (!entry.object.visible || entry.ignoreAtVehicle?.(vehicleState)) {
+              entry.targetOpacity = 1;
+              continue;
+            }
             entry.bounds.setFromObject(entry.object);
             const hit = ray.intersectBox(entry.bounds, hitPoint);
             entry.targetOpacity = hit && hit.distanceTo(cameraPosition) < sightlineLength - .2 ? .18 : 1;
@@ -1366,13 +1916,22 @@ function createOcclusionSystem(group) {
       }
       for (const entry of entries) {
         entry.opacity = THREE.MathUtils.lerp(entry.opacity, entry.targetOpacity, fadeAmount);
-        entry.materials.forEach(material => { material.opacity = entry.opacity; });
+        const faded = entry.opacity < .995;
+        entry.materials.forEach(({ material, opacity, transparent, depthWrite }) => {
+          const nextTransparent = transparent || faded;
+          if (material.transparent !== nextTransparent) {
+            material.transparent = nextTransparent;
+            material.needsUpdate = true;
+          }
+          material.opacity = opacity * entry.opacity;
+          material.depthWrite = depthWrite;
+        });
       }
     },
   };
 }
 
-function cloneTransparentMaterials(object) {
+function cloneFadeMaterials(object) {
   const materialClones = new Map();
   object.traverse(child => {
     if (!child.isMesh) return;
@@ -1380,10 +1939,14 @@ function cloneTransparentMaterials(object) {
       if (!materialClones.has(material)) {
         const clone = material.clone();
         clone.transparent = true;
-        clone.depthWrite = false;
-        materialClones.set(material, clone);
+        materialClones.set(material, {
+          material: clone,
+          opacity: material.opacity,
+          transparent: material.transparent,
+          depthWrite: material.depthWrite,
+        });
       }
-      return materialClones.get(material);
+      return materialClones.get(material).material;
     };
     child.material = Array.isArray(child.material)
       ? child.material.map(cloneMaterial)
@@ -1408,34 +1971,55 @@ function disposeObjectResources(root) {
   materials.forEach(material => material.dispose());
 }
 
-function findBarnSite(terrain, island) {
+function findWorkshopSite(terrain, island) {
   const candidates = [];
   for (const tile of terrain.values()) {
     if (tile.islandId !== STARTER_ISLAND_ID) continue;
-    const hasPad = [-1, 0, 1].every(dx => [-1, 0, 1].every(dz => {
+    const hasWorkshopPad = [-1, 0, 1].every(dx => [-1, 0, 1].every(dz => {
       const neighbor = terrain.get(gridKey(tile.gx + dx, tile.gz + dz));
       return neighbor?.islandId === STARTER_ISLAND_ID && Math.abs(neighbor.topY - tile.topY) < .01;
     }));
-    if (!hasPad) continue;
-    const score = Math.hypot(tile.gx - (island.cx + 2), tile.gz - (island.cz + 2));
-    candidates.push({ ...tile, score });
+    if (!hasWorkshopPad) continue;
+    // Prefer the westernmost safe 3x3 footprint, then the northernmost site
+    // along that edge. The workshop's open bay faces east.
+    candidates.push({ ...tile });
   }
-  candidates.sort((first, second) => first.score - second.score);
+  candidates.sort((first, second) => first.gx - second.gx || first.gz - second.gz);
   return candidates[0];
 }
 
-function findVehicleSpawns(terrain, start, barnArea) {
-  const outsideBarn = tile => {
-    if (!barnArea) return true;
-    const dx = tile.x - barnArea.x;
-    const dz = tile.z - barnArea.z;
-    const localX = dx * Math.cos(barnArea.yaw) - dz * Math.sin(barnArea.yaw);
-    const localZ = dx * Math.sin(barnArea.yaw) + dz * Math.cos(barnArea.yaw);
-    return Math.abs(localX) > barnArea.width * .5 + .8 || Math.abs(localZ) > barnArea.depth * .5 + .8;
+function reserveWorkshopGround(terrain, site) {
+  const yaw = WORKSHOP_YAW;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  for (const tile of terrain.values()) {
+    if (tile.islandId !== STARTER_ISLAND_ID) continue;
+    const dx = tile.x - site.x;
+    const dz = tile.z - site.z;
+    const localX = dx * cos - dz * sin;
+    const localZ = dx * sin + dz * cos;
+    const onWorkshopPad = Math.abs(localX) <= 2.45 && localZ >= -3.15 && localZ <= 2.0;
+    if (onWorkshopPad) {
+      tile.noDecoration = true;
+      tile.reserved = true;
+    }
+  }
+}
+
+function findVehicleSpawns(terrain, start, workshopArea) {
+  const outsideWorkshop = tile => {
+    if (!workshopArea) return true;
+    const dx = tile.x - workshopArea.x;
+    const dz = tile.z - workshopArea.z;
+    const localX = dx * Math.cos(workshopArea.yaw) - dz * Math.sin(workshopArea.yaw);
+    const localZ = dx * Math.sin(workshopArea.yaw) + dz * Math.cos(workshopArea.yaw);
+    const clearWidth = workshopArea.spawnClearanceWidth || workshopArea.width;
+    const clearDepth = workshopArea.spawnClearanceDepth || workshopArea.depth;
+    return Math.abs(localX) > clearWidth * .5 + .8 || Math.abs(localZ) > clearDepth * .5 + .8;
   };
   const candidates = [...terrain.values()].filter(tile =>
     tile.islandId === STARTER_ISLAND_ID && !tile.water && !tile.hasTree && !tile.reserved &&
-    Math.abs(tile.topY - start.topY) < .01 && outsideBarn(tile)
+    Math.abs(tile.topY - start.topY) < .01 && outsideWorkshop(tile)
   );
   candidates.sort((first, second) => {
     const firstDistance = Math.hypot(first.x - start.x, first.z - start.z);
@@ -1459,7 +2043,7 @@ function findVehicleSpawns(terrain, start, barnArea) {
   return selected.length ? selected : [{ x: start.x, y: start.topY, z: start.z }];
 }
 
-function findCargoSite(terrain, island, barnSite) {
+function findCargoSite(terrain, island, workshopSite) {
   // Keep cargo infrastructure on the hub's open west side and face the deck due west.
   const outward = { x: -1, z: 0 };
   const islandTiles = [...terrain.values()].filter(tile => tile.islandId === island.id);
@@ -1490,22 +2074,24 @@ function findCargoSite(terrain, island, barnSite) {
     const dx = tile.gx - island.cx;
     const dz = tile.gz - island.cz;
     if (tile.radial < .62 || dx >= -island.r * .45) continue;
-    if (barnSite && Math.hypot(tile.x - barnSite.x, tile.z - barnSite.z) < 5.5 * TILE) continue;
+    if (workshopSite && Math.hypot(tile.x - workshopSite.x, tile.z - workshopSite.z) < 5.5 * TILE) continue;
     const site = { x: tile.x, y: tile.topY, z: tile.z, outward };
     if (!approachIsClear(site) || !deckIsClear(site)) continue;
-    candidates.push({ site, score: -dx * 3 + tile.radial - Math.abs(dz) * .05 });
+    candidates.push({ site, tile });
   }
 
-  candidates.sort((a, b) => b.score - a.score);
+  // Prefer the westernmost valid anchor, then the southernmost site along that
+  // edge so the cargo bay sits opposite the workshop.
+  candidates.sort((a, b) => a.tile.gx - b.tile.gx || b.tile.gz - a.tile.gz);
   if (candidates.length) return candidates[0].site;
 
   const safeFallback = islandTiles
     .filter(tile => !tile.water && Math.abs(tile.topY - tile.baseY) <= .01 &&
       tile.radial >= .62 && tile.gx - island.cx < -island.r * .45 &&
-      (!barnSite || Math.hypot(tile.x - barnSite.x, tile.z - barnSite.z) >= 5.5 * TILE))
+      (!workshopSite || Math.hypot(tile.x - workshopSite.x, tile.z - workshopSite.z) >= 5.5 * TILE))
     .map(tile => ({ site: { x: tile.x, y: tile.topY, z: tile.z, outward }, tile }))
     .filter(candidate => deckIsClear(candidate.site))
-    .sort((a, b) => a.tile.gx - b.tile.gx)[0];
+    .sort((a, b) => a.tile.gx - b.tile.gx || b.tile.gz - a.tile.gz)[0];
   return safeFallback?.site || null;
 }
 
@@ -1562,12 +2148,94 @@ function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, 
   return new Set();
 }
 
+function addStarterCoastLake(cells, island, terrain, water, waterMotion, waterfalls, random) {
+  // A broad, asymmetric footprint keeps the starter lake from reading as the
+  // same four-tile square used as the source of the smaller watercourses.
+  const lakeOffsets = [
+    [-1, -2], [0, -2], [1, -2],
+    [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1],
+    [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0],
+    [-1, 1], [0, 1], [1, 1], [2, 1],
+    [0, 2], [1, 2],
+  ];
+  const cellKeys = new Set(cells.map(cell => gridKey(cell.gx, cell.gz)));
+  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const fitsLake = (candidate, requireBank, minimumSouth = 4) => {
+    if (candidate.dz < minimumSouth) return false;
+    const lakeCells = lakeOffsets.map(([dx, dz]) => ({
+      gx: candidate.gx + dx,
+      gz: candidate.gz + dz,
+    }));
+    if (lakeCells.some(cell => Math.abs(cell.gx - island.cx) <= 3 && Math.abs(cell.gz - island.cz) <= 3)) return false;
+    return lakeCells.every(cell => cellKeys.has(gridKey(cell.gx, cell.gz)) && (!requireBank ||
+      directions.every(([dx, dz]) => cellKeys.has(gridKey(cell.gx + dx, cell.gz + dz)))));
+  };
+  const target = { dx: island.r * .2, dz: island.r * .52 };
+  const sortSouthEast = (first, second) =>
+    Math.hypot(first.dx - target.dx, first.dz - target.dz) -
+      Math.hypot(second.dx - target.dx, second.dz - target.dz) ||
+    second.dz - first.dz;
+  const bankedCandidates = cells.filter(candidate => fitsLake(candidate, true)).sort(sortSouthEast);
+  // Extremely notched seeds may not have room for a complete one-tile bank;
+  // preserve the full lake footprint and southern placement in that case.
+  const bankedKeys = new Set(bankedCandidates.map(candidate => gridKey(candidate.gx, candidate.gz)));
+  const fallbackCandidates = cells
+    .filter(candidate => fitsLake(candidate, false) && !bankedKeys.has(gridKey(candidate.gx, candidate.gz)))
+    .sort(sortSouthEast);
+  const candidateKeys = new Set([...bankedCandidates, ...fallbackCandidates]
+    .map(candidate => gridKey(candidate.gx, candidate.gz)));
+  const edgeCaseCandidates = cells
+    .filter(candidate => fitsLake(candidate, false, 3) && !candidateKeys.has(gridKey(candidate.gx, candidate.gz)))
+    .sort(sortSouthEast);
+  const riverSourceOffsets = [[4, 0], [3, -1], [3, 1], [2, -2], [2, 2]];
+  const candidates = [...bankedCandidates, ...fallbackCandidates, ...edgeCaseCandidates];
+  let selection = null;
+
+  for (const minimumPathLength of [3, 2]) {
+    for (const center of candidates) {
+      const lakeKeys = new Set(lakeOffsets.map(([dx, dz]) => gridKey(center.gx + dx, center.gz + dz)));
+      const routes = riverSourceOffsets
+        .map(([dx, dz]) => terrain.get(gridKey(center.gx + dx, center.gz + dz)))
+        .filter(Boolean)
+        .map(source => findWaterRoute(
+          source, lakeKeys, terrain, island.id, true, { x: 1, z: 0 }, minimumPathLength
+        ))
+        .filter(Boolean)
+        .sort((first, second) => first.path.length - second.path.length);
+      if (!routes.length) continue;
+      selection = { lakeKeys, route: routes[0] };
+      break;
+    }
+    if (selection) break;
+  }
+  if (!selection) return new Set();
+
+  const { lakeKeys, route } = selection;
+  const waterKeys = new Set([...lakeKeys, ...route.path.map(tile => gridKey(tile.gx, tile.gz))]);
+  for (const key of waterKeys) {
+    const tile = terrain.get(key);
+    excavateWaterTile(tile);
+    tile.water = true;
+    addWaterSurface(tile, water, lakeKeys.has(key));
+  }
+
+  route.path.forEach((tile, index) => {
+    const next = route.path[index + 1];
+    const direction = next
+      ? { x: Math.sign(next.x - tile.x), z: Math.sign(next.z - tile.z) }
+      : route.outlet;
+    addCurrentStreak(tile, direction, water, waterMotion, random);
+  });
+  addWaterfall(route.path.at(-1), route.outlet, water, waterfalls, random);
+  return waterKeys;
+}
+
 function excavateWaterTile(tile) {
   tile.topY -= WATER_DEPTH;
   tile.dirtDepth -= WATER_DEPTH;
 }
 
-function findWaterRoute(source, lakeKeys, terrain, islandId, strictBanks) {
+function findWaterRoute(source, lakeKeys, terrain, islandId, strictBanks, requiredOutlet = null, minimumPathLength = 4) {
   const queue = [{ tile: source, path: [source] }];
   const visited = new Set([gridKey(source.gx, source.gz)]);
   const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
@@ -1581,13 +2249,16 @@ function findWaterRoute(source, lakeKeys, terrain, islandId, strictBanks) {
     // Only the final tile may touch the island edge, and it needs a single,
     // deliberate side for the waterfall rather than a corner-shaped opening.
     const hasBanks = strictBanks ? hasSolidSurroundings : hasCardinalBlocks;
-    if (outlets.length === 1 && current.path.length >= 4 &&
+    const facesRequiredOutlet = !requiredOutlet ||
+      (outlets[0]?.x === requiredOutlet.x && outlets[0]?.z === requiredOutlet.z);
+    if (outlets.length === 1 && facesRequiredOutlet && current.path.length >= minimumPathLength &&
       hasBanks(current.tile, terrain, islandId, outlets[0])) {
       return { path: current.path, outlet: outlets[0] };
     }
     if (outlets.length) continue;
 
     for (const direction of directions) {
+      if (requiredOutlet && direction.x === -requiredOutlet.x && direction.z === -requiredOutlet.z) continue;
       const key = gridKey(current.tile.gx + direction.x, current.tile.gz + direction.z);
       const neighbor = terrain.get(key);
       if (!neighbor || neighbor.islandId !== islandId || lakeKeys.has(key) || visited.has(key)) continue;
@@ -1744,12 +2415,12 @@ function chooseTreeSilhouette(profile, random) {
 function treeFoliagePalette(profile) {
   const rainforest = profile.veryWet * profile.veryShady;
   const yellowing = profile.dry * (.35 + profile.sunny * .65);
-  if (rainforest > .48) return { key: 'rainforest', dark: 0x155c3a, light: 0x2f9860 };
-  if (profile.wet * profile.shady > .35) return { key: 'jungle', dark: 0x237447, light: 0x52b95f };
-  if (yellowing > .62) return { key: 'golden-dry', dark: 0x8f7330, light: 0xc5a23d };
-  if (profile.dry > .45) return { key: 'dry-olive', dark: 0x6f7434, light: 0xa6a242 };
-  if (profile.sunny > .58) return { key: 'sunny-lush', dark: 0x55983b, light: 0x9dcc48 };
-  return { key: 'woodland', dark: 0x3f7f3c, light: 0x75ad4d };
+  if (rainforest > .48) return { key: 'rainforest', dark: 0x28563f, light: 0x4a8663 };
+  if (profile.wet * profile.shady > .35) return { key: 'jungle', dark: 0x3e6a4d, light: 0x699b68 };
+  if (yellowing > .62) return { key: 'golden-dry', dark: 0x7c7048, light: 0xa59358 };
+  if (profile.dry > .45) return { key: 'dry-olive', dark: 0x696e46, light: 0x91905c };
+  if (profile.sunny > .58) return { key: 'sunny-lush', dark: 0x618355, light: 0x8eaa68 };
+  return { key: 'woodland', dark: 0x50754d, light: 0x789361 };
 }
 
 function chooseGroundCover(profile, nearWater, random) {
@@ -1779,18 +2450,18 @@ function weightedChoice(choices, random) {
 function groundCoverMaterials() {
   const material = color => new THREE.MeshStandardMaterial({ color, roughness: 1 });
   return {
-    brightGrass: material(0x7fba4e),
-    darkGrass: material(0x315f3b),
-    dryGrass: material(0xc4a54e),
-    fern: material(0x356f43),
-    lushLeaf: material(0x4f8b48),
-    flower: material(0xf3c1dc),
-    flowerGold: material(0xf1d64f),
-    mushroom: material(0xd8d0b3),
-    mushroomCap: material(0xb65d4c),
-    reed: material(0x739251),
-    reedTip: material(0x8a6840),
-    scrub: material(0x817949),
+    brightGrass: material(0x83a966),
+    darkGrass: material(0x45654c),
+    dryGrass: material(0xb09c62),
+    fern: material(0x496c50),
+    lushLeaf: material(0x5e8058),
+    flower: material(0xdec4d2),
+    flowerGold: material(0xdacb70),
+    mushroom: material(0xcec9b7),
+    mushroomCap: material(0xa9685e),
+    reed: material(0x778867),
+    reedTip: material(0x806b52),
+    scrub: material(0x7a765a),
   };
 }
 
@@ -1946,6 +2617,14 @@ function addBridgeBetween(fromIsland, toIsland, terrain, group, bridgeBlocks) {
   const plankCount = Math.ceil(span / 0.52);
   const plankLength = span / plankCount + 0.025;
   bridge.name = 'bridge';
+  bridge.userData.occlusionIgnoreAtVehicle = vehicleState => {
+    const along = (vehicleState.x - start.x) * direction.x + (vehicleState.z - start.z) * direction.z;
+    const lateral = Math.abs((vehicleState.x - start.x) * direction.z - (vehicleState.z - start.z) * direction.x);
+    if (along < -BRIDGE_OCCLUSION_END_CLEARANCE || along > span + BRIDGE_OCCLUSION_END_CLEARANCE
+      || lateral > BRIDGE_WIDTH * .5 + BRIDGE_OCCLUSION_SIDE_CLEARANCE) return false;
+    const deckY = THREE.MathUtils.lerp(start.y, end.y, THREE.MathUtils.clamp(along / span, 0, 1));
+    return Math.abs(vehicleState.y - deckY) <= BRIDGE_OCCLUSION_HEIGHT_CLEARANCE;
+  };
   group.add(bridge);
 
   for (let index = 0; index < plankCount; index++) {
@@ -1965,6 +2644,7 @@ function closestIslandGap(terrain, fromId, toId) {
   const fromTiles = [];
   const toTiles = [];
   for (const tile of terrain.values()) {
+    if (tile.water) continue;
     if (tile.islandId === fromId) fromTiles.push(tile);
     else if (tile.islandId === toId) toTiles.push(tile);
   }
@@ -2111,6 +2791,20 @@ function createOrganicCells(cx, cz, radius, seed) {
 }
 
 function plateauHeight(cell, island, angle) {
+  if (island.id === NORTH_ISLAND_ID) {
+    const skew = Math.sin(angle) * .14;
+    const northward = -cell.dz + cell.dx * skew;
+    const across = cell.dx + cell.dz * skew * .35;
+    const terraces = [
+      { north: -island.r * .28, width: island.r * .74 },
+      { north: 0, width: island.r * .55 },
+      { north: island.r * .27, width: island.r * .36 },
+    ];
+    const plateauLevels = terraces.reduce((levels, terrace) =>
+      levels + Number(northward >= terrace.north && Math.abs(across) <= terrace.width), 0);
+    return PLATEAU_BLOCK_HEIGHT * plateauLevels;
+  }
+
   const along = cell.dx * Math.cos(angle) + cell.dz * Math.sin(angle);
   const across = -cell.dx * Math.sin(angle) + cell.dz * Math.cos(angle);
   // Every non-starter island uses one large, contiguous raised plot. Its base

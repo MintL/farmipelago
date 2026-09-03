@@ -38,11 +38,11 @@ export const mats = {
   soybeanLeaf: new THREE.MeshStandardMaterial({ color: 0x6b9b48, roughness: .9 }),
   soybeanPod: new THREE.MeshStandardMaterial({ color: 0xb78e48, roughness: .9 }),
   weed: new THREE.MeshStandardMaterial({ color: 0xb23d79, emissive: 0x4d102d, emissiveIntensity: .32, roughness: .8 }),
-  stone: new THREE.MeshStandardMaterial({ color: 0x7d8580, roughness: 1 }),
-  stoneDark: new THREE.MeshStandardMaterial({ color: 0x636b68, roughness: 1 }),
-  trunk: new THREE.MeshStandardMaterial({ color: 0x76513a, roughness: 1 }),
-  leaves: new THREE.MeshStandardMaterial({ color: 0x5e8c55, roughness: 1 }),
-  leavesLight: new THREE.MeshStandardMaterial({ color: 0x7da467, roughness: 1 }),
+  stone: new THREE.MeshStandardMaterial({ color: 0x7b827e, roughness: 1 }),
+  stoneDark: new THREE.MeshStandardMaterial({ color: 0x626866, roughness: 1 }),
+  trunk: new THREE.MeshStandardMaterial({ color: 0x6e5545, roughness: 1 }),
+  leaves: new THREE.MeshStandardMaterial({ color: 0x66865e, roughness: 1 }),
+  leavesLight: new THREE.MeshStandardMaterial({ color: 0x849b72, roughness: 1 }),
   tractor: new THREE.MeshStandardMaterial({ color: 0x2878c8, roughness: 0.68 }),
   tractorDark: new THREE.MeshStandardMaterial({ color: 0x123b78, roughness: 0.74 }),
   tractorAccent: new THREE.MeshStandardMaterial({ color: 0x56b5f5, roughness: 0.55, metalness: 0.04 }),
@@ -57,11 +57,12 @@ export const mats = {
   headlamp: new THREE.MeshStandardMaterial({ color: 0xffe49a, emissive: 0xffbd46, emissiveIntensity: 1.25, roughness: 0.45 }),
   red: new THREE.MeshStandardMaterial({ color: 0xae6756, roughness: 0.9 }),
   metal: new THREE.MeshStandardMaterial({ color: 0xb9c0b6, roughness: 0.58, metalness: 0.3 }),
-  bridge: new THREE.MeshStandardMaterial({ color: 0x9a6438, roughness: 0.88 }),
-  bridgeDark: new THREE.MeshStandardMaterial({ color: 0x694127, roughness: 0.92 }),
+  bridge: new THREE.MeshStandardMaterial({ color: 0x87684e, roughness: 0.88 }),
+  bridgeDark: new THREE.MeshStandardMaterial({ color: 0x604b3b, roughness: 0.92 }),
   water: new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0 },
+      nightAmount: { value: 0 },
     },
     transparent: false,
     blending: THREE.NoBlending,
@@ -85,6 +86,7 @@ export const mats = {
     `,
     fragmentShader: `
       uniform float time;
+      uniform float nightAmount;
       varying vec3 vWorldPosition;
       varying float vWave;
 
@@ -94,8 +96,11 @@ export const mats = {
         float glint = smoothstep(.72, 1.32, ripples + vWave * 24.0);
         vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
         float fresnel = pow(1.0 - max(dot(viewDirection, vec3(0.0, 1.0, 0.0)), 0.0), 2.4);
-        vec3 water = mix(vec3(.035, .24, .34), vec3(.12, .52, .66), glint * .38 + fresnel * .26);
-        gl_FragColor = vec4(water + glint * vec3(.18, .34, .38), 1.0);
+        vec3 dayWater = mix(vec3(.035, .24, .34), vec3(.12, .52, .66), glint * .38 + fresnel * .26);
+        vec3 nightWater = mix(vec3(.025, .10, .22), vec3(.16, .31, .50), glint * .28 + fresnel * .34);
+        vec3 dayGlint = glint * vec3(.18, .34, .38);
+        vec3 moonGlint = glint * vec3(.16, .24, .42);
+        gl_FragColor = vec4(mix(dayWater + dayGlint, nightWater + moonGlint, nightAmount), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
@@ -111,7 +116,7 @@ export const mats = {
     depthWrite: false,
   }),
   waterSplash: new THREE.MeshBasicMaterial({
-    color: 0x62d8ee,
+    color: new THREE.Color().setRGB(.035, .24, .34),
     depthTest: true,
     depthWrite: false,
     polygonOffset: true,

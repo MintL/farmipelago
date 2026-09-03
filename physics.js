@@ -1,5 +1,5 @@
 import RAPIER from 'https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/+esm';
-import { GRASS_TOP, LAYER_DEPTH, SOIL_DEPTH, TILE, gridKey } from './shared.js';
+import { GRASS_TOP, LAYER_DEPTH, SOIL_DEPTH, TILE, gridKey } from './shared.js?v=workshop-voxels-20260903-1';
 
 const FIXED_TIMESTEP = 1 / 60;
 const MAX_FRAME_TIME = 0.1;

@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'farmipelago.gameState';
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
+const DEFAULT_DAY_PHASE = 10 / 24;
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -15,7 +16,13 @@ function validState(state, schemaVersion = SCHEMA_VERSION) {
     && isObject(state.progression)
     && Array.isArray(state.vehicles)
     && typeof state.activeVehicleId === 'string'
-    && isObject(state.ui);
+    && isObject(state.ui)
+    && (schemaVersion < 9 || (
+      isObject(state.environment)
+      && Number.isFinite(state.environment.phase)
+      && state.environment.phase >= 0
+      && state.environment.phase < 1
+    ));
 }
 
 export function loadGameState() {
@@ -41,7 +48,14 @@ export function loadGameState() {
         const hasAnimals = Array.isArray(building.animals) && building.animals.length > 0;
         return { ...building, constructionPhase: hasPen || hasAnimals ? 'complete' : 'draft' };
       });
-      state = { ...state, schemaVersion: SCHEMA_VERSION, buildings };
+      state = { ...state, schemaVersion: 8, buildings };
+    }
+    if (validState(state, 8)) {
+      state = {
+        ...state,
+        schemaVersion: SCHEMA_VERSION,
+        environment: { phase: DEFAULT_DAY_PHASE },
+      };
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
     }
     if (validState(state)) return { state, invalid: false, unavailable: false };

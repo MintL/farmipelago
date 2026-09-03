@@ -1,15 +1,16 @@
-import { THREE } from './shared.js?v=bale-wrapper-20260902-1';
-import { crops } from './crops.js?v=bale-wrapper-20260902-1';
+import { THREE } from './shared.js?v=water-splash-base-20260903-1';
+import { crops } from './crops.js?v=fixed-crop-yield-20260903-1';
 import { createPhysics } from './physics.js?v=persistence-20260831-1';
 import { createLoadoutPreview, createVehicle } from './tractor.js?v=cattle-20260902-2';
-import { createUi } from './ui.js?v=construction-20260902-12';
-import { createBuildingManager } from './buildings.js?v=construction-20260902-13';
-import { generateFarm } from './world-generator.js?v=cattle-20260902-1';
+import { createUi } from './ui.js?v=water-splash-base-20260903-1';
+import { createBuildingManager } from './buildings.js?v=auto-hide-buildings-20260903-1';
+import { generateFarm } from './world-generator.js?v=water-splash-base-20260903-1';
 import { createMilestoneProgression } from './progression.js?v=cattle-20260902-1';
-import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=construction-20260902-1';
+import { deleteGameState, loadGameState, saveGameState } from './persistence.js?v=day-night-20260903-1';
 import { OWNED_VEHICLES, vehicleType } from './vehicles.js?v=cattle-20260902-1';
 import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from './equipment.js?v=cattle-20260902-1';
 import { HAY_BALE_LITRES } from './livestock.js?v=construction-20260902-8';
+import { createEnvironment, DEFAULT_DAY_PHASE } from './environment.js?v=water-splash-base-20260903-1';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
@@ -17,8 +18,19 @@ const fpsSampleInterval = 500;
 const poseCheckpointInterval = 2;
 const saveDebounceMs = 250;
 const vehicleSwitchSeconds = .6;
+const cameraRotationSeconds = .22;
 const transferLitresPerTick = 10;
 const transferTicksPerSecond = 120;
+const baseDriveCameraFov = 38;
+const defaultDriveCameraFov = 28;
+const driveCameraFovs = [38, 30, 28, 24];
+const driveCameraZoomScale = .9;
+const defaultDriveCameraCounterClockwiseDegrees = 12;
+const defaultDriveCameraYaw = defaultDriveCameraCounterClockwiseDegrees * Math.PI / 180;
+const baseFogNear = 30;
+const baseFogFar = 92;
+const driveCameraDistanceScale = fov => driveCameraZoomScale * Math.tan(baseDriveCameraFov * Math.PI / 360) / Math.tan(fov * Math.PI / 360);
+const initialDriveCameraScale = driveCameraDistanceScale(defaultDriveCameraFov);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const loadResult = loadGameState();
 document.body.dataset.renderQuality = 'high';
@@ -31,16 +43,17 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = .94;
+renderer.toneMappingExposure = .9;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xc7dce0);
-scene.fog = new THREE.Fog(0xc7dce0, 34, 92);
-const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, .1, 200);
+const camera = new THREE.PerspectiveCamera(defaultDriveCameraFov, innerWidth / innerHeight, .1, 200);
 const cinematicCameraFov = 44;
-const driveCameraOffset = new THREE.Vector3(12, 20, 28);
-const mapCameraOffset = new THREE.Vector3(0, 44, 19);
+const baseDriveCameraOffset = new THREE.Vector3(12, 20, 28);
+const cameraUp = new THREE.Vector3(0, 1, 0);
+const driveCameraOffset = baseDriveCameraOffset.clone()
+  .multiplyScalar(initialDriveCameraScale)
+  .applyAxisAngle(cameraUp, defaultDriveCameraYaw);
 const buildCameraOffset = new THREE.Vector3(22, 30, 28);
 const cameraForward = new THREE.Vector2(-driveCameraOffset.x, -driveCameraOffset.z).normalize();
 const cameraRight = new THREE.Vector2(-cameraForward.y, cameraForward.x);
@@ -49,59 +62,14 @@ const mapCameraTarget = new THREE.Vector3();
 camera.position.copy(driveCameraOffset);
 camera.lookAt(driveCameraTarget);
 scene.add(camera);
-
-scene.add(new THREE.HemisphereLight(0xf3f6f1, 0x728277, 1.05));
-const sun = new THREE.DirectionalLight(0xffefd0, 1.55);
-sun.position.set(-16, 26, 18);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -34; sun.shadow.camera.right = 34;
-sun.shadow.camera.top = 38; sun.shadow.camera.bottom = -38;
-sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
-sun.shadow.bias = -.0002; sun.shadow.normalBias = .045; sun.shadow.radius = 3;
-scene.add(sun);
-const fill = new THREE.DirectionalLight(0xbcd5ed, .5);
-fill.position.set(22, 14, -26);
-scene.add(fill);
-
-const clouds = createClouds();
-scene.add(clouds.group);
-
-function createClouds() {
-  const group = new THREE.Group();
-  const material = new THREE.MeshLambertMaterial({ color: 0xf7fbfa, transparent: true, opacity: .88, fog: false, depthWrite: false });
-  const cloudGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const definitions = [
-    { x: -13, y: -7, z: 18, width: 6.8, height: 2.4, depth: 3.2, phase: 0 },
-    { x: -11.5, y: -6.2, z: 19, width: 3.8, height: 3.1, depth: 3.5, phase: .9 },
-    { x: 13, y: -7.2, z: 13, width: 7.1, height: 2.6, depth: 3.3, phase: 1.7 },
-    { x: 11.5, y: -6.3, z: 12, width: 3.5, height: 3.2, depth: 3.6, phase: 2.5 },
-    { x: 5, y: -6, z: 2, width: 6.5, height: 2.5, depth: 3.1, phase: 3.3 },
-    { x: -7, y: -5.8, z: -15, width: 7.2, height: 2.7, depth: 3.4, phase: 4.1 },
-    { x: -6, y: -5.1, z: -16, width: 3.5, height: 3.2, depth: 3.7, phase: 5 },
-    { x: 11.5, y: -6.4, z: -30, width: 6.5, height: 2.8, depth: 3.5, phase: 5.8 },
-    { x: 7.5, y: -5.5, z: -31, width: 3.5, height: 3.4, depth: 3.7, phase: 6.6 },
-    { x: -7, y: -5.4, z: -47, width: 6.8, height: 2.6, depth: 3.2, phase: 7.4 },
-    { x: 9, y: -5.9, z: -61, width: 7.1, height: 2.7, depth: 3.4, phase: 8.2 },
-    { x: 7, y: -5.1, z: -62, width: 3, height: 3.3, depth: 3.5, phase: 9 },
-  ];
-  const cloudData = definitions.map(definition => {
-    const cloud = new THREE.Mesh(cloudGeometry, material);
-    cloud.position.set(definition.x, definition.y, definition.z);
-    cloud.scale.set(definition.width, definition.height, definition.depth);
-    cloud.castShadow = false;
-    cloud.receiveShadow = false;
-    group.add(cloud);
-    return { cloud, ...definition };
-  });
-
-  return {
-    group,
-    animate(elapsed) {
-      for (const cloud of cloudData) cloud.cloud.position.y = cloud.y + Math.sin(elapsed * .3 + cloud.phase) * .12;
-    },
-  };
-}
+const environment = createEnvironment({
+  scene,
+  renderer,
+  camera,
+  initialPhase: loadResult.state?.environment?.phase ?? DEFAULT_DAY_PHASE,
+  fogNear: baseFogNear * initialDriveCameraScale,
+  fogFar: baseFogFar * initialDriveCameraScale,
+});
 
 const physics = await createPhysics();
 const fleet = OWNED_VEHICLES.map(owned => {
@@ -138,6 +106,11 @@ let fpsFrameCount = 0;
 let gameplayWasBlocked = false;
 let renderRequested = true;
 let viewMode = 'drive';
+let driveCameraFov = defaultDriveCameraFov;
+let driveCameraRotationStep = 0;
+let driveCameraRotation = defaultDriveCameraYaw;
+let driveCameraRotationTarget = defaultDriveCameraYaw;
+let cameraRotationTransition = null;
 let progression;
 let saveTimer = null;
 let persistenceEnabled = !loadResult.unavailable;
@@ -201,6 +174,7 @@ function canTransferCargo(vehicle = activeVehicle()) {
 function persistentState() {
   return {
     world: farm.persistentState(elapsed),
+    environment: environment.persistentState(),
     buildings: buildings.persistentState(),
     progression: progression.persistentState(),
     vehicles: fleet.map(vehicle => {
@@ -279,6 +253,90 @@ function updateDriveCamera(state, dt, snap = false) {
   camera.lookAt(driveCameraTarget);
 }
 
+function setCameraFogScale(scale = 1) {
+  scene.fog.near = baseFogNear * scale;
+  scene.fog.far = baseFogFar * scale;
+}
+
+function updateDriveCameraOrientation() {
+  const distanceScale = driveCameraDistanceScale(driveCameraFov);
+  driveCameraOffset.copy(baseDriveCameraOffset)
+    .multiplyScalar(distanceScale)
+    .applyAxisAngle(cameraUp, driveCameraRotation);
+  cameraForward.set(-driveCameraOffset.x, -driveCameraOffset.z).normalize();
+  cameraRight.set(-cameraForward.y, cameraForward.x);
+}
+
+function applyDriveCameraProjection() {
+  const distanceScale = driveCameraDistanceScale(driveCameraFov);
+  updateDriveCameraOrientation();
+  camera.fov = driveCameraFov;
+  camera.updateProjectionMatrix();
+  setCameraFogScale(distanceScale);
+}
+
+function setDriveCameraPreset(nextFov) {
+  const fov = Number(nextFov);
+  if (!driveCameraFovs.includes(fov)) return false;
+  driveCameraFov = fov;
+  if (viewMode === 'drive' && !milestoneCinematic) {
+    applyDriveCameraProjection();
+    updateDriveCamera(activeVehicleState(), 0, true);
+    renderRequested = true;
+  }
+  return true;
+}
+
+function currentEnvironmentFocus() {
+  if (milestoneCinematic) return milestoneCinematic.target;
+  return viewMode === 'build' ? mapCameraTarget : driveCameraTarget;
+}
+
+function setTimeOfDay(nextPhase) {
+  const state = environment.setPhase(nextPhase, currentEnvironmentFocus());
+  farm?.setNightAmount(state.nightAmount, state.lanternAmount);
+  ui?.setDebugTimeOfDay(state.phase);
+  scheduleSave();
+  renderRequested = true;
+  return true;
+}
+
+function rotateDriveCamera(direction) {
+  if (viewMode !== 'drive' || milestoneCinematic) return false;
+  const step = direction < 0 ? -1 : 1;
+  driveCameraRotationStep = (driveCameraRotationStep + step + 4) % 4;
+  driveCameraRotationTarget += step * Math.PI * .5;
+  if (reducedMotion) {
+    driveCameraRotation = driveCameraRotationTarget;
+    cameraRotationTransition = null;
+    updateDriveCameraOrientation();
+    updateDriveCamera(activeVehicleState(), 0, true);
+  }
+  else {
+    cameraRotationTransition = {
+      elapsed: 0,
+      from: driveCameraRotation,
+      to: driveCameraRotationTarget,
+    };
+  }
+  renderRequested = true;
+  return true;
+}
+
+function updateDriveCameraRotation(dt) {
+  if (!cameraRotationTransition) return;
+  const transition = cameraRotationTransition;
+  transition.elapsed += dt;
+  const amount = THREE.MathUtils.smoothstep(transition.elapsed / cameraRotationSeconds, 0, 1);
+  driveCameraRotation = THREE.MathUtils.lerp(transition.from, transition.to, amount);
+  updateDriveCameraOrientation();
+  if (transition.elapsed >= cameraRotationSeconds) {
+    driveCameraRotation = transition.to;
+    cameraRotationTransition = null;
+    updateDriveCameraOrientation();
+  }
+}
+
 function beginMilestoneCinematic(milestone) {
   if (milestoneCinematic || !milestone?.pickupReady) return;
   milestoneCinematic = {
@@ -296,6 +354,7 @@ function beginMilestoneCinematic(milestone) {
   visualSteer = 0;
   ui.setStoragePopup(null);
   ui.setCinematicActive(true);
+  setCameraFogScale();
   camera.fov = cinematicCameraFov;
   camera.updateProjectionMatrix();
   farm.cargoPort.requestPickup(camera);
@@ -367,11 +426,6 @@ function syncFleetVisuals(dt) {
   }
 }
 
-function updateMapCamera() {
-  camera.position.copy(mapCameraTarget).add(mapCameraOffset);
-  camera.lookAt(mapCameraTarget);
-}
-
 function updateBuildCamera() {
   camera.position.copy(mapCameraTarget).add(buildCameraOffset);
   camera.lookAt(mapCameraTarget);
@@ -379,37 +433,17 @@ function updateBuildCamera() {
 
 function setCameraView(nextMode, snapTarget = false) {
   viewMode = nextMode;
-  if (viewMode === 'overlay') {
+  if (viewMode === 'build') {
     const state = activeVehicleState();
     if (snapTarget) mapCameraTarget.set(state.x, 0, state.z);
-    camera.fov = 50;
-    camera.updateProjectionMatrix();
-    updateMapCamera();
-  }
-  else if (viewMode === 'build') {
-    const state = activeVehicleState();
-    if (snapTarget) mapCameraTarget.set(state.x, 0, state.z);
+    setCameraFogScale();
     camera.fov = 44;
     camera.updateProjectionMatrix();
     updateBuildCamera();
   }
   else {
-    camera.fov = 38;
-    camera.updateProjectionMatrix();
+    applyDriveCameraProjection();
     updateDriveCamera(activeVehicleState(), 0, true);
-  }
-}
-
-function applyCropOverlay() {
-  if (!farm || !ui) return;
-  const overlay = ui.cropOverlayState();
-  if (overlay.enabled) {
-    farm.setCropOverlay(overlay.cropId);
-    setCameraView('overlay', viewMode !== 'overlay');
-  }
-  else {
-    farm.hideCropOverlay();
-    setCameraView('drive');
   }
 }
 
@@ -417,7 +451,6 @@ function applyBuildMode(enabled) {
   if (!farm) return;
   buildings?.setBuildMode(enabled);
   if (enabled) {
-    farm.hideCropOverlay();
     setCameraView('build', viewMode !== 'build');
   }
   else if (viewMode === 'build') setCameraView('drive');
@@ -476,10 +509,9 @@ function resetActiveVehicle() {
   vehicle.heading = 0;
   const state = activeVehicleState();
   vehicle.visual.sync(state, vehicle.heading, 0, 0, 0, elapsed);
-  if (viewMode === 'overlay' || viewMode === 'build') {
+  if (viewMode === 'build') {
     mapCameraTarget.set(state.x, 0, state.z);
-    if (viewMode === 'build') updateBuildCamera();
-    else updateMapCamera();
+    updateBuildCamera();
   }
   else updateDriveCamera(state, 0, true);
   scheduleSave();
@@ -586,8 +618,9 @@ function initializeFarm(savedState) {
   progression = createMilestoneProgression(savedState?.progression);
   syncProgressionUi();
   if (savedState) {
-    farm.restorePersistentState(savedState.world, elapsed);
     buildings.restorePersistentState(savedState.buildings);
+    farm.restorePersistentState(savedState.world, elapsed, (x, z) =>
+      buildings.isBuildingAt(x, z) || buildings.isPastureAt(x, z));
     ui.restorePersistentState(savedState.ui);
     restoreFleet(savedState.vehicles, savedState.activeVehicleId);
   }
@@ -596,8 +629,10 @@ function initializeFarm(savedState) {
   syncProgressionUi();
   syncInventoryUi();
   syncCargoPort();
-  applyCropOverlay();
   updateDriveCamera(activeVehicleState(), 0, true);
+  const environmentState = environment.setPhase(savedState?.environment?.phase ?? DEFAULT_DAY_PHASE, driveCameraTarget);
+  farm.setNightAmount(environmentState.nightAmount, environmentState.lanternAmount);
+  ui.setDebugTimeOfDay(environmentState.phase);
   if (progression.state().pickupReady) beginMilestoneCinematic(progression.state());
   persistenceReady = true;
   writeSave();
@@ -1041,7 +1076,6 @@ ui = createUi({
     return changed;
   },
   onCargoDropOff: dropOffCargo,
-  onCropOverlayChange: applyCropOverlay,
   onBuildModeChange: applyBuildMode,
   onBuildPointerStart: beginBuildingDrag,
   onBuildPointerMove: point => {
@@ -1057,6 +1091,10 @@ ui = createUi({
   onUnlockOverride: setUnlockOverride,
   onClearUnlockOverrides: clearUnlockOverrides,
   onMilestoneOverride: setMilestoneOverride,
+  onCameraPresetChange: setDriveCameraPreset,
+  onTimeOfDayChange: setTimeOfDay,
+  onCameraRotateStep: rotateDriveCamera,
+  cameraPresetFov: defaultDriveCameraFov,
   onMilestoneCelebrationDismissed: syncProgressionUi,
   onPersistentStateChange: scheduleSave,
   panSurface: renderer.domElement,
@@ -1065,6 +1103,8 @@ buildings = createBuildingManager({
   getSiteAt: (x, z, radius) => farm?.buildingSiteAt(x, z, radius),
   getTerrain: () => farm?.terrain,
   setCollider: (id, obstacle) => farm?.setBuildingCollider(id, obstacle),
+  registerOccluder: object => farm?.registerOccluder(object),
+  unregisterOccluder: object => farm?.unregisterOccluder(object),
   onChange: scheduleSave,
   onHint: hint => ui?.setBuildHint(hint),
 });
@@ -1192,7 +1232,7 @@ function applyTool(state) {
   if (!vehicle.rearToolEnabled) return;
   if (tool === 'plough') {
     forToolRows(state, [-.6, -.2, .2, .6], 1.58, (x, z) => {
-      if (buildings?.isPastureAt(x, z)) return;
+      if (buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z)) return;
       farm.ploughAt(x, z, levelY, vehicle.heading);
     });
   }
@@ -1294,7 +1334,7 @@ function updateDrive(dt) {
     return;
   }
 
-  ui.setBarnAvailable(farm.insideBarn(state.x, state.z));
+  ui.setBarnAvailable(farm.insideWorkshop(state.x, state.z));
   applyTool(state);
   updateDriveCamera(state, dt);
   farm.updateOcclusion(camera.position, state, dt);
@@ -1324,8 +1364,7 @@ function updateMap(dt) {
   const pan = ui.consumePan();
   mapCameraTarget.x += pan.keyboardX * 19 * dt - pan.dragX * .055;
   mapCameraTarget.z += pan.keyboardZ * 19 * dt - pan.dragY * .055;
-  if (viewMode === 'build') updateBuildCamera();
-  else updateMapCamera();
+  updateBuildCamera();
 }
 
 function updateStoragePopup() {
@@ -1417,9 +1456,10 @@ function update(dt) {
   ui.animate(dt);
   if (ui.isGameplayBlocked()) return;
   elapsed += dt;
+  if (viewMode === 'drive' && !milestoneCinematic) updateDriveCameraRotation(dt);
   if (milestoneCinematic) updateMilestoneCinematic(dt);
   else if (vehicleTransition) updateVehicleTransition(dt);
-  else if (viewMode === 'overlay' || viewMode === 'build') {
+  else if (viewMode === 'build') {
     visualDriveAmount = 0;
     visualSteer = 0;
     updateMap(dt);
@@ -1430,11 +1470,13 @@ function update(dt) {
   if (cargoEvent?.shipmentPickedUp) collectMilestoneShipment();
   if (cargoEvent?.departed) finishMilestoneCinematic();
   syncFleetVisuals(dt);
+  const environmentState = environment.update(dt, currentEnvironmentFocus());
+  farm?.setNightAmount(environmentState.nightAmount, environmentState.lanternAmount);
+  ui.setDebugTimeOfDay(environmentState.phase);
   farm?.animate(elapsed);
   buildings?.animate(elapsed, dt);
   updateConstructionPopup();
   updateStoragePopup();
-  clouds.animate(elapsed);
   if (elapsed - lastPoseCheckpoint >= poseCheckpointInterval) {
     lastPoseCheckpoint = elapsed;
     scheduleSave();

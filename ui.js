@@ -1,5 +1,6 @@
-import { cropIds, crops } from './crops.js?v=bale-wrapper-20260902-1';
+import { cropIds, crops } from './crops.js?v=fixed-crop-yield-20260903-1';
 import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js?v=cattle-20260902-1';
+import { dayPhaseLabel, DEFAULT_DAY_PHASE } from './environment.js?v=water-splash-base-20260903-1';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', icon: 'plough' },
@@ -15,8 +16,9 @@ const DEFAULT_LOADOUT = { tool: 'plough', frontTool: 'loader' };
 const TICKER_STEP_LITRES = 10;
 const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
+const CAMERA_SWIPE_THRESHOLD = 48;
 
-export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onBarnFeed, onBarnLoadMilk, onPenRepaint, onBuildingTypeSelected, onConstructionPrimaryAction, onConstructionCancel, onConstructionUndo, onCargoDropOff, onCropOverlayChange, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onBarnFeed, onBarnLoadMilk, onPenRepaint, onBuildingTypeSelected, onConstructionPrimaryAction, onConstructionCancel, onConstructionUndo, onCargoDropOff, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onCameraPresetChange = () => true, onTimeOfDayChange = () => true, onCameraRotateStep = () => true, cameraPresetFov = 38, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -24,9 +26,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let activeVehicle = { id: 'tractor-1', type: 'tractor', name: 'Farm Tractor', icon: 'tractor', slots: ['tool', 'frontTool'] };
   let equipmentEnabled = { front: false, rear: false };
   let unlockedGates = new Set(['crop:wheat']);
-  let cropIndex = 0;
   let seedIndex = 0;
-  let cropOverlayEnabled = false;
   let buildMode = false;
   let cinematicActive = false;
   let selectedBuilding = null;
@@ -43,6 +43,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let panDragX = 0;
   let panDragY = 0;
   let buildPointer = null;
+  const cameraGesturePointers = new Map();
+  let cameraGestureStart = null;
+  let cameraGestureTriggered = false;
   let seedCropToastTimer = null;
   let restoreFocus = null;
   let inventoryHud = null;
@@ -51,6 +54,8 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let milestoneState = null;
   let debugUnlockables = [];
   let debugMilestones = [];
+  let debugCameraFov = Number(cameraPresetFov);
+  let debugDayPhase = DEFAULT_DAY_PHASE;
   const amountTickers = new Map();
 
   const topBar = document.querySelector('#topBar');
@@ -71,6 +76,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const showControls = document.querySelector('#showControls');
   const showDebug = document.querySelector('#showDebug');
   const debugPanel = document.querySelector('#debugPanel');
+  const debugTimeSlider = document.querySelector('#debugTimeSlider');
+  const debugTimeValue = document.querySelector('#debugTimeValue');
+  const debugCameraPresets = [...document.querySelectorAll('.debugCameraPreset')];
   const debugUnlockList = document.querySelector('#debugUnlockList');
   const debugMilestoneList = document.querySelector('#debugMilestoneList');
   const clearUnlockOverrides = document.querySelector('#clearUnlockOverrides');
@@ -103,7 +111,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const milestoneTracker = document.querySelector('#milestoneTracker');
   const milestoneTitle = document.querySelector('#milestoneTitle');
   const milestoneRows = document.querySelector('#milestoneRows');
-  const suitabilityToggle = document.querySelector('#suitabilityToggle');
   const buildingToggle = document.querySelector('#buildingToggle');
   const buildPalette = document.querySelector('#buildPalette');
   const buildingOptions = [...document.querySelectorAll('[data-building-id]')];
@@ -114,9 +121,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const constructionConfirm = document.querySelector('#constructionConfirm');
   const barnStorageRows = document.querySelector('#barnStorageRows');
   const viewHint = document.querySelector('#viewHint');
-  const cropSelector = document.querySelector('#cropSelector');
-  const cropName = document.querySelector('#cropName');
-  const cropSelectorIconUse = document.querySelector('#cropSelectorIconUse');
   const loadoutSummary = document.querySelector('#loadoutSummary');
   const vehicleName = document.querySelector('#vehicleName');
   const vehicleIdentity = document.querySelector('#vehicleIdentity');
@@ -136,6 +140,28 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     use.setAttribute('href', `#icon-${cropId}`);
     icon.append(use);
     return icon;
+  };
+
+  const renderDebugCameraPresets = () => {
+    for (const button of debugCameraPresets) {
+      const selected = Number(button.dataset.cameraFov) === debugCameraFov;
+      const state = button.querySelector('.debugUnlockState');
+      button.setAttribute('aria-pressed', String(selected));
+      button.setAttribute('aria-label', `${button.dataset.cameraLabel}: ${selected ? 'Active' : 'Select preset'}`);
+      state.textContent = selected ? 'Active' : 'Select';
+    }
+  };
+
+  const renderDebugTimeOfDay = () => {
+    const totalMinutes = Math.round(debugDayPhase * 24 * 60) % (24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const clock = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    const phaseLabel = dayPhaseLabel(debugDayPhase);
+    debugTimeSlider.value = String(totalMinutes);
+    debugTimeSlider.setAttribute('aria-valuetext', `${clock}, ${phaseLabel}`);
+    debugTimeValue.value = `${clock} · ${phaseLabel}`;
+    debugTimeValue.textContent = debugTimeValue.value;
   };
 
   const renderDebugUnlockables = () => {
@@ -244,7 +270,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
 
   const availableCropIds = () => cropIds.filter(cropId => unlockedGates.has(`crop:${cropId}`));
   const selectedSeedCropId = () => availableCropIds()[seedIndex] || 'wheat';
-  const selectedOverlayCropId = () => availableCropIds()[cropIndex] || 'wheat';
 
   const tickerValue = (key, target, initialValue = target, ticksPerSecond = METER_TICKS_PER_SECOND, view = 'grain') => {
     const safeTarget = Math.max(0, Number(target) || 0);
@@ -280,12 +305,65 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     buildPointer = null;
   };
 
+  const cameraGestureCenter = () => {
+    const points = [...cameraGesturePointers.values()];
+    if (points.length !== 2) return null;
+    return {
+      x: (points[0].x + points[1].x) * .5,
+      y: (points[0].y + points[1].y) * .5,
+    };
+  };
+
+  const beginCameraGesturePointer = event => {
+    cameraGesturePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (cameraGesturePointers.size === 2) {
+      cameraGestureStart = cameraGestureCenter();
+      cameraGestureTriggered = false;
+    }
+    else if (cameraGesturePointers.size > 2) cameraGestureStart = null;
+  };
+
+  const updateCameraGesturePointer = event => {
+    const point = cameraGesturePointers.get(event.pointerId);
+    if (!point) return false;
+    point.x = event.clientX;
+    point.y = event.clientY;
+    if (!cameraGestureStart || cameraGestureTriggered) return true;
+    const center = cameraGestureCenter();
+    if (!center) return true;
+    const dx = center.x - cameraGestureStart.x;
+    const dy = center.y - cameraGestureStart.y;
+    if (Math.abs(dx) >= CAMERA_SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.1) {
+      cameraGestureTriggered = true;
+      onCameraRotateStep(dx < 0 ? -1 : 1);
+    }
+    else if (Math.abs(dy) >= CAMERA_SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+      cameraGestureTriggered = true;
+    }
+    return true;
+  };
+
+  const endCameraGesturePointer = event => {
+    if (!cameraGesturePointers.has(event.pointerId)) return false;
+    cameraGesturePointers.delete(event.pointerId);
+    cameraGestureStart = null;
+    cameraGestureTriggered = false;
+    return true;
+  };
+
+  const clearCameraGesture = () => {
+    cameraGesturePointers.clear();
+    cameraGestureStart = null;
+    cameraGestureTriggered = false;
+  };
+
   const clearInput = () => {
     keys.clear();
     input.jumpQueued = false;
     clearStick();
     clearPan();
     clearBuildPointer();
+    clearCameraGesture();
     panDragX = panDragY = 0;
   };
 
@@ -447,7 +525,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   };
 
   const useSecondaryAction = () => {
-    if (inputLocked() || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || buildMode) return;
     if (activeVehicle.type !== 'harvester' && activeLoadout.tool === 'seeder') {
       seedIndex = (seedIndex + 1) % availableCropIds().length;
       renderSecondaryAction();
@@ -485,16 +563,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       });
       milestoneRows.append(row);
     }
-  };
-
-  const renderCropOverlay = () => {
-    const crop = crops[selectedOverlayCropId()];
-    suitabilityToggle.setAttribute('aria-pressed', String(cropOverlayEnabled));
-    suitabilityToggle.setAttribute('aria-label', cropOverlayEnabled ? 'Hide crop suitability' : 'Show crop suitability');
-    cropSelector.hidden = !cropOverlayEnabled;
-    cropName.setAttribute('aria-label', crop.name);
-    cropSelectorIconUse.setAttribute('href', `#icon-${selectedOverlayCropId()}`);
-    document.body.dataset.viewMode = buildMode ? 'build' : cropOverlayEnabled ? 'overlay' : 'drive';
   };
 
   const renderConstructionPopup = () => {
@@ -542,30 +610,14 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     repaintPen.hidden = constructionUiState?.type !== 'cattle-barn' || constructionUiState.inputMode !== 'edit';
     viewHint.textContent = buildMode && buildHint ? buildHint : buildMode
       ? constructionHint()
-      : 'DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE';
+      : '';
     renderConstructionPopup();
-    renderCropOverlay();
-  };
-
-  const notifyCropOverlay = () => onCropOverlayChange({ enabled: cropOverlayEnabled, cropId: selectedOverlayCropId() });
-
-  const setCropOverlay = enabled => {
-    if (inputLocked()) return;
-    if (overlayState || cropOverlayEnabled === enabled) return;
-    if (enabled && buildMode) setBuildMode(false);
-    cropOverlayEnabled = enabled;
-    clearInput();
-    renderCropOverlay();
-    notifyCropOverlay();
+    document.body.dataset.viewMode = buildMode ? 'build' : 'drive';
   };
 
   const setBuildMode = enabled => {
     if (inputLocked()) return;
     if (overlayState || buildMode === enabled) return;
-    if (enabled && cropOverlayEnabled) {
-      cropOverlayEnabled = false;
-      notifyCropOverlay();
-    }
     buildMode = enabled;
     if (!buildMode) {
       selectedBuilding = null;
@@ -578,7 +630,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   };
 
   const toggleEquipment = slot => {
-    if (inputLocked() || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || buildMode) return;
     const item = activeVehicle.type === 'harvester'
       ? slot === 'front' ? { working: true } : null
       : equipmentDefinition(slot === 'front' ? activeLoadout.frontTool : activeLoadout.tool);
@@ -589,7 +641,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   };
 
   const cycleVehicle = () => {
-    if (inputLocked() || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || buildMode) return;
     clearInput();
     onCycleVehicle();
   };
@@ -729,7 +781,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   };
 
   const openBarn = () => {
-    if (inputLocked() || cropOverlayEnabled) return;
+    if (inputLocked()) return;
     draftLoadout = { ...activeLoadout };
     renderLoadoutBays();
     showOverlay('barn', barnDialog);
@@ -785,7 +837,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       else if (overlayState === 'celebration') closeCelebration();
       else if (overlayState) closePause();
       else if (buildMode) setBuildMode(false);
-      else if (cropOverlayEnabled) setCropOverlay(false);
       else openPause();
       return;
     }
@@ -801,19 +852,27 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     if (overlayState) return;
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
     keys.add(event.code);
-    if (!cropOverlayEnabled && !buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
-    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyQ' && !event.repeat) toggleEquipment('front');
-    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyE' && !event.repeat) toggleEquipment('rear');
-    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyF' && !event.repeat) useSecondaryAction();
-    if (!cropOverlayEnabled && !buildMode && event.code === 'KeyV' && !event.repeat) cycleVehicle();
-    if (!cropOverlayEnabled && event.code === 'KeyB' && !event.repeat) setBuildMode(!buildMode);
+    if (!buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
+    if (!buildMode && event.code === 'KeyQ' && !event.repeat) toggleEquipment('front');
+    if (!buildMode && event.code === 'KeyE' && !event.repeat) toggleEquipment('rear');
+    if (!buildMode && event.code === 'KeyF' && !event.repeat) useSecondaryAction();
+    if (!buildMode && event.code === 'KeyV' && !event.repeat) cycleVehicle();
+    if (!buildMode && event.code === 'BracketLeft' && !event.repeat) onCameraRotateStep(-1);
+    if (!buildMode && event.code === 'BracketRight' && !event.repeat) onCameraRotateStep(1);
+    if (event.code === 'KeyB' && !event.repeat) setBuildMode(!buildMode);
   });
   window.addEventListener('keyup', event => keys.delete(event.code));
   window.addEventListener('blur', clearInput);
   window.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') setInputMode('touch'); }, { capture: true });
 
   panSurface.addEventListener('pointerdown', event => {
-    if ((!cropOverlayEnabled && !buildMode) || overlayState || panPointer !== null || buildPointer !== null) return;
+    if (event.pointerType === 'touch' && !buildMode && !inputLocked()) {
+      event.preventDefault();
+      beginCameraGesturePointer(event);
+      panSurface.setPointerCapture(event.pointerId);
+      return;
+    }
+    if (!buildMode || overlayState || panPointer !== null || buildPointer !== null) return;
     if (buildMode && onBuildPointerStart?.({ x: event.clientX, y: event.clientY })) {
       buildPointer = event.pointerId;
       panSurface.setPointerCapture(event.pointerId);
@@ -825,6 +884,10 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     panSurface.setPointerCapture(event.pointerId);
   });
   panSurface.addEventListener('pointermove', event => {
+    if (updateCameraGesturePointer(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.pointerId === buildPointer) {
       onBuildPointerMove?.({ x: event.clientX, y: event.clientY });
       return;
@@ -836,6 +899,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     panLastY = event.clientY;
   });
   panSurface.addEventListener('pointerup', event => {
+    if (endCameraGesturePointer(event)) return;
     if (event.pointerId === buildPointer) {
       onBuildPointerEnd?.({ x: event.clientX, y: event.clientY });
       buildPointer = null;
@@ -843,16 +907,18 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     clearPan(event);
   });
   panSurface.addEventListener('pointercancel', event => {
+    if (endCameraGesturePointer(event)) return;
     clearBuildPointer(event);
     clearPan(event);
   });
   panSurface.addEventListener('lostpointercapture', event => {
+    if (endCameraGesturePointer(event)) return;
     clearBuildPointer(event);
     clearPan(event);
   });
 
   stickZone.addEventListener('pointerdown', event => {
-    if (inputLocked() || cropOverlayEnabled || buildMode || stickPointer !== null) return;
+    if (inputLocked() || buildMode || stickPointer !== null) return;
     event.preventDefault();
     setInputMode('touch');
     const rect = stickZone.getBoundingClientRect();
@@ -869,7 +935,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   stickZone.addEventListener('lostpointercapture', clearStick);
 
   document.querySelector('#jump').addEventListener('pointerdown', event => {
-    if (inputLocked() || cropOverlayEnabled || buildMode) return;
+    if (inputLocked() || buildMode) return;
     event.preventDefault();
     input.jumpQueued = true;
   });
@@ -877,7 +943,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   frontToolToggle.addEventListener('click', () => toggleEquipment('front'));
   rearToolToggle.addEventListener('click', () => toggleEquipment('rear'));
   unloadButton.addEventListener('click', useSecondaryAction);
-  suitabilityToggle.addEventListener('click', () => setCropOverlay(!cropOverlayEnabled));
   buildingToggle.addEventListener('click', () => setBuildMode(!buildMode));
   for (const option of buildingOptions) option.addEventListener('click', () => {
     if (!buildMode || option.disabled) return;
@@ -890,16 +955,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   constructionConfirm.addEventListener('click', () => { if (buildMode && !constructionConfirm.disabled) onConstructionPrimaryAction?.(); });
   constructionCancel.addEventListener('click', () => { if (buildMode) onConstructionCancel?.(); });
   constructionUndo.addEventListener('click', () => { if (buildMode) onConstructionUndo?.(); });
-  document.querySelector('#previousCrop').addEventListener('click', () => {
-    cropIndex = (cropIndex + availableCropIds().length - 1) % availableCropIds().length;
-    renderCropOverlay();
-    notifyCropOverlay();
-  });
-  document.querySelector('#nextCrop').addEventListener('click', () => {
-    cropIndex = (cropIndex + 1) % availableCropIds().length;
-    renderCropOverlay();
-    notifyCropOverlay();
-  });
   previousSiloCrop.addEventListener('click', () => cycleSiloCrop(-1));
   nextSiloCrop.addEventListener('click', () => cycleSiloCrop(1));
   siloLoadButton.addEventListener('click', () => {
@@ -928,6 +983,20 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     const expanded = showDebug.getAttribute('aria-expanded') === 'true';
     showDebug.setAttribute('aria-expanded', String(!expanded));
     debugPanel.hidden = expanded;
+  });
+  debugTimeSlider.addEventListener('input', () => {
+    const nextPhase = Math.min(1 - Number.EPSILON, Math.max(0, Number(debugTimeSlider.value) / (24 * 60)));
+    if (onTimeOfDayChange(nextPhase) === false) return;
+    debugDayPhase = nextPhase;
+    renderDebugTimeOfDay();
+  });
+  debugPanel.addEventListener('click', event => {
+    const button = event.target.closest('.debugCameraPreset');
+    if (!button) return;
+    const nextFov = Number(button.dataset.cameraFov);
+    if (onCameraPresetChange(nextFov) === false) return;
+    debugCameraFov = nextFov;
+    renderDebugCameraPresets();
   });
   debugUnlockList.addEventListener('click', event => {
     const button = event.target.closest('.debugUnlock');
@@ -966,9 +1035,10 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   });
 
   renderEquipmentActions();
+  renderDebugCameraPresets();
+  renderDebugTimeOfDay();
   renderInventoryMeter();
   renderSecondaryAction();
-  renderCropOverlay();
   renderBuildMode();
   renderLoadoutBays();
 
@@ -1027,7 +1097,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
 
   return {
     driveInput() {
-      if (inputLocked() || cropOverlayEnabled || buildMode) return { x: 0, y: 0 };
+      if (inputLocked() || buildMode) return { x: 0, y: 0 };
       let x = 0, y = 0;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
       if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
@@ -1037,7 +1107,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       return { x: input.x, y: -input.y };
     },
     consumePan() {
-      if (inputLocked() || (!cropOverlayEnabled && !buildMode)) return { keyboardX: 0, keyboardZ: 0, dragX: 0, dragY: 0 };
+      if (inputLocked() || !buildMode) return { keyboardX: 0, keyboardZ: 0, dragX: 0, dragY: 0 };
       let keyboardX = 0, keyboardZ = 0;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) keyboardX -= 1;
       if (keys.has('KeyD') || keys.has('ArrowRight')) keyboardX += 1;
@@ -1048,7 +1118,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       return pan;
     },
     consumeJump() {
-      if (inputLocked() || cropOverlayEnabled || buildMode) return false;
+      if (inputLocked() || buildMode) return false;
       const jump = input.jumpQueued;
       input.jumpQueued = false;
       return jump;
@@ -1061,7 +1131,6 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       if (savedSeedIndex !== -1) seedIndex = savedSeedIndex;
       renderSecondaryAction();
     },
-    cropOverlayState: () => ({ enabled: cropOverlayEnabled, cropId: selectedOverlayCropId() }),
     buildState: () => ({ enabled: buildMode, selectedBuilding }),
     setBuildHint(nextHint) {
       buildHint = String(nextHint || '');
@@ -1253,6 +1322,14 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       debugMilestones = Array.isArray(nextMilestones) ? nextMilestones.map(milestone => ({ ...milestone })) : [];
       renderDebugMilestones();
     },
+    setDebugTimeOfDay(nextPhase) {
+      const phase = Number(nextPhase);
+      if (!Number.isFinite(phase)) return;
+      const normalized = ((phase % 1) + 1) % 1;
+      if (Math.abs(normalized - debugDayPhase) < 1 / (24 * 60 * 2)) return;
+      debugDayPhase = normalized;
+      renderDebugTimeOfDay();
+    },
     showMilestoneCelebration,
     setCinematicActive(active) {
       cinematicActive = Boolean(active);
@@ -1263,18 +1340,14 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     },
     setUnlockedGates(nextGates) {
       const previousSeed = selectedSeedCropId();
-      const previousOverlay = selectedOverlayCropId();
       unlockedGates = new Set(Array.isArray(nextGates) ? nextGates : []);
       if (selectedBuilding === 'cattle-barn' && !unlockedGates.has('building:cattle-barn')) selectedBuilding = null;
       const availableCrops = availableCropIds();
       seedIndex = Math.max(0, availableCrops.indexOf(previousSeed));
-      cropIndex = Math.max(0, availableCrops.indexOf(previousOverlay));
       renderSecondaryAction();
-      renderCropOverlay();
       renderLoadoutBays();
       renderEquipmentActions();
       renderBuildMode();
-      if (cropOverlayEnabled) notifyCropOverlay();
     },
     isGameplayBlocked: () => overlayState !== null,
     isBarnOpen: () => overlayState === 'barn',

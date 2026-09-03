@@ -97,25 +97,6 @@
     .cropMeterTrack { min-width: 0; width: 100%; height: 7px; overflow: hidden; border-radius: 999px; background: rgba(43, 47, 38, .14); }
     .cropMeterTrack span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f824d, #a7c967); transition: width .22s ease-out; }
     #milestoneTracker[data-complete="true"] { border-color: rgba(82, 102, 72, .55); background: rgba(218, 225, 183, .9); }
-    #suitabilityControl { pointer-events: auto; position: relative; flex: 0 0 auto; }
-    #suitabilityToggle {
-      min-height: 48px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 13px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background: var(--glass);
-      box-shadow: 0 9px 30px rgba(8, 14, 13, .17);
-      font-size: 11px;
-      font-weight: 720;
-      backdrop-filter: blur(16px) saturate(120%);
-      -webkit-backdrop-filter: blur(16px) saturate(120%);
-    }
-    #suitabilityToggle .icon { width: 18px; height: 18px; color: var(--muted); }
-    #suitabilityToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
-    #suitabilityToggle[aria-pressed="true"] .icon { color: var(--accent-strong); }
     #buildingControl { pointer-events: auto; }
     #buildingToggle {
       width: 48px;
@@ -149,33 +130,6 @@
       backdrop-filter: blur(16px) saturate(120%);
       -webkit-backdrop-filter: blur(16px) saturate(120%);
     }
-    #cropSelector {
-      position: absolute;
-      top: 56px;
-      left: 0;
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      padding: 3px;
-      border: 1px solid var(--line);
-      border-radius: 13px;
-      background: var(--glass-strong);
-      box-shadow: 0 14px 35px rgba(8, 14, 13, .24);
-      backdrop-filter: blur(16px) saturate(120%);
-      -webkit-backdrop-filter: blur(16px) saturate(120%);
-    }
-    #cropSelector button {
-      width: 36px; height: 36px;
-      display: grid; place-items: center;
-      padding: 0;
-      border: 0; border-radius: 10px;
-      background: transparent;
-      color: var(--muted);
-    }
-    #cropSelector button:active { background: var(--glass-soft); color: var(--ink); }
-    #cropSelector .icon { width: 17px; height: 17px; }
-    #cropName { width: 30px; display: grid; place-items: center; }
-    #cropName .icon { width: 23px; height: 23px; }
     #siloInventory {
       pointer-events: auto;
       position: absolute;
@@ -296,17 +250,11 @@
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
     }
-    body[data-view-mode="overlay"] #stickZone,
-    body[data-view-mode="overlay"] #cycleVehicle,
-    body[data-view-mode="overlay"] #actionCluster,
-    body[data-view-mode="overlay"] #desktopHints,
     body[data-view-mode="build"] #stickZone,
     body[data-view-mode="build"] #cycleVehicle,
     body[data-view-mode="build"] #actionCluster,
     body[data-view-mode="build"] #desktopHints,
-    body[data-view-mode="overlay"] #siloInventory,
     body[data-view-mode="build"] #siloInventory { display: none; }
-    body[data-view-mode="overlay"] #viewHint,
     body[data-view-mode="build"] #viewHint { display: block; }
     #topBar {
       position: absolute;
@@ -832,7 +780,13 @@
       border-bottom: 1px solid var(--line);
       background: rgba(52, 60, 45, .035);
     }
+    .debugTimeControl { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 252, 239, .45); }
+    .debugTimeHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    #debugTimeValue { color: var(--accent-strong); font-size: 11px; font-weight: 760; }
+    #debugTimeSlider { width: 100%; min-height: 30px; margin: 0; accent-color: var(--accent-strong); touch-action: none; }
+    .debugTimeTicks { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
     .debugIntro { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    #debugCameraPresets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
     #debugUnlockList, #debugMilestoneList { display: grid; gap: 6px; }
     .debugSectionLabel { color: var(--ink); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
     .debugUnlock {
@@ -854,6 +808,8 @@
     .debugUnlock strong { display: block; font-size: 12px; }
     .debugUnlock small { color: var(--muted); font-size: 10px; }
     .debugUnlockState { color: var(--accent-strong) !important; font-weight: 760; text-align: right; }
+    .debugCameraPreset { min-height: 66px; display: grid; justify-content: stretch; gap: 5px; text-align: center; }
+    .debugCameraPreset .debugUnlockState { text-align: center; }
     #clearUnlockOverrides { justify-self: start; }
     #confirmBody p {
       margin: 0 0 14px;
@@ -875,8 +831,6 @@
     @media (max-width: 680px) {
       #topLeftGroup { width: 148px; }
       #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 148px; }
-      .suitabilityLabel { display: none; }
-      #suitabilityToggle { width: 48px; justify-content: center; padding: 0; }
       #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
       .dialog { border-radius: 18px; }
       #barnDialog { width: 100%; height: 100%; }
@@ -907,7 +861,7 @@
       #topLeftGroup { width: 136px; }
       #milestoneTracker { padding: 8px 9px; }
       #milestoneTitle { font-size: 10px; }
-      #suitabilityToggle, #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
+      #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
       #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 136px; padding: 8px 9px; }
       #performanceBadge { top: calc(var(--safe-top) + 48px); }
       #stickZone { width: 108px; height: 108px; --stick-travel: 30px; }
@@ -927,7 +881,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.125</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.181</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -937,16 +891,6 @@
       </div>
       <div id="topActions">
         <div id="fieldControls">
-          <div id="suitabilityControl">
-            <button id="suitabilityToggle" type="button" aria-label="Show crop suitability" aria-pressed="false">
-              <svg class="icon" aria-hidden="true"><use href="#icon-ready"></use></svg><span class="suitabilityLabel">Suitability</span>
-            </button>
-            <div id="cropSelector" hidden aria-label="Crop suitability selector">
-              <button id="previousCrop" type="button" aria-label="Previous crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
-              <span id="cropName" role="img" aria-label="Corn"><svg class="icon" aria-hidden="true"><use id="cropSelectorIconUse" href="#icon-corn"></use></svg></span>
-              <button id="nextCrop" type="button" aria-label="Next crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
-            </div>
-          </div>
           <div id="buildingControl">
             <button id="buildingToggle" type="button" aria-label="Open building menu" aria-pressed="false" title="Buildings">
               <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
@@ -958,7 +902,7 @@
         </button>
       </div>
     </header>
-    <div id="viewHint">DRAG TO PAN · WASD / ARROWS · CLOSE SUITABILITY TO DRIVE</div>
+    <div id="viewHint"></div>
     <aside id="siloInventory" hidden aria-live="polite">
       <div id="siloActions">
         <button id="siloLoad" type="button" aria-label="Load selected crop" title="Load selected crop"><svg class="icon" aria-hidden="true"><use href="#icon-load"></use></svg></button>
@@ -1026,9 +970,9 @@
     </div>
 
     <div id="overlay" hidden>
-      <section id="barnDialog" class="dialog" role="dialog" aria-modal="true" aria-label="Loadout" hidden>
+      <section id="barnDialog" class="dialog" role="dialog" aria-modal="true" aria-label="Workshop loadout" hidden>
         <header class="dialogHeader">
-          <button id="closeBarn" class="iconButton" type="button" aria-label="Close loadout menu">
+          <button id="closeBarn" class="iconButton" type="button" aria-label="Close workshop loadout">
             <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
           </button>
         </header>
@@ -1082,19 +1026,41 @@
             <div id="controlsList" hidden>
               <strong>Drive</strong><span>WASD, arrow keys, or the fixed touch joystick</span>
               <strong>Jump</strong><span>Space or jump button</span>
+              <strong>Camera</strong><span>Two-finger swipe left or right over the world, or use [ and ], to rotate 90°</span>
               <strong>Front tool</strong><span>Q or the front action button</span>
               <strong>Rear tool</strong><span>E or the rear action button</span>
               <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
               <strong>Storage / cargo</strong><span>Use nearby popups to transfer silo crops, feed a carried bale, load barn milk, or deliver eligible cargo</span>
-              <strong>Suitability</strong><span>Use the top field button, then drag or use WASD to pan</span>
               <strong>Buildings</strong><span>Use the build button to choose a structure from the bottom tray</span>
-              <strong>Menu</strong><span>Escape or menu button; Escape leaves building or suitability view first</span>
+              <strong>Menu</strong><span>Escape or menu button; Escape leaves building view first</span>
             </div>
             <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
               <svg class="icon" aria-hidden="true"><use href="#icon-field"></use></svg>
-              <span><strong>Debug</strong><small>Override milestones and unlocks for testing</small></span>
+              <span><strong>Debug</strong><small>Scrub daylight, compare cameras, and override progression</small></span>
             </button>
             <div id="debugPanel" hidden>
+              <strong class="debugSectionLabel">Time of day</strong>
+              <div class="debugTimeControl">
+                <div class="debugTimeHeader"><label for="debugTimeSlider">Farm clock</label><output id="debugTimeValue" for="debugTimeSlider">10:00 · Day</output></div>
+                <input id="debugTimeSlider" type="range" min="0" max="1439" step="15" value="600" aria-label="Time of day" aria-valuetext="10:00, Day">
+                <div class="debugTimeTicks" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+              </div>
+              <strong class="debugSectionLabel">Camera</strong>
+              <p class="debugIntro">Compare perspective compression while keeping the active vehicle approximately the same size.</p>
+              <div id="debugCameraPresets" aria-label="Drive camera preset">
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="38" data-camera-label="38 degrees, original camera">
+                  <span><strong>38°</strong><small>Original</small></span><small class="debugUnlockState">Select</small>
+                </button>
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="30" data-camera-label="30 degrees, mild diorama">
+                  <span><strong>30°</strong><small>Mild diorama</small></span><small class="debugUnlockState">Select</small>
+                </button>
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="28" data-camera-label="28 degrees, default camera">
+                  <span><strong>28°</strong><small>Default</small></span><small class="debugUnlockState">Active</small>
+                </button>
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="24" data-camera-label="24 degrees, strong diorama">
+                  <span><strong>24°</strong><small>Strong diorama</small></span><small class="debugUnlockState">Select</small>
+                </button>
+              </div>
               <strong class="debugSectionLabel">Active milestone</strong>
               <p class="debugIntro">Selecting a milestone switches immediately and clears its current delivery progress.</p>
               <div id="debugMilestoneList" aria-label="Milestone override"></div>
@@ -1181,6 +1147,6 @@
     <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M4 12h9a6 6 0 0 1 6 6" /></symbol>
   </svg>
 
-  <script type="module" src="./main.js?v=construction-20260902-13"></script>
+  <script type="module" src="./main.js?v=water-splash-base-20260903-1"></script>
 </body>
 </html>

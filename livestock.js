@@ -13,6 +13,11 @@ export const GRAZING_MILK_FACTOR = .2;
 export const HAY_LITRES_PER_ADULT_SECOND = 1.5;
 export const CALF_HAY_FACTOR = .5;
 
+const COW_ROUTE_MIN_DISTANCE = TILE * 1.75;
+const COW_ROUTE_MAX_DISTANCE = TILE * 5;
+const COW_ROUTE_CLEARANCE = TILE * .2;
+const COW_TARGET_OFFSET = TILE * .18;
+
 const cowWhite = new THREE.MeshStandardMaterial({ color: 0xe8dfc6, roughness: .9 });
 const cowBrown = new THREE.MeshStandardMaterial({ color: 0x684638, roughness: .92 });
 const cowMuzzle = new THREE.MeshStandardMaterial({ color: 0xc9937a, roughness: .92 });
@@ -654,6 +659,8 @@ export function normalizeCattleBarnState(saved, context = {}) {
   const vertices = Array.isArray(saved?.pen?.vertices) ? saved.pen.vertices.map(vertex => ({ cx: integer(vertex?.cx), cz: integer(vertex?.cz) })) : null;
   const animals = Array.isArray(saved?.animals) ? saved.animals.flatMap((animal, index) => {
     if (!animal || (animal.stage !== 'adult' && animal.stage !== 'calf')) return [];
+    const jitterX = finite(animal.jitterX, ((index * 37) % 11 - 5) * .025);
+    const jitterZ = finite(animal.jitterZ, ((index * 53) % 13 - 6) * .022);
     return [{
       id: typeof animal.id === 'string' ? animal.id : `cow-${index + 1}`,
       stage: animal.stage,
@@ -663,8 +670,10 @@ export function normalizeCattleBarnState(saved, context = {}) {
       moveProgress: THREE.MathUtils.clamp(finite(animal.moveProgress), 0, 1),
       heading: finite(animal.heading),
       idleSeconds: Math.max(0, finite(animal.idleSeconds)),
-      jitterX: finite(animal.jitterX, ((index * 37) % 11 - 5) * .025),
-      jitterZ: finite(animal.jitterZ, ((index * 53) % 13 - 6) * .022),
+      jitterX,
+      jitterZ,
+      targetJitterX: finite(animal.targetJitterX, jitterX),
+      targetJitterZ: finite(animal.targetJitterZ, jitterZ),
       visual: null,
     }];
   }) : [];
@@ -688,6 +697,46 @@ function nearestValidTile(building, tileKey = null) {
   return [...tiles].sort((a, b) => Math.hypot(a.gx - gx, a.gz - gz) - Math.hypot(b.gx - gx, b.gz - gz))[0];
 }
 
+function tileFor(building, tileKey, terrain) {
+  return terrain?.get(tileKey) || building.derived?.tiles.find(tile => gridKey(tile.gx, tile.gz) === tileKey) || null;
+}
+
+function pastureLineOfSight(building, start, target) {
+  const dx = target.x - start.x, dz = target.z - start.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance < .001) return true;
+  const sideX = -dz / distance * COW_ROUTE_CLEARANCE;
+  const sideZ = dx / distance * COW_ROUTE_CLEARANCE;
+  const steps = Math.max(1, Math.ceil(distance / (TILE * .15)));
+  for (let step = 0; step <= steps; step++) {
+    const amount = step / steps;
+    const x = THREE.MathUtils.lerp(start.x, target.x, amount);
+    const z = THREE.MathUtils.lerp(start.z, target.z, amount);
+    for (const side of [-1, 0, 1]) {
+      const key = gridKey(Math.round((x + sideX * side) / TILE), Math.round((z + sideZ * side) / TILE));
+      if (!building.derived.tileSet.has(key)) return false;
+    }
+  }
+  return true;
+}
+
+const cowIdNumber = id => [...String(id)].reduce((sum, character) => sum * 31 + character.charCodeAt(0), 7);
+
+function cowRouteChoices(building, current, animal, elapsed, minimumDistance) {
+  const start = { x: current.x + animal.jitterX, z: current.z + animal.jitterZ };
+  const idNumber = cowIdNumber(animal.id);
+  return building.derived.tiles.flatMap((tile, index) => {
+    if (gridKey(tile.gx, tile.gz) === animal.tileKey) return [];
+    const seed = elapsed * .73 + idNumber * .019 + index * 1.71;
+    const jitterX = Math.sin(seed * 2.17 + tile.gx * .83) * COW_TARGET_OFFSET;
+    const jitterZ = Math.sin(seed * 3.11 + tile.gz * 1.07) * COW_TARGET_OFFSET;
+    const target = { x: tile.x + jitterX, z: tile.z + jitterZ };
+    const distance = Math.hypot(target.x - start.x, target.z - start.z);
+    if (distance < minimumDistance || distance > COW_ROUTE_MAX_DISTANCE || !pastureLineOfSight(building, start, target)) return [];
+    return [{ tile, jitterX, jitterZ }];
+  });
+}
+
 export function reconcileCattleBarnAnimals(building, context = {}) {
   if (!building.derived?.valid) return;
   for (const animal of building.animals) {
@@ -697,11 +746,15 @@ export function reconcileCattleBarnAnimals(building, context = {}) {
       animal.tileKey = gridKey(tile.gx, tile.gz);
       relocated = true;
     }
-    const [gx, gz] = animal.tileKey.split(',').map(Number);
-    const [tx, tz] = String(animal.targetTileKey || '').split(',').map(Number);
-    if (relocated || !building.derived.tileSet.has(animal.targetTileKey) || Math.abs(gx - tx) + Math.abs(gz - tz) !== 1) {
+    const current = tileFor(building, animal.tileKey, context.terrain);
+    const target = tileFor(building, animal.targetTileKey, context.terrain);
+    const startPoint = current ? { x: current.x + animal.jitterX, z: current.z + animal.jitterZ } : null;
+    const targetPoint = target ? { x: target.x + animal.targetJitterX, z: target.z + animal.targetJitterZ } : null;
+    if (relocated || !target || !startPoint || !pastureLineOfSight(building, startPoint, targetPoint)) {
       animal.targetTileKey = null;
       animal.moveProgress = 0;
+      animal.targetJitterX = animal.jitterX;
+      animal.targetJitterZ = animal.jitterZ;
     }
     if (!animal.visual) {
       animal.visual = createCowVisual(animal.stage);
@@ -716,7 +769,8 @@ function newCalf(building, context) {
   const animal = {
     id: `cow-${building.nextCowId++}`, stage: 'calf', age: 0,
     tileKey: gridKey(tile.gx, tile.gz), targetTileKey: null, moveProgress: 0,
-    heading: 0, idleSeconds: 1.2, jitterX: .08, jitterZ: -.06, visual: null,
+    heading: 0, idleSeconds: 1.2, jitterX: .08, jitterZ: -.06,
+    targetJitterX: .08, targetJitterZ: -.06, visual: null,
   };
   building.animals.push(animal);
   reconcileCattleBarnAnimals(building, context);
@@ -752,34 +806,44 @@ export function updateCattleBarn(building, dt, elapsed, context = {}) {
     if (!moving) {
       animal.idleSeconds -= dt;
       if (animal.idleSeconds <= 0) {
-        const neighbors = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-          .map(([dx, dz]) => gridKey(current.gx + dx, current.gz + dz))
-          .filter(key => building.derived.tileSet.has(key));
-        if (neighbors.length) {
-          const choice = Math.abs(Math.floor(Math.sin(elapsed * 1.73 + animal.id.length * 9 + animal.heading) * 10000)) % neighbors.length;
-          animal.targetTileKey = neighbors[choice]; animal.moveProgress = 0; moving = true;
+        let choices = cowRouteChoices(building, current, animal, elapsed, COW_ROUTE_MIN_DISTANCE);
+        if (!choices.length) choices = cowRouteChoices(building, current, animal, elapsed, TILE * .75);
+        if (choices.length) {
+          const choiceIndex = Math.abs(Math.floor(Math.sin(elapsed * 1.73 + cowIdNumber(animal.id) * .09 + animal.heading) * 10000)) % choices.length;
+          const choice = choices[choiceIndex];
+          animal.targetTileKey = gridKey(choice.tile.gx, choice.tile.gz);
+          animal.targetJitterX = choice.jitterX;
+          animal.targetJitterZ = choice.jitterZ;
+          animal.moveProgress = 0;
+          moving = true;
         }
         else animal.idleSeconds = 1.4;
       }
     }
-    const target = animal.targetTileKey ? context.terrain?.get(animal.targetTileKey) : null;
-    let x = current.x, z = current.z;
+    const target = animal.targetTileKey ? tileFor(building, animal.targetTileKey, context.terrain) : null;
+    let x = current.x + animal.jitterX, z = current.z + animal.jitterZ;
     if (target) {
-      const distance = Math.max(.001, Math.hypot(target.x - current.x, target.z - current.z));
+      const targetX = target.x + animal.targetJitterX;
+      const targetZ = target.z + animal.targetJitterZ;
+      const distance = Math.max(.001, Math.hypot(targetX - x, targetZ - z));
       animal.moveProgress += dt * (animal.stage === 'calf' ? .55 : .45) / distance;
       const amount = Math.min(1, animal.moveProgress);
-      x = THREE.MathUtils.lerp(current.x, target.x, amount);
-      z = THREE.MathUtils.lerp(current.z, target.z, amount);
-      const desired = Math.atan2(-(target.x - current.x), -(target.z - current.z));
+      x = THREE.MathUtils.lerp(x, targetX, amount);
+      z = THREE.MathUtils.lerp(z, targetZ, amount);
+      const desired = Math.atan2(-(targetX - current.x - animal.jitterX), -(targetZ - current.z - animal.jitterZ));
       const delta = Math.atan2(Math.sin(desired - animal.heading), Math.cos(desired - animal.heading));
       animal.heading += delta * (1 - Math.exp(-8 * dt));
       if (amount >= 1) {
-        animal.tileKey = animal.targetTileKey; animal.targetTileKey = null; animal.moveProgress = 0;
+        animal.tileKey = animal.targetTileKey;
+        animal.jitterX = animal.targetJitterX;
+        animal.jitterZ = animal.targetJitterZ;
+        animal.targetTileKey = null;
+        animal.moveProgress = 0;
         animal.idleSeconds = .6 + (Math.abs(Math.sin(elapsed + animal.id.length)) * 1.9); moving = false;
       }
     }
     if (animal.visual) {
-      animal.visual.group.position.set(x + animal.jitterX, current.topY + .02, z + animal.jitterZ);
+      animal.visual.group.position.set(x, current.topY + .02, z);
       animal.visual.group.rotation.y = animal.heading;
       animal.visual.animate(elapsed, moving);
     }

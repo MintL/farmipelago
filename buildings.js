@@ -245,7 +245,8 @@ export function createBuildingManager({
       building.animals.push({
         id: `cow-${building.nextCowId++}`, stage: 'adult', age: 0, tileKey: gridKey(tile.gx, tile.gz),
         targetTileKey: null, moveProgress: 0, heading: index * Math.PI, idleSeconds: .8 + index,
-        jitterX: index ? .08 : -.08, jitterZ: index ? -.06 : .06, visual: createCowVisual('adult'),
+        jitterX: index ? .08 : -.08, jitterZ: index ? -.06 : .06,
+        targetJitterX: index ? .08 : -.08, targetJitterZ: index ? -.06 : .06, visual: createCowVisual('adult'),
       });
       parent?.add(building.animals.at(-1).visual.group);
     }
@@ -628,6 +629,7 @@ export function createBuildingManager({
             targetTileKey: animal.targetTileKey, moveProgress: animal.moveProgress,
             heading: animal.heading, idleSeconds: animal.idleSeconds,
             jitterX: animal.jitterX, jitterZ: animal.jitterZ,
+            targetJitterX: animal.targetJitterX, targetJitterZ: animal.targetJitterZ,
           })),
         });
     },

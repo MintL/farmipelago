@@ -215,10 +215,11 @@ The current generator provides:
 - additional larger lobed islands with stepped elevations
 - a large northern island whose north side climbs through three distinct terraces above its base, with fully snow-covered upper terraces and a summit clear of generated props
 - broad farming areas across the base and raised levels of generated islands
-- bridges across larger gaps
+- broad, gently crowned wooden bridges with railings and warm day/night lanterns across larger gaps
 - lakes, animated rivers and waterfalls
 - grass, dirt and stone terrain layers with deep pointed undersides
 - generated trees, rocks and grass tufts across both terrain elevations
+- rare seed-stable wildlife beyond the starter island, with two reindeer per qualifying island, one red fox and one white snow fox
 
 Vehicles can jump, so elevation and gaps are part of navigation without requiring ramps.
 
@@ -241,6 +242,10 @@ These values are procedurally generated and visibly affect the world. Damp/cool 
 Moisture and sunlight do not score farmland or modify crop growth, crop yield or grass yield. Crops therefore perform consistently wherever there is usable prepared land. There is no crop-planning overlay or separate crop-inspection camera mode.
 
 The world also runs a persistent ten-minute visual day/night cycle. A moving sun produces warm daylight and animated shadows, dawn and dusk shift through peach and lavender, and a full moon keeps the brief night blue and readable rather than fully dark. Stars, fog, water and local fixture lighting follow the same cycle. This illumination is separate from each tile's generated sunlight value and does not affect crops, livestock, yield or progression.
+
+The Farm Tractor's paired front lamps fade on with night and cast warm, focused beams ahead across the terrain.
+
+Forested clearings beyond the starter island support rare ambient voxel wildlife. Every sufficiently large island with substantial forest habitat receives exactly two reindeer. A single red fox roams the world's non-starter forests, and a separate white snow fox wanders the snowy terraces of the northern island. Wildlife uses exaggerated toy-like gait animation, jumps with tractor-style squash and stretch when a route climbs one terrain level, keeps to traversable habitat, avoids developed fields, buildings and cattle pastures, and is excluded from camera auto-hide. It adds no collisions, damage, progression requirements or management systems.
 
 ---
 
@@ -292,7 +297,7 @@ Cattle are the first implemented livestock system and connect directly to the ex
 
 After Livestock preparation, the player can place a Cattle Barn on clear level terrain. Before committing it, the player may reposition the barn and choose **Draw pen**. The barn doorway lights brightly and a broad three-tile ground gate extends in front of it; the player roughly circles those tiles and the pasture they want with one continuous gesture. The lasso closes automatically, trims unusable edge land, keeps the continuous area connected to the gate, and resolves to an editable, grid-snapped orthogonal fence. Fixed connector sections begin at the midpoint of the barn's left and right walls, so the barn itself closes the pasture entrance. Fence generation and editing reject segments that pass through the barn or another building. Every four valid pasture tiles provide one hard capacity slot. An Undo action abandons the provisional pen and returns to movable barn placement; final Confirm permanently commits both barn and pen.
 
-Final barn confirmation grants two adult cows. A provisional pen never starts livestock simulation. Once confirmed, cows are individual persistent animals that wander between neighboring valid pen tiles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
+Final barn confirmation grants two adult cows. A provisional pen never starts livestock simulation. Once confirmed, cows are individual persistent animals that choose farther visible points across clear pasture, walk directly toward them at free angles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
 
 Existing physical 3,600 L hay bales are deposited at the barn and converted to shared herd feed. Hay supports full milk production and automatic herd growth. Without hay, cattle continue grazing without depleting terrain and produce at 20% of the fed rate; herd growth pauses and cattle never starve or die.
 
@@ -433,6 +438,7 @@ Current controls include:
 - secondary action such as cycling seed
 - cycle-vehicle button
 - build button
+- clean-screenshot action in the pause menu; tap anywhere to restore the HUD
 - nearby building/cargo interaction popups
 - cattle-barn Feed bale and Load milk actions
 
@@ -449,6 +455,7 @@ Current keyboard controls include:
 - F — cycle seed with the seeder
 - [ / ] — rotate the drive camera in 90° steps
 - B — build mode
+- H — hide the HUD for screenshots; H or Escape restores it
 - Escape — leave special camera modes or open the menu
 - 1–8 — rear-equipment selection in the workshop
 
@@ -506,11 +513,13 @@ Current visual language includes:
 - a moving sun and full moon, animated celestial shadows, warm twilight, subtle stars and readable blue moonlight
 - a hanging warm lantern above the permanent starter workshop entrance, lit from late afternoon until after sunrise
 - two bright hanging voxel lanterns at the cargo hub matching the workshop: one on the permanent pole and one seed-varied companion, with seed-stable rotation variation
+- matching warm voxel lanterns on the ends of broad, railed wooden bridges, using the same late-afternoon-through-sunrise lighting treatment
 - deep pointed floating-island undersides
 - colorful toy-like farm vehicles
 - a blue hero tractor with glazed cab, lamps and beacon
 - squash-and-stretch on vehicle jumps and crop growth
 - animated trees and vegetation
+- articulated voxel reindeer, red fox and snow fox with exaggerated wandering gaits and squash-and-stretch jumps between adjacent terrain levels
 - sparse environment-driven prop clusters across both elevations, with off-grid placement and subtle rotation, mirroring and scale variation
 - waterfalls, flat landing splashes matched to the day/night base-water palette, and environmental motion
 - physical crop unloading streams and delivery crates
@@ -615,6 +624,7 @@ The playable prototype currently proves the following major systems together:
 - persistent placeable silos
 - trailer-based transport
 - cattle barns, draft-editable permanently confirmed custom pens and persistent herds
+- rare seed-stable non-starter wildlife: two reindeer per qualifying island, one red fox and one northern snow fox
 - hay-fed milk production with grazing fallback
 - Water / Milk Tank transport and milk delivery
 - cargo-hub deliveries

@@ -29,6 +29,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let seedIndex = 0;
   let buildMode = false;
   let cinematicActive = false;
+  let screenshotHudHidden = false;
   let selectedBuilding = null;
   let buildHint = '';
   let constructionUiState = null;
@@ -74,6 +75,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const pauseTitle = document.querySelector('#pauseTitle');
   const controlsList = document.querySelector('#controlsList');
   const showControls = document.querySelector('#showControls');
+  const hideHud = document.querySelector('#hideHud');
   const showDebug = document.querySelector('#showDebug');
   const debugPanel = document.querySelector('#debugPanel');
   const debugTimeSlider = document.querySelector('#debugTimeSlider');
@@ -367,7 +369,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     panDragX = panDragY = 0;
   };
 
-  const inputLocked = () => overlayState !== null || cinematicActive;
+  const inputLocked = () => overlayState !== null || cinematicActive || screenshotHudHidden;
   const itemLocked = item => Boolean(item?.unavailable || (item?.gate && !unlockedGates.has(item.gate)));
 
   const renderEquipmentAction = (slot, button, stateElement, item) => {
@@ -799,6 +801,20 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     onMilestoneCelebrationDismissed();
   };
 
+  const setScreenshotHudHidden = hidden => {
+    screenshotHudHidden = Boolean(hidden);
+    if (screenshotHudHidden) document.body.dataset.hudHidden = 'true';
+    else delete document.body.dataset.hudHidden;
+    clearInput();
+    setBackgroundInert(screenshotHudHidden || cinematicActive || overlayState !== null);
+  };
+
+  const enterScreenshotMode = () => {
+    if (cinematicActive) return;
+    if (overlayState) hideOverlay();
+    setScreenshotHudHidden(true);
+  };
+
   const equipDraft = () => {
     if (overlayState !== 'barn' || !loadoutChanged()) return;
     const nextLoadout = { ...draftLoadout };
@@ -827,8 +843,18 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
 
   window.addEventListener('keydown', event => {
     setInputMode('keyboard');
+    if (screenshotHudHidden) {
+      event.preventDefault();
+      if (!event.repeat && (event.code === 'KeyH' || event.code === 'Escape')) setScreenshotHudHidden(false);
+      return;
+    }
     if (cinematicActive) {
       event.preventDefault();
+      return;
+    }
+    if (event.code === 'KeyH' && !event.repeat) {
+      event.preventDefault();
+      enterScreenshotMode();
       return;
     }
     if (event.code === 'Escape') {
@@ -863,7 +889,13 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   });
   window.addEventListener('keyup', event => keys.delete(event.code));
   window.addEventListener('blur', clearInput);
-  window.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') setInputMode('touch'); }, { capture: true });
+  window.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'touch') setInputMode('touch');
+    if (!screenshotHudHidden) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setScreenshotHudHidden(false);
+  }, { capture: true });
 
   panSurface.addEventListener('pointerdown', event => {
     if (event.pointerType === 'touch' && !buildMode && !inputLocked()) {
@@ -979,6 +1011,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     showControls.setAttribute('aria-expanded', String(!expanded));
     controlsList.hidden = expanded;
   });
+  hideHud.addEventListener('click', enterScreenshotMode);
   showDebug.addEventListener('click', () => {
     const expanded = showDebug.getAttribute('aria-expanded') === 'true';
     showDebug.setAttribute('aria-expanded', String(!expanded));
@@ -1349,7 +1382,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       renderEquipmentActions();
       renderBuildMode();
     },
-    isGameplayBlocked: () => overlayState !== null,
+    isGameplayBlocked: () => overlayState !== null || screenshotHudHidden,
     isBarnOpen: () => overlayState === 'barn',
     setBarnAvailable(nextInsideBarn) {
       if (insideBarn === nextInsideBarn) return;
@@ -1358,6 +1391,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     },
     resetFarm() {
       cinematicActive = false;
+      setScreenshotHudHidden(false);
       insideBarn = false;
       if (buildMode) setBuildMode(false);
       equipmentEnabled = { front: false, rear: false };

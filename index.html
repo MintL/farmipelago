@@ -46,7 +46,8 @@
 
     #hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
     #hud > :not(#overlay) { transition: opacity .22s ease; }
-    body[data-cinematic="true"] #hud > :not(#overlay) { opacity: 0; visibility: hidden; }
+    body[data-cinematic="true"] #hud > :not(#overlay),
+    body[data-hud-hidden="true"] #hud > :not(#overlay) { opacity: 0; visibility: hidden; }
     #performanceBadge {
       position: absolute;
       top: calc(var(--safe-top) + 56px);
@@ -881,7 +882,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.182</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.194</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">
@@ -1032,8 +1033,13 @@
               <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
               <strong>Storage / cargo</strong><span>Use nearby popups to transfer silo crops, feed a carried bale, load barn milk, or deliver eligible cargo</span>
               <strong>Buildings</strong><span>Use the build button to choose a structure from the bottom tray</span>
+              <strong>Screenshot</strong><span>H hides the HUD; press H, Escape, or tap anywhere to restore it</span>
               <strong>Menu</strong><span>Escape or menu button; Escape leaves building view first</span>
             </div>
+            <button id="hideHud" class="pauseAction" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-camera"></use></svg>
+              <span><strong>Hide HUD</strong><small>Take a clean screenshot; tap or press H to restore</small></span>
+            </button>
             <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
               <svg class="icon" aria-hidden="true"><use href="#icon-field"></use></svg>
               <span><strong>Debug</strong><small>Scrub daylight, compare cameras, and override progression</small></span>
@@ -1142,6 +1148,7 @@
     <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></symbol>
     <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
     <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6Z" /></symbol>
+    <symbol id="icon-camera" viewBox="0 0 24 24"><path d="M4 8h4l2-3h4l2 3h4v11H4z" /><circle cx="12" cy="13" r="3.5" /></symbol>
     <symbol id="icon-controls" viewBox="0 0 24 24"><path d="M8 9h8a5 5 0 0 1 5 5v2a3 3 0 0 1-5 2l-2-2h-4l-2 2a3 3 0 0 1-5-2v-2a5 5 0 0 1 5-5Z" /><path d="M7 13h4M9 11v4M16 12h.01M18 14h.01" /></symbol>
     <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
     <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M4 12h9a6 6 0 0 1 6 6" /></symbol>

@@ -1,0 +1,10 @@
+{
+  "name": "Farmipelago Voxel Studio",
+  "short_name": "Voxel Studio",
+  "start_url": "./voxel-studio.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#b9def1",
+  "theme_color": "#e8dec4"
+}

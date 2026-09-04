@@ -35,11 +35,17 @@ export function equipmentUnlocked(id, unlockedGates = []) {
 }
 
 export function normalizeLoadout(loadout, unlockedGates = []) {
+  const emptyRearSlot = loadout?.tool === null;
+  const emptyFrontSlot = loadout?.frontTool === null;
   return {
-    tool: equipmentUnlocked(loadout?.tool, unlockedGates) && equipmentDefinition(loadout.tool)?.slot === 'tool'
+    tool: emptyRearSlot
+      ? null
+      : equipmentUnlocked(loadout?.tool, unlockedGates) && equipmentDefinition(loadout.tool)?.slot === 'tool'
       ? loadout.tool
       : 'plough',
-    frontTool: equipmentUnlocked(loadout?.frontTool, unlockedGates) && equipmentDefinition(loadout.frontTool)?.slot === 'frontTool'
+    frontTool: emptyFrontSlot
+      ? null
+      : equipmentUnlocked(loadout?.frontTool, unlockedGates) && equipmentDefinition(loadout.frontTool)?.slot === 'frontTool'
       ? loadout.frontTool
       : 'loader',
   };

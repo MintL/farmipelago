@@ -1,4 +1,4 @@
-import { THREE, createVoxelLantern, createVoxelModel, mats } from './shared.js';
+import { MODEL_VOXEL, THREE, createVoxelLantern, createVoxelModel, mats } from './shared.js';
 
 const DECK_HEIGHT = .18;
 const DECK_CLEARANCE = .04;
@@ -7,12 +7,12 @@ const DECK_DEPTH = 5.4;
 const DECK_CENTER_Z = 2.12;
 const FIRST_VISIT_DELAY = 5;
 const REPEAT_VISIT_DELAY = 60;
-const APPROACH_SECONDS = 1.4;
-const DESCEND_SECONDS = 4.6;
-const DWELL_SECONDS = 4;
-const PICKUP_SECONDS = 1.2;
-const ASCEND_SECONDS = 4.6;
-const DEPART_SECONDS = 1.6;
+const APPROACH_SECONDS = 1.1;
+const DESCEND_SECONDS = 2.5;
+const DWELL_SECONDS = 1.4;
+const PICKUP_SECONDS = 1;
+const ASCEND_SECONDS = 2.5;
+const DEPART_SECONDS = 1.3;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ease = value => value * value * (3 - 2 * value);
@@ -50,6 +50,8 @@ export function createCargoPort(site, worldSeed = 0) {
   let pickupQueued = false;
   let shipmentCollected = false;
   let cargoKind = 'crops';
+  let transferActive = false;
+  let transferPulseCursor = 0;
 
   group.name = 'cargo-port';
   const deckBaseY = site.y + DECK_CLEARANCE;
@@ -76,7 +78,8 @@ export function createCargoPort(site, worldSeed = 0) {
   redLightMaterial.name = 'cargo-red-light';
   lanternGlowMaterial.name = 'cargo-lantern-glow';
   const materials = [deckMaterial, deckEdgeMaterial, markingMaterial, cargoMaterial, cargoDarkMaterial, glassMaterial, lightMaterial, redLightMaterial, lanternGlowMaterial];
-  const lanternLights = [];
+  const lanternPositions = [];
+  const lightSurfaceQuads = [];
   let nightMaterials = null;
 
   const localToWorld = (x, z) => ({
@@ -129,6 +132,19 @@ export function createCargoPort(site, worldSeed = 0) {
     name: 'cargo-pad-model',
     origin: [-12.5, 0, -3],
   }));
+  for (let gz = 0; gz < 27; gz++) for (let gx = 0; gx < 25; gx++) {
+    const left = (-12.5 + gx) * MODEL_VOXEL;
+    const right = left + MODEL_VOXEL;
+    const near = (-3 + gz) * MODEL_VOXEL;
+    const far = near + MODEL_VOXEL;
+    const y = MODEL_VOXEL + .004;
+    lightSurfaceQuads.push([
+      new THREE.Vector3(left, y, near),
+      new THREE.Vector3(right, y, near),
+      new THREE.Vector3(left, y, far),
+      new THREE.Vector3(right, y, far),
+    ]);
+  }
 
   const addHangingLantern = (name, poleX, poleTopY, poleZ, yaw) => {
     const { group: lantern } = createVoxelLantern({
@@ -142,11 +158,7 @@ export function createCargoPort(site, worldSeed = 0) {
       poleZ - Math.cos(yaw) * .5,
     );
     lantern.rotation.y = yaw;
-    const light = new THREE.PointLight(0xffb653, 0, 5, 2);
-    light.position.set(0, .1, 0);
-    light.castShadow = false;
-    lantern.add(light);
-    lanternLights.push(light);
+    lanternPositions.push(lantern.position.clone().add(new THREE.Vector3(0, .1, 0)));
     staticGroup.add(lantern);
   };
 
@@ -272,24 +284,43 @@ export function createCargoPort(site, worldSeed = 0) {
 
   return {
     group,
+    lanternPositions,
+    lightSurfaceQuads,
     occluders: [padRoot, craftRoot],
     colliders,
     isNear(x, z, range = 3.15) {
       return Math.hypot(x - site.x, z - site.z) <= range;
     },
     unloadTarget() {
-      const target = localToWorld(-1.5, -.14);
-      return { x: target.x, y: deckBaseY + .72, z: target.z };
+      const target = localToWorld(1.72, -.05);
+      return { x: target.x, y: deckBaseY + .92, z: target.z };
+    },
+    transferPort() {
+      return this.unloadTarget();
+    },
+    setTransferState({ active }) {
+      transferActive = active;
+      if (!active) {
+        const items = cargoItems().filter(item => item.visible);
+        items.forEach(item => { item.userData.pop = Math.max(item.userData.pop || 0, reducedMotion ? .18 : .72); });
+      }
+    },
+    pulseTransfer() {
+      const items = cargoItems().filter(item => item.visible);
+      if (!items.length) return;
+      const item = items[transferPulseCursor++ % items.length];
+      item.userData.pop = Math.max(item.userData.pop || 0, reducedMotion ? .12 : .38);
     },
     setLoadRatio(nextRatio) {
       loadRatio = THREE.MathUtils.clamp(nextRatio, 0, 1);
+      const previousItems = new Set(cargoItems().filter(item => item.visible));
       for (const item of [...crates, ...stagedBales, ...stagedMilk]) item.visible = false;
       const items = cargoItems();
       items.forEach((item, index) => {
         item.position.copy(item.userData.basePosition);
         item.scale.set(1, 1, 1);
         const visible = loadRatio > index / items.length + .001;
-        if (visible) item.userData.pop = 1;
+        if (visible && !previousItems.has(item)) item.userData.pop = reducedMotion ? .15 : 1;
         item.visible = visible;
       });
     },
@@ -316,7 +347,6 @@ export function createCargoPort(site, worldSeed = 0) {
       nightMaterials.warm.forEach(material => { material.emissiveIntensity = 1.5 + nightAmount * 1.3; });
       nightMaterials.red.forEach(material => { material.emissiveIntensity = 1.45 + nightAmount * .75; });
       nightMaterials.lantern.forEach(material => { material.emissiveIntensity = .25 + lanternAmount * 2.75; });
-      lanternLights.forEach(light => { light.intensity = lanternAmount * 6; });
     },
     requestPickup(camera) {
       pickupQueued = true;
@@ -419,7 +449,7 @@ export function createCargoPort(site, worldSeed = 0) {
         item.userData.pop = Math.max(0, item.userData.pop - dt * 4.5);
         const pop = item.userData.pop;
         item.position.copy(item.userData.basePosition);
-        item.position.y += pop * .08;
+        item.position.y += pop * .08 + (!reducedMotion && transferActive ? Math.sin(phaseTime * 12 + item.userData.basePosition.x * 2) * .012 : 0);
         item.scale.set(1 + pop * .14, 1 - pop * .12, 1 + pop * .14);
       });
       const flightPower = phase === 'dwell' || phase === 'pickup' ? .48 : 1;

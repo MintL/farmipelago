@@ -22,6 +22,7 @@ const BRIDGE_SHORT_LANTERN_SPAN = TILE * 2.5;
 const BRIDGE_OCCLUSION_END_CLEARANCE = TILE * 2.25;
 const BRIDGE_OCCLUSION_SIDE_CLEARANCE = TILE * .75;
 const BRIDGE_OCCLUSION_HEIGHT_CLEARANCE = TILE * .75;
+const STATIC_LANTERN_LIGHT_RADIUS = 5;
 const STARTER_ISLAND_ID = 0;
 const NORTH_ISLAND_ID = 1;
 const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;
@@ -89,7 +90,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     roughness: .38,
   });
   const bridgeLanternGlowMeshes = [];
-  const bridgeLanternLights = [];
+  const staticLanternPositions = [];
+  const staticLightSurfaceQuads = [];
   const soilStrataMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
   const grainSplashMaterials = Object.fromEntries([
     ['corn', 0xf2c84b], ['wheat', 0xd9b65a], ['barley', 0xc9a552], ['canola', 0xf0ce32], ['soybean', 0xb78e48],
@@ -927,6 +929,15 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       origin: [-7.5, 0, -7.5],
     });
     workshop.add(workshopModel);
+    const addWorkshopLightSurface = (left, near, right, far) => {
+      const corners = [[left, near], [right, near], [left, far], [right, far]];
+      staticLightSurfaceQuads.push(corners.map(([localX, localZ]) => {
+        const position = localToWorld(localX, localZ);
+        return new THREE.Vector3(position.x, y + MODEL_VOXEL + .004, position.z);
+      }));
+    };
+    addWorkshopLightSurface(-1.7, -1.7, 1.7, 1.7);
+    addWorkshopLightSurface(-.7, -2.7, .7, -1.7);
 
     const lanternGlowMaterial = new THREE.MeshStandardMaterial({
       color: 0xffdfa0,
@@ -940,15 +951,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       name: 'starter-workshop-lantern',
     });
     lantern.position.set(0, 1.85, -1.7);
-    const lanternLight = new THREE.PointLight(0xffb653, 0, 5, 2);
-    lanternLight.position.set(0, .1, 0);
-    lanternLight.castShadow = false;
-    lantern.add(lanternLight);
+    const lanternPosition = localToWorld(lantern.position.x, lantern.position.z);
+    staticLanternPositions.push(new THREE.Vector3(lanternPosition.x, y + lantern.position.y + .1, lanternPosition.z));
     workshop.add(lantern);
     setWorkshopNightAmount = amount => {
       const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
       lanternGlowMesh.material.emissiveIntensity = .25 + nightAmount * 2.75;
-      lanternLight.intensity = nightAmount * 6;
     };
 
     for (const side of [-1, 1]) {
@@ -1148,6 +1156,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   if (workshopSite) addWorkshop(workshopSite.x, workshopSite.topY, workshopSite.z);
   const cargoPort = createCargoPort(cargoSite, seed);
   group.add(cargoPort.group);
+  cargoPort.lanternPositions.forEach(position => {
+    staticLanternPositions.push(cargoPort.group.localToWorld(position.clone()));
+  });
+  cargoPort.lightSurfaceQuads.forEach(quad => {
+    staticLightSurfaceQuads.push(quad.map(position => cargoPort.group.localToWorld(position.clone())));
+  });
   obstacles.push(...cargoPort.colliders);
 
   for (const [fromId, toId] of islandConnections) {
@@ -1159,7 +1173,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       bridgeBlocks,
       bridgeLanternGlowMaterial,
       bridgeLanternGlowMeshes,
-      bridgeLanternLights,
+      staticLanternPositions,
+      staticLightSurfaceQuads,
     );
   }
 
@@ -1170,6 +1185,26 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   }
 
   addTerrainInstances();
+  for (const tile of terrain.values()) {
+    if (tile.water) continue;
+    const left = tile.x - TILE * .5;
+    const right = tile.x + TILE * .5;
+    const near = tile.z - TILE * .5;
+    const far = tile.z + TILE * .5;
+    const y = tile.topY + SURFACE_TOP_LIFT + .004;
+    staticLightSurfaceQuads.push([
+      new THREE.Vector3(left, y, near),
+      new THREE.Vector3(right, y, near),
+      new THREE.Vector3(left, y, far),
+      new THREE.Vector3(right, y, far),
+    ]);
+  }
+  const staticLanternLighting = createStaticLanternLighting(
+    staticLanternPositions,
+    staticLightSurfaceQuads,
+    STATIC_LANTERN_LIGHT_RADIUS,
+  );
+  if (staticLanternLighting.mesh) group.add(staticLanternLighting.mesh);
   buildGroundCover();
   buildContactBeds();
   const cropInstances = createCropInstances(terrain.size, group);
@@ -1233,13 +1268,14 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     return true;
   };
 
-  const forage = createForageSystem(terrain, group, onChange);
+  const forage = createForageSystem(terrain, group, physics, onChange);
   const wildlife = createWildlifeSystem(terrain, group, seed);
   const occlusion = createOcclusionSystem(group, cargoPort.occluders);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const starterIsland = islands[STARTER_ISLAND_ID];
   const start = terrain.get(gridKey(starterIsland.cx, starterIsland.cz)) || terrain.values().next().value;
   const vehicleSpawns = findVehicleSpawns(terrain, start, workshopArea);
+  const bridgeLanternGlowMaterials = [...new Set(bridgeLanternGlowMeshes.map(mesh => mesh.material))];
   return {
     group,
     terrain,
@@ -1251,9 +1287,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       setWorkshopNightAmount(lanternAmount);
       cargoPort.setNightAmount(amount, lanternAmount);
       const bridgeLanternAmount = THREE.MathUtils.clamp(Number(lanternAmount) || 0, 0, 1);
-      const glowMaterials = new Set(bridgeLanternGlowMeshes.map(mesh => mesh.material));
-      glowMaterials.forEach(material => { material.emissiveIntensity = .25 + bridgeLanternAmount * 2.75; });
-      bridgeLanternLights.forEach(light => { light.intensity = bridgeLanternAmount * 6; });
+      bridgeLanternGlowMaterials.forEach(material => { material.emissiveIntensity = .25 + bridgeLanternAmount * 2.75; });
+      staticLanternLighting.setAmount(bridgeLanternAmount);
     },
     dispose() {
       forage.dispose();
@@ -1325,6 +1360,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         cropInstances.animate(elapsed);
         fieldEffects.animate(elapsed);
       }
+      forage.animate();
       wildlife.animate(elapsed, delta, isWildlifeBlockedAt);
       if (persistentChange) onChange();
     },
@@ -1428,8 +1464,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     takeLooseGrassAt(x, z, levelY) {
       return forage.takeLooseAt(x, z, levelY);
     },
-    spawnBale(x, y, z, heading) {
-      return forage.spawnBale(x, y, z, heading);
+    spawnBale(x, y, z, heading, motion) {
+      return forage.spawnBale(x, y, z, heading, motion);
     },
     hasBale(id) {
       return forage.hasBale(id);
@@ -1439,6 +1475,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     moveBale(id, x, y, z, heading, notify = false) {
       return forage.moveBale(id, x, y, z, heading, notify);
+    },
+    releaseBale(id, x, y, z, heading, motion) {
+      return forage.releaseBale(id, x, y, z, heading, motion);
     },
     removeBale(id) {
       return forage.removeBale(id);
@@ -2630,6 +2669,70 @@ function reserveBridgeLandings(terrain, gap) {
   }
 }
 
+function createStaticLanternLighting(lanternPositions, surfaceQuads, radius) {
+  const positions = [];
+  const colors = [];
+  const indices = [];
+  const lightColor = new THREE.Color(0xffb653);
+  const strengthAt = point => {
+    let strength = 0;
+    for (const lantern of lanternPositions) {
+      const distance = Math.hypot(point.x - lantern.x, point.z - lantern.z);
+      if (distance >= radius) continue;
+      const falloff = 1 - distance / radius;
+      strength += falloff * falloff;
+    }
+    return Math.min(1.25, strength);
+  };
+
+  for (const quad of surfaceQuads) {
+    const strengths = quad.map(strengthAt);
+    if (Math.max(...strengths) < .002) continue;
+    const offset = positions.length / 3;
+    quad.forEach((point, index) => {
+      const strength = strengths[index];
+      positions.push(point.x, point.y, point.z);
+      colors.push(lightColor.r * strength, lightColor.g * strength, lightColor.b * strength);
+    });
+    indices.push(offset, offset + 2, offset + 1, offset + 1, offset + 2, offset + 3);
+  }
+
+  if (!indices.length) return { mesh: null, setAmount() {} };
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthTest: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'static-lantern-lighting';
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.renderOrder = 1;
+  mesh.visible = false;
+  return {
+    mesh,
+    setAmount(amount) {
+      const strength = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
+      material.opacity = strength * .34;
+      mesh.visible = strength > .01;
+    },
+  };
+}
+
 function addBridgeBetween(
   fromIsland,
   toIsland,
@@ -2638,7 +2741,8 @@ function addBridgeBetween(
   bridgeBlocks,
   lanternGlowMaterial,
   lanternGlowMeshes,
-  lanternLights,
+  lanternPositions,
+  lightSurfaceQuads,
 ) {
   const gap = closestIslandGap(terrain, fromIsland.id, toIsland.id);
   if (!gap || gap.distance / TILE <= BRIDGE_GAP_TILES) return;
@@ -2733,6 +2837,12 @@ function addBridgeBetween(
     );
     plank.quaternion.copy(segmentRotation);
     bridge.add(plank);
+    lightSurfaceQuads.push([
+      new THREE.Vector3(-BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
+      new THREE.Vector3(BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
+      new THREE.Vector3(-BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, plankLength * .5),
+      new THREE.Vector3(BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, plankLength * .5),
+    ].map(position => position.applyQuaternion(segmentRotation).add(plank.position)));
     bridgeBlocks.push({
       x: plank.position.x,
       y: plank.position.y,
@@ -2802,12 +2912,8 @@ function addBridgeBetween(
       point.z + sideDirection.z * railOffset * side,
     );
     lantern.rotation.y = yaw;
-    const light = new THREE.PointLight(0xffb653, 0, 5, 2);
-    light.position.set(0, .1, 0);
-    light.castShadow = false;
-    lantern.add(light);
+    lanternPositions.push(lantern.position.clone().add(new THREE.Vector3(0, .1, 0)));
     lanternGlowMeshes.push(glowMesh);
-    lanternLights.push(light);
     railingGroups.get(side).add(lantern);
   }
 }

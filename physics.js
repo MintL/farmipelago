@@ -29,8 +29,11 @@ class FarmPhysics {
     this.world.timestep = FIXED_TIMESTEP;
     this.staticColliders = [];
     this.vehicles = new Map();
+    this.bales = new Map();
     this.activeVehicleId = null;
     this.characterController = this.world.createCharacterController(0.03);
+    this.characterController.setApplyImpulsesToDynamicBodies(true);
+    this.characterController.setCharacterMass(2.4);
     this.characterController.enableSnapToGround(0.28);
     // Water basins sit .22 units below the farm surface. Let the tractor roll
     // out of them, but leave the one-unit terrain terraces jump-only.
@@ -195,6 +198,86 @@ class FarmPhysics {
       this.grounded = vehicle.grounded;
       if (this.grounded) this.groundGrace = CONTACT_GRACE_TIME;
     }
+    return true;
+  }
+
+  createBale(id, position, rotation, motion = {}) {
+    this.removeBale(id);
+    if (typeof id !== 'string' || ![position?.x, position?.y, position?.z].every(Number.isFinite)) return false;
+    const quaternion = [rotation?.x, rotation?.y, rotation?.z, rotation?.w].every(Number.isFinite)
+      ? rotation
+      : { x: 0, y: 0, z: 0, w: 1 };
+    const linearVelocity = motion.linearVelocity || {};
+    const angularVelocity = motion.angularVelocity || {};
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(position.x, position.y, position.z)
+        .setRotation(quaternion)
+        .setLinvel(linearVelocity.x || 0, linearVelocity.y || 0, linearVelocity.z || 0)
+        .setAngvel({ x: angularVelocity.x || 0, y: angularVelocity.y || 0, z: angularVelocity.z || 0 })
+        .setLinearDamping(.55)
+        .setAngularDamping(1.05)
+        .setCcdEnabled(true)
+        .setCanSleep(true)
+        .setSleeping(Boolean(motion.sleeping))
+        .setAdditionalSolverIterations(2)
+    );
+    const collider = this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(.41, .28, .575)
+        .setFriction(.88)
+        .setRestitution(.06)
+        .setDensity(.42),
+      body
+    );
+    this.bales.set(id, { body, collider });
+    return true;
+  }
+
+  setBalePose(id, position, rotation) {
+    const bale = this.bales.get(id);
+    if (!bale || ![position?.x, position?.y, position?.z, rotation?.x, rotation?.y, rotation?.z, rotation?.w].every(Number.isFinite)) return false;
+    if (!bale.body.isKinematic()) bale.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    bale.body.setTranslation(position, true);
+    bale.body.setRotation(rotation, true);
+    bale.body.setNextKinematicTranslation(position);
+    bale.body.setNextKinematicRotation(rotation);
+    bale.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+    bale.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+    this.world.propagateModifiedBodyPositionsToColliders();
+    return true;
+  }
+
+  releaseBale(id, position, rotation, motion = {}) {
+    const bale = this.bales.get(id);
+    if (!bale || ![position?.x, position?.y, position?.z, rotation?.x, rotation?.y, rotation?.z, rotation?.w].every(Number.isFinite)) return false;
+    const linearVelocity = motion.linearVelocity || {};
+    const angularVelocity = motion.angularVelocity || {};
+    bale.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+    bale.body.setTranslation(position, true);
+    bale.body.setRotation(rotation, true);
+    bale.body.setLinvel({ x: linearVelocity.x || 0, y: linearVelocity.y || 0, z: linearVelocity.z || 0 }, true);
+    bale.body.setAngvel({ x: angularVelocity.x || 0, y: angularVelocity.y || 0, z: angularVelocity.z || 0 }, true);
+    this.world.propagateModifiedBodyPositionsToColliders();
+    return true;
+  }
+
+  baleState(id) {
+    const bale = this.bales.get(id);
+    if (!bale) return null;
+    const position = bale.body.translation();
+    const rotation = bale.body.rotation();
+    return {
+      position: { x: position.x, y: position.y, z: position.z },
+      rotation: { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w },
+      sleeping: bale.body.isSleeping(),
+    };
+  }
+
+  removeBale(id) {
+    const bale = this.bales.get(id);
+    if (!bale) return false;
+    this.world.removeRigidBody(bale.body);
+    this.bales.delete(id);
     return true;
   }
 

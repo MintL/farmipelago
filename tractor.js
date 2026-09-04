@@ -27,7 +27,8 @@ export function createVehicle(scene, vehicle) {
   let selectionPulse = 0;
   let selectionDirection = 0;
   let sprayCooldown = 0;
-  let unload = null;
+  let transfer = null;
+  let transferPulse = 0;
   let augerYaw = 0;
   let augerExtension = 0;
   let baleKick = 0;
@@ -76,7 +77,6 @@ export function createVehicle(scene, vehicle) {
     return { mesh, slots, cursor: 0, transform };
   };
   const spray = createPool('spray-droplets', new THREE.BoxGeometry(.06, .06, .06), new THREE.MeshBasicMaterial({ color: 0xa6ddff, transparent: true, opacity: .82, depthWrite: false }), 64);
-  const milk = createPool('milk-droplets', new THREE.BoxGeometry(.075, .075, .075), new THREE.MeshBasicMaterial({ color: 0xfff8e8, transparent: true, opacity: .9, depthWrite: false }), 42);
   const claim = (pool, data) => {
     const available = pool.slots.findIndex(slot => !slot.active);
     const index = available === -1 ? pool.cursor++ % pool.slots.length : available;
@@ -122,10 +122,8 @@ export function createVehicle(scene, vehicle) {
       }
     },
     setLoadout(nextLoadout) {
-      const nextTool = nextLoadout.tool || loadout;
-      const nextFrontTool = nextLoadout.frontTool || frontLoadout;
-      if (attachments[nextTool]) loadout = nextTool;
-      if (frontAttachments[nextFrontTool]) frontLoadout = nextFrontTool;
+      if (nextLoadout?.tool === null || attachments[nextLoadout?.tool]) loadout = nextLoadout.tool;
+      if (nextLoadout?.frontTool === null || frontAttachments[nextLoadout?.frontTool]) frontLoadout = nextLoadout.frontTool;
       Object.entries(attachments).forEach(([name, attachment]) => {
         attachment.visible = name === loadout;
       });
@@ -145,6 +143,14 @@ export function createVehicle(scene, vehicle) {
         liquidTank.liquid.scale.y = Math.max(.08, ratio);
         liquidTank.liquid.position.y = .52 + ratio * .4;
       }
+    },
+    setBalerFill(amount, capacity) {
+      const formingBale = attachments.baler?.getObjectByName('baler-forming-bale');
+      if (!formingBale) return;
+      const ratio = capacity ? THREE.MathUtils.clamp(amount / capacity, 0, 1) : 0;
+      formingBale.visible = loadout === 'baler' && ratio > 0;
+      formingBale.scale.z = Math.max(.04, ratio);
+      formingBale.position.z = 1.62 + .575 * ratio;
     },
     setToolEnabled(slot, enabled, immediate = false) {
       if (slot === 'front') frontToolTargetY = enabled ? toolDownY : toolUpY;
@@ -169,28 +175,44 @@ export function createVehicle(scene, vehicle) {
       selectionDirection = selected ? 1 : -1;
       selectionPulse = 1;
     },
-    playUnload(target, itemId, elapsed) {
-      if (reducedMotion || (!combine && !trailer && !liquidTank) || !target) return false;
+    transferPort(direction, itemId) {
+      root.updateMatrixWorld(true);
       if (combine) {
+        if (direction === 'output') return combine.augerTip.getWorldPosition(new THREE.Vector3());
+        worldPoint.set(0, 1.78, .57);
+        return combine.group.localToWorld(worldPoint.clone());
+      }
+      if (loadout === 'trailer') {
+        worldPoint.set(0, direction === 'input' ? .76 : .18, direction === 'input' ? .05 : 1.34);
+        return trailer.bed.localToWorld(worldPoint.clone());
+      }
+      if (loadout === 'liquid-tank' && itemId === 'milk') {
+        if (direction === 'output') return liquidTank.outlet.getWorldPosition(new THREE.Vector3());
+        worldPoint.set(0, 1.66, 1.45);
+        return liquidTank.group.localToWorld(worldPoint.clone());
+      }
+      return root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0));
+    },
+    setTransferState({ active, direction, target = null, itemId = null, elapsed = 0 }) {
+      if (!active) {
+        transfer = null;
+        transferPulse = Math.max(transferPulse, reducedMotion ? .32 : 1);
+        return;
+      }
+      if (combine && direction === 'output' && target) {
         root.updateMatrixWorld(true);
         localPoint.set(target.x, target.y, target.z);
         root.worldToLocal(localPoint);
       }
-      if (unload) {
-        if (combine) unload.targetYaw = Math.atan2(-localPoint.z, localPoint.x);
-        unload.activeUntil = elapsed + 1.15;
-      }
-      else unload = {
+      transfer = {
         started: elapsed,
-        targetYaw: combine ? Math.atan2(-localPoint.z, localPoint.x) : 0,
-        activeUntil: elapsed + 1.15,
+        direction,
+        targetYaw: combine && direction === 'output' ? Math.atan2(-localPoint.z, localPoint.x) : 0,
         itemId,
       };
-      if (unload) unload.itemId = itemId;
-      return true;
     },
-    stopUnload() {
-      unload = null;
+    pulseTransfer(direction) {
+      if (direction === 'input') transferPulse = Math.max(transferPulse, reducedMotion ? .3 : .72);
     },
     playBale() {
       if (!reducedMotion) baleKick = 1;
@@ -241,8 +263,16 @@ export function createVehicle(scene, vehicle) {
       const engineBob = state.grounded ? Math.sin(elapsed * (8 + Math.min(1, state.speed / 4) * 5)) * .04 * Math.min(1, state.speed / 4) : 0;
       const airStretch = state.grounded ? 0 : .14;
       selectionPulse *= Math.exp(-7 * dt);
+      transferPulse *= Math.exp(-(reducedMotion ? 11 : 8) * dt);
       const selection = selectionDirection * selectionPulse;
-      const squash = landingSquash - airStretch + selection * .09 + Math.max(Math.abs(rearToolVelocity), Math.abs(frontToolVelocity)) * .006;
+      const transferAge = transfer ? Math.max(0, elapsed - transfer.started) : 0;
+      const transferAnticipation = !reducedMotion && transfer
+        ? Math.sin(Math.min(1, transferAge / .16) * Math.PI) * (transfer.direction === 'output' ? -.055 : .035)
+        : 0;
+      const transferBuzz = !reducedMotion && transfer ? Math.sin(transferAge * 15) * .012 : 0;
+      const squash = landingSquash - airStretch + selection * .09 + transferAnticipation + transferBuzz
+        + transferPulse * (reducedMotion ? .025 : .06)
+        + Math.max(Math.abs(rearToolVelocity), Math.abs(frontToolVelocity)) * .006;
       const visual = combine ? combine.group : tractor.group;
       visual.position.y = engineBob;
       visual.scale.set(1 + squash * .9, 1 - squash, 1 + squash * .9);
@@ -280,35 +310,26 @@ export function createVehicle(scene, vehicle) {
         transform.rotation.set(progress * 5, slot.phase + progress * 3, progress * 4);
         transform.scale.set(scale, Math.max(.18, 1 - progress), scale);
       });
-      if (!reducedMotion && unload?.itemId === 'milk' && loadout === 'liquid-tank' && elapsed < unload.activeUntil) {
-        worldPoint.set(.58, .48, 2.35);
-        liquidTank.group.localToWorld(worldPoint);
-        if (Math.floor(elapsed * 30) !== Math.floor((elapsed - dt) * 30)) claim(milk, {
-          born: elapsed, life: .48, x: worldPoint.x, y: worldPoint.y, z: worldPoint.z,
-          dx: Math.sin(heading) * .55, dz: Math.cos(heading) * .55,
-        });
-      }
-      updatePool(milk, elapsed, (slot, progress, transform) => {
-        transform.position.set(slot.x + slot.dx * progress, slot.y - progress * .72, slot.z + slot.dz * progress);
-        transform.scale.setScalar(1 - progress * .55);
-      });
-      const activeUnload = unload && elapsed < unload.activeUntil;
+      const activeOutput = !reducedMotion && transfer?.direction === 'output';
       if (combine) {
-        const targetYaw = activeUnload ? unload.targetYaw : 0;
+        const targetYaw = activeOutput ? transfer.targetYaw : 0;
         augerYaw += (targetYaw - augerYaw) * (1 - Math.exp(-12 * dt));
-        const targetExtension = activeUnload ? 1 : 0;
+        const targetExtension = activeOutput ? 1 : 0;
         augerExtension += (targetExtension - augerExtension) * (1 - Math.exp(-9 * dt));
         combine.auger.rotation.y = augerYaw;
-        const pulse = activeUnload ? 1 + Math.sin((elapsed - unload.started) * 12) * .025 : 1;
+        const pulse = activeOutput ? 1 + Math.sin((elapsed - transfer.started) * 12) * .025 : 1;
         combine.auger.scale.x = Math.max(.04, augerExtension * pulse);
       }
       if (trailer) {
-        const tilt = activeUnload && loadout === 'trailer' ? .56 : 0;
+        const tilt = activeOutput && loadout === 'trailer' ? .56 : 0;
         trailer.bed.rotation.x += (tilt - trailer.bed.rotation.x) * (1 - Math.exp(-10 * dt));
-        trailer.tailgate.rotation.x = activeUnload && loadout === 'trailer' ? .82 : 0;
+        trailer.bed.position.y = .5 - (loadout === 'trailer' && transfer?.direction === 'input' ? transferPulse * .055 : 0);
+        trailer.tailgate.rotation.x = activeOutput && loadout === 'trailer' ? .82 : 0;
       }
-      if (liquidTank) liquidTank.outlet.scale.setScalar(activeUnload && loadout === 'liquid-tank' ? 1 + Math.sin(elapsed * 18) * .12 : 1);
-      if (unload && !activeUnload) unload = null;
+      if (liquidTank) {
+        const outletPulse = activeOutput && loadout === 'liquid-tank' ? Math.sin(elapsed * 18) * .12 : 0;
+        liquidTank.outlet.scale.setScalar(1 + outletPulse + (transfer?.direction === 'input' ? transferPulse * .08 : 0));
+      }
     },
   };
 }
@@ -365,8 +386,7 @@ export function createLoadoutPreview(canvas, category) {
   let current = Object.keys(models)[0];
 
   const setItem = nextItem => {
-    if (!models[nextItem]) return;
-    current = nextItem;
+    current = models[nextItem] ? nextItem : null;
     modelEntries.forEach(([name, model]) => model.scale.setScalar(name === current ? 1 : .88));
   };
   setItem(current);

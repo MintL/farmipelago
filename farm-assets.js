@@ -184,6 +184,20 @@ function createBalerAsset() {
     pickup.add(tine);
   }
   const chute = box(1.02, .1, .72, mats.tractorDark); chute.name = 'baler-chute'; chute.position.set(0, .18, 1.95); chute.rotation.x = -.12; group.add(chute);
+  const formingBale = new THREE.Group();
+  formingBale.name = 'baler-forming-bale';
+  formingBale.visible = false;
+  formingBale.position.set(0, .49, 1.62);
+  const formingBody = box(.82, .56, 1.15, mats.bale); formingBale.add(formingBody);
+  for (const z of [-.27, .27]) {
+    for (const y of [-.278, .278]) {
+      const band = box(.86, .035, .13, mats.baleBand); band.position.set(0, y, z); formingBale.add(band);
+    }
+    for (const x of [-.422, .422]) {
+      const band = box(.035, .56, .13, mats.baleBand); band.position.set(x, 0, z); formingBale.add(band);
+    }
+  }
+  group.add(formingBale);
   for (const x of [-.73, .73]) {
     const wheel = new THREE.Mesh(new THREE.CylinderGeometry(.27, .27, .18, 10), mats.tire);
     wheel.position.set(x, .26, 1.16); wheel.rotation.z = Math.PI / 2; wheel.castShadow = true; group.add(wheel);

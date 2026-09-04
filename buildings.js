@@ -8,6 +8,7 @@ import {
   reconcileCattleBarnAnimals, removeCollinearVertices, snapPenPoint, updateCattleBarn,
 } from './livestock.js';
 
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SILO_RADIUS = 1.05;
 const SILO_HEIGHT = 3.7;
 const CATTLE_BARN_RADIUS = 1.45;
@@ -687,7 +688,7 @@ export function createBuildingManager({
       if (operation?.kind === 'hold-building' && performance.now() - operation.startedAt >= BUILDING_HOLD_MS) promoteBuildingMove(operation);
       for (const building of buildings.values()) {
         building.visual.setSelected(building === selected);
-        building.visual.animate(elapsed, operation?.building === building);
+        building.visual.animate(elapsed, operation?.building === building, dt);
         building.constructionOutline?.animate(elapsed);
         building.penVisual?.setEditing(buildMode && building === selected && isPenDraft(building));
         if (building.gateVisual) {
@@ -795,6 +796,23 @@ export function createBuildingManager({
       building.milkLitres -= amount;
       if (notify) onChange();
       return amount;
+    },
+    transferPort(id, direction, itemId) {
+      const building = buildings.get(id);
+      if (!building?.placed || !isComplete(building)) return null;
+      if (building.type === 'silo' && itemId !== 'milk') {
+        return { x: building.site.x, y: building.site.y + 3.76, z: building.site.z };
+      }
+      if (building.type === 'cattle-barn' && direction === 'output' && itemId === 'milk') {
+        return { x: building.site.x + .86, y: building.site.y + .56, z: building.site.z + 1.12 };
+      }
+      return null;
+    },
+    setTransferState(id, state) {
+      buildings.get(id)?.visual.setTransferState?.(state);
+    },
+    pulseTransfer(id, direction) {
+      buildings.get(id)?.visual.pulseTransfer?.(direction);
     },
     repaintSelected() {
       if (selected?.type !== 'cattle-barn' || !selected.placed || !isPenDraft(selected)) return false;
@@ -938,6 +956,8 @@ export function createSilo() {
   let valid = true;
   let droppedAt = -10;
   let receivedAt = -10;
+  let transfer = null;
+  let transferPulse = 0;
 
   group.name = 'silo';
   group.add(spring);
@@ -1035,7 +1055,18 @@ export function createSilo() {
       setAppearance();
     },
     receive(elapsed) { receivedAt = elapsed; },
-    animate(elapsed, active) {
+    setTransferState({ active, direction, elapsed = 0 }) {
+      if (!active) {
+        transfer = null;
+        transferPulse = Math.max(transferPulse, reducedMotion ? .28 : 1);
+        return;
+      }
+      transfer = { direction, started: elapsed };
+    },
+    pulseTransfer(direction) {
+      if (direction === 'input') transferPulse = Math.max(transferPulse, reducedMotion ? .24 : .68);
+    },
+    animate(elapsed, active, dt = 0) {
       if (dragging || active) {
         const wobble = Math.sin(elapsed * 14) * .035;
         spring.position.y = .16 + Math.sin(elapsed * 18) * .025;
@@ -1047,10 +1078,16 @@ export function createSilo() {
       const age = Math.max(0, elapsed - droppedAt);
       const placementBounce = age < .78 ? Math.sin(age * 20) * Math.exp(-age * 5.2) : 0;
       const receivedAge = Math.max(0, elapsed - receivedAt);
-      const receiptBounce = receivedAge < .55 ? Math.sin(receivedAge * 22) * Math.exp(-receivedAge * 6.8) * .6 : 0;
-      const bounce = placementBounce + receiptBounce;
-      spring.position.y = 0;
-      spring.rotation.z = 0;
+      const receiptBounce = receivedAge < .55
+        ? Math.sin(receivedAge * 22) * Math.exp(-receivedAge * 6.8) * (reducedMotion ? .12 : .6)
+        : 0;
+      transferPulse *= Math.exp(-(reducedMotion ? 11 : 7) * dt);
+      const transferAge = transfer ? Math.max(0, elapsed - transfer.started) : 0;
+      const transferWobble = !reducedMotion && transfer ? Math.sin(transferAge * 16) * .018 : 0;
+      const transferBreath = !reducedMotion && transfer ? Math.sin(transferAge * 9) * .018 : 0;
+      const bounce = placementBounce + receiptBounce + transferPulse * (reducedMotion ? .08 : .32);
+      spring.position.y = Math.max(0, transferBreath * .4);
+      spring.rotation.z = transferWobble;
       spring.scale.set(1 - bounce * .11, 1 + bounce * .24, 1 - bounce * .11);
     },
   };

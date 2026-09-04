@@ -97,9 +97,9 @@ export const mats = {
         vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
         float fresnel = pow(1.0 - max(dot(viewDirection, vec3(0.0, 1.0, 0.0)), 0.0), 2.4);
         vec3 dayWater = mix(vec3(.035, .24, .34), vec3(.12, .52, .66), glint * .38 + fresnel * .26);
-        vec3 nightWater = mix(vec3(.025, .10, .22), vec3(.16, .31, .50), glint * .28 + fresnel * .34);
+        vec3 nightWater = mix(vec3(.06, .19, .34), vec3(.24, .43, .64), glint * .28 + fresnel * .34);
         vec3 dayGlint = glint * vec3(.18, .34, .38);
-        vec3 moonGlint = glint * vec3(.16, .24, .42);
+        vec3 moonGlint = glint * vec3(.24, .36, .58);
         gl_FragColor = vec4(mix(dayWater + dayGlint, nightWater + moonGlint, nightAmount), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

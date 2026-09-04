@@ -1,5 +1,6 @@
 import { THREE, TILE, box, gridKey, mats } from './shared.js';
 
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const STARTER_COW_COUNT = 2;
 export const PEN_TILES_PER_COW = 4;
 export const HAY_BALE_LITRES = 3600;
@@ -442,6 +443,7 @@ export function createCattleBarnVisual() {
   const ring = new THREE.Mesh(new THREE.RingGeometry(1.65, 1.75, 32), ringMaterial);
   ring.rotation.x = -Math.PI * .5; ring.position.y = .02; ring.visible = false; group.add(ring);
   let dragging = false, valid = true, droppedAt = null;
+  let transfer = null, transferPulse = 0;
   const updateAppearance = () => {
     ringMaterial.color.copy((valid ? validMaterial : invalidMaterial).color);
     for (const material of [redMaterial, darkMaterial, creamMaterial]) {
@@ -456,7 +458,18 @@ export function createCattleBarnVisual() {
     setPenComplete() {},
     drop() { dragging = false; valid = true; droppedAt = null; updateAppearance(); },
     settle() { dragging = false; valid = true; updateAppearance(); },
-    animate(elapsed, active) {
+    setTransferState({ active, direction, elapsed = 0 }) {
+      if (!active) {
+        transfer = null;
+        transferPulse = Math.max(transferPulse, reducedMotion ? .28 : 1);
+        return;
+      }
+      transfer = { direction, started: elapsed };
+    },
+    pulseTransfer(direction) {
+      if (direction === 'input') transferPulse = Math.max(transferPulse, reducedMotion ? .24 : .65);
+    },
+    animate(elapsed, active, dt = 0) {
       if (dragging || active) {
         spring.position.y = .12 + Math.sin(elapsed * 16) * .025;
         spring.rotation.z = Math.sin(elapsed * 13) * .025;
@@ -464,9 +477,16 @@ export function createCattleBarnVisual() {
       }
       if (droppedAt === null) droppedAt = elapsed;
       const age = elapsed - droppedAt;
-      const bounce = age < .7 ? Math.sin(age * 19) * Math.exp(-age * 5) : 0;
-      spring.position.y = 0; spring.rotation.z = 0;
+      transferPulse *= Math.exp(-(reducedMotion ? 11 : 8) * dt);
+      const transferAge = transfer ? Math.max(0, elapsed - transfer.started) : 0;
+      const transferWobble = !reducedMotion && transfer ? Math.sin(transferAge * 15) * .012 : 0;
+      const bounce = (age < .7 ? Math.sin(age * 19) * Math.exp(-age * 5) : 0)
+        + transferPulse * (reducedMotion ? .07 : .24);
+      spring.position.y = 0; spring.rotation.z = transferWobble;
       spring.scale.set(1 - bounce * .08, 1 + bounce * .18, 1 - bounce * .08);
+      const milkJiggle = !reducedMotion && transfer ? Math.sin(transferAge * 24) * .08 : 0;
+      milkCan.position.y = .3 + Math.abs(milkJiggle) * .12;
+      milkCan.rotation.z = milkJiggle;
     },
   };
 }

@@ -1,7 +1,7 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-03
+**Updated from implementation:** 2026-09-04
 
 ## 1. Game Concept
 
@@ -241,9 +241,9 @@ These values are procedurally generated and visibly affect the world. Damp/cool 
 
 Moisture and sunlight do not score farmland or modify crop growth, crop yield or grass yield. Crops therefore perform consistently wherever there is usable prepared land. There is no crop-planning overlay or separate crop-inspection camera mode.
 
-The world also runs a persistent ten-minute visual day/night cycle. A moving sun produces warm daylight and animated shadows, dawn and dusk shift through peach and lavender, and a full moon keeps the brief night blue and readable rather than fully dark. Stars, fog, water and local fixture lighting follow the same cycle. This illumination is separate from each tile's generated sunlight value and does not affect crops, livestock, yield or progression.
+The world also runs a persistent ten-minute visual day/night cycle in which every clock hour passes at the same speed. Day runs from 04:00 to 20:00, dawn and dusk each last two hours, and night runs from 22:00 to 02:00. Because the play camera looks down across floating islands, the stylized atmosphere is composed as a layered undersky backdrop: deep color beneath the islands rises through richer middle tones to a bright silhouette band and soft upper haze. The sun and moon retain time-driven visibility and world-relative azimuth, while their displayed elevation and broad bloom are art-directed into the visible backdrop. Dawn and dusk shift through bright, readable peach and lavender, while a strong full-moon treatment keeps the entire brief night clearly playable with cool blue key, ambient and water lighting. The atmosphere remains stationary apart from its time-driven color and celestial changes. Fog, water and local fixture lighting follow the same cycle. This illumination is separate from each tile's generated sunlight value and does not affect crops, livestock, yield or progression.
 
-The Farm Tractor's paired front lamps fade on with night and cast warm, focused beams ahead across the terrain.
+The Farm Tractor's paired front lamps follow the same late-afternoon-through-sunrise timing as other local fixtures and cast warm, focused beams ahead across the terrain.
 
 Forested clearings beyond the starter island support rare ambient voxel wildlife. Every sufficiently large island with substantial forest habitat receives exactly two reindeer. A single red fox roams the world's non-starter forests, and a separate white snow fox wanders the snowy terraces of the northern island. Wildlife uses exaggerated toy-like gait animation, jumps with tractor-style squash and stretch when a route climbs one terrain level, keeps to traversable habitat, avoids developed fields, buildings and cattle pastures, and is excluded from camera auto-hide. It adds no collisions, damage, progression requirements or management systems.
 
@@ -332,7 +332,7 @@ The player can cycle between owned vehicles. Vehicle switching briefly pauses dr
 
 The workshop is a permanent starter structure at the northern end of the starter island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area; the cargo hub occupies the southern west-edge site.
 
-The player drives into it and receives a live 3D preview of the active vehicle and compatible equipment. The UI distinguishes unavailable slots for vehicles such as the combine.
+The player drives into it and receives a live 3D preview of the active vehicle and compatible equipment. Selecting an equipped rear or front attachment again leaves that slot empty. The UI distinguishes unavailable slots for vehicles such as the combine.
 
 Long-term equipment design should preserve meaningful tradeoffs. Larger or more capable vehicles should not automatically invalidate smaller machinery if terrain, maneuverability or specialization can keep both useful.
 
@@ -350,7 +350,7 @@ The cattle logistics chain is:
 
 **Hay bale → Cattle Barn → stored milk → Water / Milk Tank → cargo hub**
 
-Transfers occur in rapid 10 L steps and are reflected in vehicle/building inventories rather than functioning as abstract menu submissions.
+Transfers occur in rapid 10 L steps and are reflected in vehicle/building inventories rather than functioning as abstract menu submissions. Crop and milk transfers are made physically legible by color-matched swarms of tiny tumbling cuboids that weave along a guided arc from the source inventory to the receiver. Machinery and storage objects anticipate and react to the flow with compact toy-like movement.
 
 ### Grain Silos
 
@@ -510,10 +510,10 @@ Current visual language includes:
 - muted grass, dirt and stone layers
 - continuous snow surfaces across the two highest terraces of the northern island
 - softly lit terrain and gentle fog
-- a moving sun and full moon, animated celestial shadows, warm twilight, subtle stars and readable blue moonlight
+- a layered atmospheric undersky visible behind and beneath the floating islands, with art-directed bloom around the time-driven sun and full moon, animated celestial shadows, warm bright twilight and strong, high-visibility blue moonlight
 - a hanging warm lantern above the permanent starter workshop entrance, lit from late afternoon until after sunrise
 - two bright hanging voxel lanterns at the cargo hub matching the workshop: one on the permanent pole and one seed-varied companion, with seed-stable rotation variation
-- matching warm voxel lanterns on the ends of broad, railed wooden bridges, using the same late-afternoon-through-sunrise lighting treatment
+- matching warm voxel lanterns on the ends of broad, railed wooden bridges, using the same late-afternoon-through-sunrise emissive treatment and precomputed local surface lighting; only the global celestial rig and vehicle headlights use dynamic lighting
 - deep pointed floating-island undersides
 - colorful toy-like farm vehicles
 - a blue hero tractor with glazed cab, lamps and beacon
@@ -522,7 +522,7 @@ Current visual language includes:
 - articulated voxel reindeer, red fox and snow fox with exaggerated wandering gaits and squash-and-stretch jumps between adjacent terrain levels
 - sparse environment-driven prop clusters across both elevations, with off-grid placement and subtle rotation, mirroring and scale variation
 - waterfalls, flat landing splashes matched to the day/night base-water palette, and environmental motion
-- physical crop unloading streams and delivery crates
+- guided crop and milk transfer swarms made from small color-matched cuboids, coordinated with animated machinery, responsive storage objects and delivery crates
 
 The overall feeling should be:
 

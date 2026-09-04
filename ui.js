@@ -3,8 +3,8 @@ import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipmen
 import { dayPhaseLabel, DEFAULT_DAY_PHASE } from './environment.js';
 
 const CATEGORIES = [
-  { id: 'equipment', key: 'tool', label: 'Equipment', icon: 'plough' },
-  { id: 'frontTools', key: 'frontTool', label: 'Front tool', icon: 'utility' },
+  { id: 'equipment', key: 'tool', label: 'Equipment', emptyLabel: 'No rear tool', icon: 'plough' },
+  { id: 'frontTools', key: 'frontTool', label: 'Front tool', emptyLabel: 'No front tool', icon: 'utility' },
 ];
 
 const CATALOG = {
@@ -68,8 +68,10 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   const celebrationHeading = document.querySelector('#celebrationHeading');
   const celebrationTitle = document.querySelector('#celebrationTitle');
   const celebrationCopy = document.querySelector('#celebrationCopy');
+  const celebrationUnlocksLabel = document.querySelector('#celebrationUnlocksLabel');
   const celebrationUnlocks = document.querySelector('#celebrationUnlocks');
   const celebrationContinue = document.querySelector('#celebrationContinue');
+  const celebrationContinueLabel = document.querySelector('#celebrationContinueLabel');
   const pauseBody = document.querySelector('#pauseBody');
   const confirmBody = document.querySelector('#confirmBody');
   const pauseTitle = document.querySelector('#pauseTitle');
@@ -666,7 +668,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       applyLoadout.disabled = !loadoutChanged();
       return;
     }
-    const names = CATEGORIES.filter(category => activeVehicle.slots.includes(category.key)).map(category => itemFor(category.id, draftLoadout[category.key]).name);
+    const names = CATEGORIES
+      .filter(category => activeVehicle.slots.includes(category.key))
+      .map(category => itemFor(category.id, draftLoadout[category.key])?.name || category.emptyLabel);
     const strong = document.createElement('strong');
     strong.textContent = names.join(' · ');
     loadoutSummary.replaceChildren(strong, document.createTextNode(loadoutChanged() ? 'Review and equip these changes' : 'Current loadout'));
@@ -690,7 +694,7 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
           button.append(name, state);
           button.addEventListener('click', () => {
             if (itemLocked(item) || !activeVehicle.slots.includes(category.key)) return;
-            draftLoadout[category.key] = item.id;
+            draftLoadout[category.key] = draftLoadout[category.key] === item.id ? null : item.id;
             renderLoadoutBays();
           });
           options.append(button);
@@ -706,8 +710,8 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         button.disabled = unavailable;
         button.setAttribute('aria-disabled', String(unavailable));
         button.setAttribute('aria-pressed', String(selected));
-        button.setAttribute('aria-label', `${item.name}${locked ? ', locked preview' : ''}`);
-        button.querySelector('.optionState').textContent = unavailable ? 'Unavailable' : locked ? 'Locked' : selected ? 'Selected' : 'Select';
+        button.setAttribute('aria-label', `${item.name}${locked ? ', locked preview' : selected ? ', selected. Deselect' : ', select'}`);
+        button.querySelector('.optionState').textContent = unavailable ? 'Unavailable' : locked ? 'Locked' : selected ? 'Deselect' : 'Select';
       });
     });
     renderVehicleIdentity();
@@ -870,7 +874,9 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
       const index = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5, Digit7: 6, Digit8: 7 }[event.code];
       if (index !== undefined) {
         const item = CATALOG.equipment[index];
-        if (item && !itemLocked(item) && activeVehicle.slots.includes('tool')) draftLoadout.tool = item.id;
+        if (item && !itemLocked(item) && activeVehicle.slots.includes('tool')) {
+          draftLoadout.tool = draftLoadout.tool === item.id ? null : item.id;
+        }
         renderLoadoutBays();
       }
       return;
@@ -1086,9 +1092,11 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
         ? ' was the final available delivery. You have unlocked every current farming capability.'
         : ' has expanded what this Farmipelago can do.')
     );
-    celebrationContinue.textContent = completeGame ? 'Keep farming' : 'Continue farming';
+    celebrationContinueLabel.textContent = completeGame ? 'Keep farming' : 'Continue farming';
     celebrationUnlocks.replaceChildren();
     const unlocks = Array.isArray(milestone?.unlocks) ? milestone.unlocks : [];
+    celebrationUnlocksLabel.hidden = unlocks.length === 0;
+    celebrationUnlocks.hidden = unlocks.length === 0;
     for (const gate of unlocks) {
       const cropId = typeof gate === 'string' && gate.startsWith('crop:') ? gate.slice(5) : null;
       const item = document.createElement('li');

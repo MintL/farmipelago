@@ -11,6 +11,7 @@ import { OWNED_VEHICLES, vehicleType } from './vehicles.js';
 import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from './equipment.js';
 import { HAY_BALE_LITRES } from './livestock.js';
 import { createEnvironment, DEFAULT_DAY_PHASE } from './environment.js';
+import { createTransferEffects } from './transfer-effects.js';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
@@ -47,6 +48,7 @@ renderer.toneMappingExposure = .9;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
+const transferEffects = createTransferEffects(scene, { reducedMotion });
 const camera = new THREE.PerspectiveCamera(defaultDriveCameraFov, innerWidth / innerHeight, .1, 200);
 const cinematicCameraFov = 44;
 const baseDriveCameraOffset = new THREE.Vector3(12, 20, 28);
@@ -148,7 +150,7 @@ const transportItems = {
 };
 
 function storageItemDefinition(id) {
-  if (crops[id]) return { ...crops[id], id, kind: 'crop' };
+  if (crops[id]) return { ...crops[id], id, icon: crops[id].icon || id, kind: 'crop' };
   return transportItems[id] || null;
 }
 
@@ -294,7 +296,7 @@ function currentEnvironmentFocus() {
 
 function applyNightLighting(state) {
   farm?.setNightAmount(state.nightAmount, state.lanternAmount);
-  fleet.forEach(vehicle => vehicle.visual.setNightAmount(state.nightAmount));
+  fleet.forEach(vehicle => vehicle.visual.setNightAmount(state.lanternAmount));
 }
 
 function setTimeOfDay(nextPhase) {
@@ -419,6 +421,7 @@ function finishMilestoneCinematic() {
 function syncFleetVisuals(dt) {
   for (const vehicle of fleet) {
     const state = physics.vehicleState(vehicle.id);
+    vehicle.visual.setBalerFill(vehicle.equipmentState.balerLitres, BALER_STORAGE_CAPACITY);
     vehicle.visual.sync(
       state,
       vehicle.heading,
@@ -693,8 +696,9 @@ function clearUnlockOverrides() {
 function setMilestoneOverride(milestoneId) {
   if (!progression.setMilestoneOverride(milestoneId)) return false;
   if (activeTransfer) {
-    transferVehicle()?.visual.stopUnload();
+    activeTransfer.visuals?.setActive(false);
     activeTransfer = null;
+    transferEffects.clear();
   }
   const state = syncProgressionUi();
   syncCargoPort();
@@ -816,7 +820,54 @@ function syncCargoPort() {
 
 function startTransfer(transfer) {
   if (activeTransfer) return false;
-  activeTransfer = { ...transfer, remaining: transfer.amount, moved: 0, tickElapsed: 0, lastVisual: -Infinity };
+  const vehicle = fleet.find(candidate => candidate.id === transfer.vehicleId);
+  if (!vehicle) return false;
+  const itemId = transfer.itemId;
+  const vehiclePort = direction => vehicle.visual.transferPort(direction, itemId);
+  let source;
+  let target;
+  let setActive;
+  let pulseTarget;
+  if (transfer.kind === 'load') {
+    source = () => buildings.transferPort(transfer.siloId, 'output', itemId);
+    target = () => vehiclePort('input');
+    setActive = active => {
+      buildings.setTransferState(transfer.siloId, { active, direction: 'output', itemId, elapsed });
+      vehicle.visual.setTransferState({ active, direction: 'input', itemId, elapsed });
+    };
+    pulseTarget = () => vehicle.visual.pulseTransfer('input');
+  }
+  else if (transfer.kind === 'unload') {
+    source = () => vehiclePort('output');
+    target = () => buildings.transferPort(transfer.siloId, 'input', itemId);
+    setActive = active => {
+      vehicle.visual.setTransferState({ active, direction: 'output', target: target(), itemId, elapsed });
+      buildings.setTransferState(transfer.siloId, { active, direction: 'input', itemId, elapsed });
+    };
+    pulseTarget = () => buildings.pulseTransfer(transfer.siloId, 'input');
+  }
+  else if (transfer.kind === 'barn-load-milk') {
+    source = () => buildings.transferPort(transfer.barnId, 'output', itemId);
+    target = () => vehiclePort('input');
+    setActive = active => {
+      buildings.setTransferState(transfer.barnId, { active, direction: 'output', itemId, elapsed });
+      vehicle.visual.setTransferState({ active, direction: 'input', itemId, elapsed });
+    };
+    pulseTarget = () => vehicle.visual.pulseTransfer('input');
+  }
+  else {
+    source = () => vehiclePort('output');
+    target = () => farm.cargoPort.transferPort();
+    setActive = active => {
+      vehicle.visual.setTransferState({ active, direction: 'output', target: target(), itemId, elapsed });
+      farm.cargoPort.setTransferState({ active, direction: 'input', itemId, elapsed });
+    };
+    pulseTarget = () => farm.cargoPort.pulseTransfer('input');
+  }
+  const visuals = { source, target, setActive, pulseTarget };
+  activeTransfer = { ...transfer, remaining: transfer.amount, moved: 0, tickElapsed: 0, visuals };
+  visuals.setActive(true);
+  transferEffects.begin({ source, target, itemId, onArrive: pulseTarget });
   return true;
 }
 
@@ -839,7 +890,8 @@ function finishTransfer() {
   if (!transfer) return;
   const vehicle = transferVehicle();
   activeTransfer = null;
-  vehicle?.visual.stopUnload();
+  transfer.visuals?.setActive(false);
+  transferEffects.finish();
   if (vehicle?.id === activeVehicle().id) syncInventoryUi();
   if (transfer.kind === 'cargo') {
     const nextState = progression.state();
@@ -852,7 +904,11 @@ function finishTransfer() {
 function transferTick() {
   const transfer = activeTransfer;
   const vehicle = transferVehicle();
-  if (!transfer || !vehicle || vehicle.id !== activeVehicle().id || !transferIsInRange(transfer, vehicle)) return false;
+  if (!transfer) return false;
+  if (!vehicle || vehicle.id !== activeVehicle().id || !transferIsInRange(transfer, vehicle)) {
+    finishTransfer();
+    return false;
+  }
   const amount = Math.min(transferLitresPerTick, transfer.remaining);
   let moved = 0;
   if (transfer.kind === 'load') {
@@ -889,10 +945,7 @@ function transferTick() {
   }
   transfer.remaining -= moved;
   transfer.moved += moved;
-  if ((transfer.kind === 'unload' || transfer.kind === 'cargo') && elapsed - transfer.lastVisual >= .42) {
-    vehicle.visual.playUnload(transfer.target, transfer.itemId, elapsed);
-    transfer.lastVisual = elapsed;
-  }
+  transferEffects.emitMovedAmount(moved, elapsed);
   if (transfer.remaining <= 0) finishTransfer();
   return true;
 }
@@ -1167,7 +1220,11 @@ function dropCarriedBale(vehicle, state) {
   }
   const pose = baleForkPose(vehicle, state);
   const groundY = farm.farmingLevelNear(pose.x, pose.z);
-  farm.moveBale(baleId, pose.x, groundY ?? state.y - .02, pose.z, pose.heading, true);
+  const sidewaysX = Math.cos(pose.heading), sidewaysZ = -Math.sin(pose.heading);
+  farm.releaseBale(baleId, pose.x, groundY ?? state.y - .02, pose.z, pose.heading, {
+    linearVelocity: { x: Math.sin(pose.heading) * .18, y: .05, z: Math.cos(pose.heading) * .18 },
+    angularVelocity: { x: sidewaysX * .45, y: 0, z: sidewaysZ * .45 },
+  });
   vehicle.equipmentState.carriedBaleId = null;
   vehicle.baleReleasePending = false;
   vehicle.balePickupCooldown = elapsed + .65;
@@ -1268,8 +1325,13 @@ function applyTool(state) {
     let balerLitres = vehicle.equipmentState.balerLitres + collected;
     let emitted = 0;
     while (balerLitres >= BALER_STORAGE_CAPACITY) {
-      const drop = toolPoint(state, 0, 2.52 + emitted * .34);
-      farm.spawnBale(drop.x, levelY, drop.z, vehicle.heading);
+      const drop = toolPoint(state, 0, 3.25 + emitted * .34);
+      const ejectSpeed = 1.05 + Math.min(1.2, state.speed * .18);
+      const sidewaysX = Math.cos(vehicle.heading), sidewaysZ = -Math.sin(vehicle.heading);
+      farm.spawnBale(drop.x, state.y + .2, drop.z, vehicle.heading, {
+        linearVelocity: { x: Math.sin(vehicle.heading) * ejectSpeed, y: .18, z: Math.cos(vehicle.heading) * ejectSpeed },
+        angularVelocity: { x: sidewaysX * 2.5, y: .18, z: sidewaysZ * 2.5 },
+      });
       vehicle.visual.playBale();
       balerLitres -= BALER_STORAGE_CAPACITY;
       emitted++;
@@ -1481,6 +1543,7 @@ function update(dt) {
   farm?.animate(elapsed, dt, (x, z) =>
     buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z));
   buildings?.animate(elapsed, dt);
+  transferEffects.animate(elapsed);
   updateConstructionPopup();
   updateStoragePopup();
   if (elapsed - lastPoseCheckpoint >= poseCheckpointInterval) {

@@ -11,7 +11,8 @@
       --ink: #292b25;
       --muted: #66695f;
       --faint: #85877d;
-      --glass: rgba(239, 230, 207, .82);
+      --glass: rgba(239, 230, 207, .78);
+      --hud-glass-strong: rgba(242, 234, 214, .92);
       --glass-strong: rgba(242, 234, 214, .96);
       --glass-soft: rgba(48, 55, 43, .07);
       --line: rgba(43, 47, 38, .2);
@@ -143,7 +144,7 @@
       min-width: 158px;
       border: 1px solid var(--line);
       border-radius: 13px;
-      background: var(--glass-strong);
+      background: var(--hud-glass-strong);
       box-shadow: 0 12px 30px rgba(5, 10, 9, .22);
       transform: translate(-50%, calc(-100% - 8px));
       backdrop-filter: blur(16px) saturate(120%);
@@ -186,7 +187,7 @@
       padding: 0;
       border: 1px solid var(--line);
       border-radius: 50%;
-      background: var(--glass-strong);
+      background: var(--hud-glass-strong);
       box-shadow: 0 8px 20px rgba(5, 10, 9, .18);
       color: var(--accent-strong);
     }
@@ -207,7 +208,7 @@
       flex: 0 0 auto;
       height: 40px;
       border: 1px solid var(--line);
-      background: var(--glass-strong);
+      background: var(--hud-glass-strong);
       box-shadow: 0 12px 30px rgba(5, 10, 9, .22);
       color: var(--accent-strong);
       font-size: 11px;
@@ -295,7 +296,7 @@
       padding: 9px;
       border: 1px solid var(--line);
       border-radius: 15px;
-      background: var(--glass-strong);
+      background: var(--hud-glass-strong);
       box-shadow: 0 14px 35px rgba(8, 14, 13, .24);
       transform: translateX(-50%);
       backdrop-filter: blur(16px) saturate(120%);
@@ -321,7 +322,7 @@
     .buildingOption small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     .buildingOption em { padding: 3px 5px; border-radius: 999px; background: rgba(82, 102, 72, .12); color: var(--accent-strong); font-size: 9px; font-style: normal; font-weight: 800; }
     .buildingOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .18); }
-    #repaintPen { position: absolute; left: 50%; bottom: calc(100% + 8px); width: 142px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--glass-strong); box-shadow: 0 10px 24px rgba(8, 14, 13, .2); color: var(--accent-strong); font-size: 10px; font-weight: 760; transform: translateX(-50%); }
+    #repaintPen { position: absolute; left: 50%; bottom: calc(100% + 8px); width: 142px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--hud-glass-strong); box-shadow: 0 10px 24px rgba(8, 14, 13, .2); color: var(--accent-strong); font-size: 10px; font-weight: 760; transform: translateX(-50%); }
 
     #stickZone {
       pointer-events: auto;
@@ -443,7 +444,7 @@
       padding: 6px 9px;
       border: 1px solid var(--line);
       border-radius: 9px;
-      background: var(--glass-strong);
+      background: var(--hud-glass-strong);
       box-shadow: 0 8px 20px rgba(5, 10, 9, .18);
       color: var(--ink);
       font-size: 11px;
@@ -897,7 +898,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.212</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.218</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">

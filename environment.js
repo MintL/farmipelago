@@ -10,18 +10,18 @@ const NIGHT_START_HOUR = 22;
 
 const color = value => new THREE.Color(value);
 const waterSplashDayColor = new THREE.Color().setRGB(.035, .24, .34);
-const waterSplashNightColor = new THREE.Color().setRGB(.06, .19, .34);
+const waterSplashNightColor = new THREE.Color().setRGB(.025, .10, .22);
 const keyframes = [
-  { hour: 0, top: color(0x1c3354), upper: color(0x3c5e82), horizon: color(0x7e9db3), lower: color(0x526f89), fog: color(0x607d94), key: color(0xc8ddff), keyIntensity: 1.25, hemiSky: color(0xa9c5e8), hemiGround: color(0x40536b), hemiIntensity: .78, fill: color(0xa6c1e4), fillIntensity: .34, exposure: 1.12 },
-  { hour: 2, top: color(0x1c3354), upper: color(0x3c5e82), horizon: color(0x7e9db3), lower: color(0x526f89), fog: color(0x607d94), key: color(0xc8ddff), keyIntensity: 1.25, hemiSky: color(0xa9c5e8), hemiGround: color(0x40536b), hemiIntensity: .78, fill: color(0xa6c1e4), fillIntensity: .34, exposure: 1.12 },
-  { hour: 3, top: color(0x344a6b), upper: color(0x756d91), horizon: color(0xc18a99), lower: color(0x7b667f), fog: color(0x7b8392), key: color(0xb7cff5), keyIntensity: .9, hemiSky: color(0xa5b8d2), hemiGround: color(0x514f5d), hemiIntensity: .76, fill: color(0xa0b7d5), fillIntensity: .3, exposure: 1.08 },
-  { hour: 3.5, top: color(0x455f8b), upper: color(0x98789a), horizon: color(0xffad73), lower: color(0xc8796f), fog: color(0xb99a86), key: color(0xffb56d), keyIntensity: 1.45, hemiSky: color(0xb8c7d5), hemiGround: color(0x6a665d), hemiIntensity: .8, fill: color(0x9fb6d2), fillIntensity: .3, exposure: 1.04 },
-  { hour: 4, top: color(0x4f8fbd), upper: color(0x85b8d1), horizon: color(0xe2eee7), lower: color(0xb7d3d4), fog: color(0xc7dce0), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xe8f0ef), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
-  { hour: 20, top: color(0x4f8fbd), upper: color(0x85b8d1), horizon: color(0xe2eee7), lower: color(0xb7d3d4), fog: color(0xc7dce0), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xe8f0ef), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
-  { hour: 20.5, top: color(0x495d8b), upper: color(0x9c7290), horizon: color(0xf59b6e), lower: color(0xb56672), fog: color(0xb6847a), key: color(0xffa45e), keyIntensity: 1.5, hemiSky: color(0xc5b6bc), hemiGround: color(0x62534e), hemiIntensity: .78, fill: color(0x9da9c8), fillIntensity: .3, exposure: 1.04 },
-  { hour: 21.25, top: color(0x344969), upper: color(0x6b688d), horizon: color(0xb27e91), lower: color(0x75647e), fog: color(0x7a7889), key: color(0xbdd3f7), keyIntensity: .9, hemiSky: color(0xa4b9d8), hemiGround: color(0x504e5d), hemiIntensity: .76, fill: color(0x9db7d8), fillIntensity: .3, exposure: 1.08 },
-  { hour: 22, top: color(0x203b5c), upper: color(0x456889), horizon: color(0x86a1b5), lower: color(0x58758d), fog: color(0x667f94), key: color(0xc5dcff), keyIntensity: 1.15, hemiSky: color(0xa6c2e5), hemiGround: color(0x405269), hemiIntensity: .76, fill: color(0xa2bddf), fillIntensity: .32, exposure: 1.1 },
-  { hour: 24, top: color(0x1c3354), upper: color(0x3c5e82), horizon: color(0x7e9db3), lower: color(0x526f89), fog: color(0x607d94), key: color(0xc8ddff), keyIntensity: 1.25, hemiSky: color(0xa9c5e8), hemiGround: color(0x40536b), hemiIntensity: .78, fill: color(0xa6c1e4), fillIntensity: .34, exposure: 1.12 },
+  { hour: 0, horizon: color(0x496984), fog: color(0x405c72), key: color(0x9dbde8), keyIntensity: .58, hemiSky: color(0x7896c7), hemiGround: color(0x202b3d), hemiIntensity: .48, fill: color(0x7998c4), fillIntensity: .13, exposure: .96 },
+  { hour: 2, horizon: color(0x496984), fog: color(0x405c72), key: color(0x9dbde8), keyIntensity: .58, hemiSky: color(0x7896c7), hemiGround: color(0x202b3d), hemiIntensity: .48, fill: color(0x7998c4), fillIntensity: .13, exposure: .96 },
+  { hour: 3, horizon: color(0xc18a99), fog: color(0x7b8392), key: color(0xb7cff5), keyIntensity: .9, hemiSky: color(0xa5b8d2), hemiGround: color(0x514f5d), hemiIntensity: .76, fill: color(0xa0b7d5), fillIntensity: .3, exposure: 1.08 },
+  { hour: 3.5, horizon: color(0xffad73), fog: color(0xb99a86), key: color(0xffb56d), keyIntensity: 1.45, hemiSky: color(0xb8c7d5), hemiGround: color(0x6a665d), hemiIntensity: .8, fill: color(0x9fb6d2), fillIntensity: .3, exposure: 1.04 },
+  { hour: 4, horizon: color(0xe2eee7), fog: color(0xc7dce0), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xe8f0ef), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
+  { hour: 20, horizon: color(0xe2eee7), fog: color(0xc7dce0), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xe8f0ef), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
+  { hour: 20.5, horizon: color(0xf59b6e), fog: color(0xb6847a), key: color(0xffa45e), keyIntensity: 1.5, hemiSky: color(0xc5b6bc), hemiGround: color(0x62534e), hemiIntensity: .78, fill: color(0x9da9c8), fillIntensity: .3, exposure: 1.04 },
+  { hour: 21.25, horizon: color(0xb27e91), fog: color(0x7a7889), key: color(0xbdd3f7), keyIntensity: .9, hemiSky: color(0xa4b9d8), hemiGround: color(0x504e5d), hemiIntensity: .76, fill: color(0x9db7d8), fillIntensity: .3, exposure: 1.08 },
+  { hour: 22, horizon: color(0x55738d), fog: color(0x49657a), key: color(0x96b5e2), keyIntensity: .45, hemiSky: color(0x7896c7), hemiGround: color(0x253146), hemiIntensity: .5, fill: color(0x7998c4), fillIntensity: .15, exposure: .98 },
+  { hour: 24, horizon: color(0x496984), fog: color(0x405c72), key: color(0x9dbde8), keyIntensity: .58, hemiSky: color(0x7896c7), hemiGround: color(0x202b3d), hemiIntensity: .48, fill: color(0x7998c4), fillIntensity: .13, exposure: .96 },
 ];
 
 const clampPhase = value => {
@@ -67,94 +67,6 @@ const sunOrbitAt = hour => {
   const nightHours = 24 - DUSK_START_HOUR + DAY_START_HOUR;
   return Math.PI + nightHour / nightHours * Math.PI;
 };
-
-function createSky() {
-  const uniforms = {
-    topColor: { value: new THREE.Color() },
-    upperColor: { value: new THREE.Color() },
-    horizonColor: { value: new THREE.Color() },
-    lowerColor: { value: new THREE.Color() },
-    sunViewDirection: { value: new THREE.Vector3() },
-    moonViewDirection: { value: new THREE.Vector3() },
-    sunVisibility: { value: 0 },
-    moonVisibility: { value: 0 },
-    sunGlowColor: { value: new THREE.Color(0xffbd78) },
-    moonGlowColor: { value: new THREE.Color(0x9fc8ff) },
-  };
-  const material = new THREE.ShaderMaterial({
-    uniforms,
-    side: THREE.BackSide,
-    depthTest: false,
-    depthWrite: false,
-    fog: false,
-    toneMapped: false,
-    vertexShader: `
-      varying vec3 vViewDirection;
-      void main() {
-        vViewDirection = normalize(mat3(modelViewMatrix) * position);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 topColor;
-      uniform vec3 upperColor;
-      uniform vec3 horizonColor;
-      uniform vec3 lowerColor;
-      uniform vec3 sunViewDirection;
-      uniform vec3 moonViewDirection;
-      uniform vec3 sunGlowColor;
-      uniform vec3 moonGlowColor;
-      uniform float sunVisibility;
-      uniform float moonVisibility;
-      varying vec3 vViewDirection;
-      void main() {
-        vec3 direction = normalize(vViewDirection);
-        float height = direction.y;
-        vec3 skyColor = topColor;
-        skyColor = mix(skyColor, upperColor, smoothstep(-0.24, -0.08, height));
-        skyColor = mix(skyColor, horizonColor, smoothstep(-0.08, 0.055, height));
-        skyColor = mix(skyColor, lowerColor, smoothstep(0.085, 0.25, height));
-
-        float silhouetteBand = 1.0 - smoothstep(0.0, 0.13, abs(height - 0.045));
-        skyColor = mix(skyColor, horizonColor, silhouetteBand * 0.24);
-
-        float sunAlignment = max(dot(direction, sunViewDirection), 0.0);
-        float sunBloom = smoothstep(0.88, 0.995, sunAlignment) * 0.28;
-        sunBloom += smoothstep(0.975, 0.9995, sunAlignment) * 0.44;
-        skyColor += sunGlowColor * sunBloom * sunVisibility;
-
-        float moonAlignment = max(dot(direction, moonViewDirection), 0.0);
-        float moonBloom = smoothstep(0.91, 0.996, moonAlignment) * 0.17;
-        moonBloom += smoothstep(0.982, 0.9995, moonAlignment) * 0.25;
-        skyColor += moonGlowColor * moonBloom * moonVisibility;
-
-        gl_FragColor = vec4(skyColor, 1.0);
-        #include <colorspace_fragment>
-      }
-    `,
-  });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(150, 24, 16), material);
-  mesh.renderOrder = -100;
-  mesh.frustumCulled = false;
-  return { mesh, uniforms };
-}
-
-function createCelestialDisc(discColor, radius) {
-  const group = new THREE.Group();
-  const discMaterial = new THREE.MeshBasicMaterial({
-    color: discColor,
-    transparent: true,
-    opacity: 0,
-    depthTest: false,
-    depthWrite: false,
-    fog: false,
-    toneMapped: false,
-  });
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(radius, 28), discMaterial);
-  group.add(disc);
-  group.renderOrder = -80;
-  return { group, discMaterial };
-}
 
 function createLowFog() {
   const group = new THREE.Group();
@@ -207,14 +119,11 @@ function createClouds() {
   return { group, material, clouds };
 }
 
-export function createEnvironment({ scene, renderer, camera, initialPhase = DEFAULT_DAY_PHASE, fogNear = 30, fogFar = 92 }) {
+export function createEnvironment({ scene, renderer, initialPhase = DEFAULT_DAY_PHASE, fogNear = 30, fogFar = 92 }) {
   let phase = clampPhase(initialPhase);
   let cloudElapsed = 0;
   const focus = new THREE.Vector3();
-  const skyTop = new THREE.Color();
-  const skyUpper = new THREE.Color();
   const skyHorizon = new THREE.Color();
-  const skyLower = new THREE.Color();
   const fogColor = new THREE.Color();
   const keyColor = new THREE.Color();
   const hemiSky = new THREE.Color();
@@ -224,11 +133,6 @@ export function createEnvironment({ scene, renderer, camera, initialPhase = DEFA
   const sunDirection = new THREE.Vector3();
   const moonDirection = new THREE.Vector3();
   const activeDirection = new THREE.Vector3();
-  const cameraRightDirection = new THREE.Vector3();
-  const celestialHorizontalDirection = new THREE.Vector3();
-  const sunBackdropViewDirection = new THREE.Vector3();
-  const moonBackdropViewDirection = new THREE.Vector3();
-  const celestialWorldDirection = new THREE.Vector3();
 
   scene.background = new THREE.Color(0xc7dce0);
   scene.fog = new THREE.Fog(0xc7dce0, fogNear, fogFar);
@@ -248,50 +152,21 @@ export function createEnvironment({ scene, renderer, camera, initialPhase = DEFA
   const fill = new THREE.DirectionalLight(0xa9c4dc, .2);
   scene.add(fill, fill.target);
 
-  const sky = createSky();
-  const sun = createCelestialDisc(0xffdda0, 3.15);
-  const moon = createCelestialDisc(0xdce9ff, 2.55);
-  const skyGroup = new THREE.Group();
-  skyGroup.add(sky.mesh, sun.group, moon.group);
-  scene.add(skyGroup);
   const lowFog = createLowFog();
   scene.add(lowFog.group);
   const cloudLayer = createClouds();
   scene.add(cloudLayer.group);
 
-  const placeCelestialBackdrop = (celestial, physicalDirection, viewDirection) => {
-    celestialHorizontalDirection.set(physicalDirection.x, 0, physicalDirection.z);
-    if (celestialHorizontalDirection.lengthSq() < .0001) celestialHorizontalDirection.set(0, 0, -1);
-    else celestialHorizontalDirection.normalize();
-    const ndcX = THREE.MathUtils.clamp(celestialHorizontalDirection.dot(cameraRightDirection) * .55, -.55, .55);
-    const halfViewHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * .5));
-    viewDirection.set(
-      ndcX * halfViewHeight * camera.aspect,
-      .36 * halfViewHeight,
-      -1,
-    ).normalize();
-    celestialWorldDirection.copy(viewDirection).applyQuaternion(camera.quaternion);
-    celestial.group.position.copy(celestialWorldDirection).multiplyScalar(118);
-    celestial.group.quaternion.copy(camera.quaternion);
-  };
-
   const apply = (nextFocus = focus) => {
     focus.copy(nextFocus);
     const hour = phase * 24;
-    sample(hour, 'top', skyTop);
-    sample(hour, 'upper', skyUpper);
     sample(hour, 'horizon', skyHorizon);
-    sample(hour, 'lower', skyLower);
     sample(hour, 'fog', fogColor);
     sample(hour, 'key', keyColor);
     sample(hour, 'hemiSky', hemiSky);
     sample(hour, 'hemiGround', hemiGround);
     sample(hour, 'fill', fillColor);
 
-    sky.uniforms.topColor.value.copy(skyTop);
-    sky.uniforms.upperColor.value.copy(skyUpper);
-    sky.uniforms.horizonColor.value.copy(skyHorizon);
-    sky.uniforms.lowerColor.value.copy(skyLower);
     scene.background.copy(skyHorizon);
     scene.fog.color.copy(fogColor);
     lowFog.material.color.copy(fogColor);
@@ -323,21 +198,6 @@ export function createEnvironment({ scene, renderer, camera, initialPhase = DEFA
     key.target.position.copy(focus);
     fill.position.set(focus.x + 22, focus.y + 14, focus.z - 26);
     fill.target.position.copy(focus);
-
-    skyGroup.position.copy(camera.position);
-    cameraRightDirection.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    placeCelestialBackdrop(sun, sunDirection, sunBackdropViewDirection);
-    placeCelestialBackdrop(moon, moonDirection, moonBackdropViewDirection);
-    const sunVisibility = THREE.MathUtils.smoothstep(sunDirection.y, -.08, .04);
-    const moonVisibility = THREE.MathUtils.smoothstep(moonDirection.y, -.08, .04);
-    sky.uniforms.sunViewDirection.value.copy(sunBackdropViewDirection);
-    sky.uniforms.moonViewDirection.value.copy(moonBackdropViewDirection);
-    sky.uniforms.sunVisibility.value = sunVisibility;
-    sky.uniforms.moonVisibility.value = moonVisibility;
-    sun.discMaterial.opacity = sunVisibility;
-    moon.discMaterial.opacity = moonVisibility * .94;
-    sun.group.visible = sunVisibility > .001;
-    moon.group.visible = moonVisibility > .001;
 
     const nightAmount = nightAmountAt(hour);
     const lanternAmount = lanternAmountAt(hour);

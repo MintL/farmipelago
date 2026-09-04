@@ -67,7 +67,6 @@ scene.add(camera);
 const environment = createEnvironment({
   scene,
   renderer,
-  camera,
   initialPhase: loadResult.state?.environment?.phase ?? DEFAULT_DAY_PHASE,
   fogNear: baseFogNear * initialDriveCameraScale,
   fogFar: baseFogFar * initialDriveCameraScale,
@@ -1467,6 +1466,7 @@ function updateStoragePopup() {
     }
     ui.setStoragePopup({
       kind: 'cargo',
+      id: milestone.id,
       items: milestone.requirements.map(requirement => ({
         id: requirement.itemId || requirement.cropId,
         name: requirement.name,

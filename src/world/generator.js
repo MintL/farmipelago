@@ -6,13 +6,13 @@ import { createWildlifeSystem } from './wildlife/index.js';
 import { BASE_ISLAND_LAYOUT, ISLAND_CONNECTION_PAIRS, NORTH_ISLAND_ID, STARTER_ISLAND_ID, WORKSHOP_YAW } from './config.js';
 import { createOcclusionSystem, disposeObjectResources } from './occlusion.js';
 import { findCargoSite, findVehicleSpawns, findWorkshopSite, reserveCargoApproach, reserveWorkshopGround } from './sites.js';
-import { createOrganicCells, createPerlin, environmentalAxis, environmentProfile, plateauHeight, scaleIslandLayout, seededRandom } from './islands/procedural.js';
+import { createOrganicCells, createPerlin, environmentalAxis, environmentProfile, normalizeNoise, plateauHeight, scaleIslandLayout, seededRandom } from './islands/procedural.js';
 import { createIslandConnections, createIslandRecords } from './islands/model.js';
 import { STATIC_LANTERN_LIGHT_RADIUS, addBridgeBetween, closestIslandGap, createStaticLanternLighting, reserveBridgeLandings } from './bridges.js';
 import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
 import { CROP_STAGE_SECONDS, GRASS_STAGE_SECONDS, TILE_YIELD_LITRES, WEED_CHANCE } from './fields/config.js';
-import { createCropInstances, createFieldEffects, renderCropTile, tileAtLevel } from './fields/rendering.js';
+import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;

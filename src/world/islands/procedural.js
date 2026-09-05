@@ -1,4 +1,7 @@
 import { ISLAND_LAYOUT_SCALE, NORTH_ISLAND_ID } from '../config.js';
+import { LEVEL_HEIGHT, THREE } from '../../core/shared.js';
+
+const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 
 export function scaleIslandLayout(island) {
   return {
@@ -20,7 +23,7 @@ export function seededRandom(seed) {
   };
 }
 
-function normalizeNoise(value) {
+export function normalizeNoise(value) {
   return THREE.MathUtils.clamp(value * .5 + .5, 0, 1);
 }
 

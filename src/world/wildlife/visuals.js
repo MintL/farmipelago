@@ -15,7 +15,7 @@ const snowFoxCream = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness
 const voxel = (width, height, depth, material) =>
   box(width * MODEL_VOXEL, height * MODEL_VOXEL, depth * MODEL_VOXEL, material);
 
-function jumpMotion(progress, height = 0) {
+export function jumpMotion(progress, height = 0) {
   if (!Number.isFinite(progress)) return { active: false, height: 0, x: 1, y: 1, z: 1, pitch: 0 };
   const amount = THREE.MathUtils.clamp(progress, 0, 1);
   const airAmount = THREE.MathUtils.clamp((amount - .12) / .72, 0, 1);
@@ -192,4 +192,3 @@ export function createFoxVisual(scale = 1, snow = false) {
     },
   };
 }
-

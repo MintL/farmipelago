@@ -1,7 +1,7 @@
 import { LEVEL_HEIGHT, TILE, THREE, gridKey } from '../../core/shared.js';
 import { CARDINAL_STEPS, MIN_REINDEER_ISLAND_TILES, MIN_REINDEER_REGION_TILES, REINDEER_PER_QUALIFYING_ISLAND, STARTER_ISLAND_ID } from './config.js';
 import { clearLandRegions, forestRegions, isSnowTile, largestRegion, randomTile, seededRandom, snowRegions } from './habitat.js';
-import { createFoxVisual, createReindeerVisual } from './visuals.js';
+import { createFoxVisual, createReindeerVisual, jumpMotion } from './visuals.js';
 
 export function createWildlifeSystem(terrain, parent, seed) {
   const group = new THREE.Group();

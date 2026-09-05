@@ -1,4 +1,4 @@
-import { THREE, createVoxelLantern, mats } from '../../core/shared.js';
+import { MODEL_VOXEL, THREE, box, createVoxelLantern, createVoxelModel, mats } from '../../core/shared.js';
 import { createVtol } from './vtol-visual.js';
 
 const DECK_HEIGHT = .18;

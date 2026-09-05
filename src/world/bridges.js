@@ -18,6 +18,7 @@ const BRIDGE_OCCLUSION_END_CLEARANCE = TILE * 2.25;
 const BRIDGE_OCCLUSION_SIDE_CLEARANCE = TILE * .75;
 const BRIDGE_OCCLUSION_HEIGHT_CLEARANCE = TILE * .75;
 export const STATIC_LANTERN_LIGHT_RADIUS = 5;
+const ease = value => value * value * (3 - 2 * value);
 
 export function reserveBridgeLandings(terrain, gap) {
   if (!gap) return;
@@ -304,4 +305,3 @@ function tileEdgeDistance(first, second) {
   const dz = Math.max(0, Math.abs(first.z - second.z) - TILE);
   return Math.hypot(dx, dz);
 }
-

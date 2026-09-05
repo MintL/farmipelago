@@ -1,5 +1,7 @@
 import { MODEL_VOXEL, THREE, createVoxelModel } from '../../core/shared.js';
 
+const ease = value => value * value * (3 - 2 * value);
+
 export function createVtol(mats) {
   const group = new THREE.Group();
   const modelRoot = new THREE.Group();

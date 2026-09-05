@@ -357,7 +357,7 @@ function updateInstances(mesh, count) {
   mesh.computeBoundingSphere();
 }
 
-function tileAt(x, z, terrain) {
+export function tileAt(x, z, terrain) {
   return terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
 }
 
@@ -366,4 +366,3 @@ export function tileAtLevel(x, z, levelY, terrain) {
   if (!tile || (levelY !== null && Math.abs(tile.topY - levelY) > .01)) return null;
   return tile;
 }
-

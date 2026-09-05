@@ -1,0 +1,12 @@
+export const STARTER_COW_COUNT = 2;
+export const PEN_TILES_PER_COW = 4;
+export const HAY_BALE_LITRES = 3600;
+export const BARN_HAY_CAPACITY = 14400;
+export const BARN_MILK_CAPACITY = 10000;
+export const LIQUID_TANK_CAPACITY = 6000;
+export const CALF_GROWTH_SECONDS = 90;
+export const BIRTH_INTERVAL_SECONDS = 120;
+export const MILK_LITRES_PER_ADULT_SECOND = 2;
+export const GRAZING_MILK_FACTOR = .2;
+export const HAY_LITRES_PER_ADULT_SECOND = 1.5;
+export const CALF_HAY_FACTOR = .5;

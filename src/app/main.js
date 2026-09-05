@@ -1,7 +1,8 @@
 import { THREE } from '../core/shared.js';
 import { crops } from '../gameplay/catalog/crops.js';
 import { createPhysics } from '../physics/index.js';
-import { createLoadoutPreview, createVehicle } from '../gameplay/vehicles/visual.js';
+import { createVehicle } from '../gameplay/vehicles/visual.js';
+import { createLoadoutPreview } from '../gameplay/vehicles/loadout-preview.js';
 import { createUi } from '../ui/index.js';
 import { createBuildingManager } from '../gameplay/construction/index.js';
 import { generateFarm } from '../world/generator.js';

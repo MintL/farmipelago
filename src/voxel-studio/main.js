@@ -1,54 +1,7 @@
 import { THREE } from '../core/shared.js';
-
-const DB_NAME = 'farmipelago-voxel-studio';
-const DB_VERSION = 1;
-const STORE = 'models';
-const TEST_ID = 'builtin-test-tractor';
-
-const hardcodedTractor = {
-  format: 'farmipelago-voxel',
-  version: 1,
-  id: TEST_ID,
-  name: 'Test Tractor',
-  category: 'vehicle',
-  grid: { voxelSize: 0.11, up: 'y', forward: '-z' },
-  origin: [0, 0, 0],
-  materials: {
-    body: { color: '#2878c8', roughness: 0.68 },
-    accent: { color: '#56b5f5', roughness: 0.55 },
-    dark: { color: '#123b78', roughness: 0.8 },
-    tire: { color: '#26302e', roughness: 0.96 },
-    cream: { color: '#d7ecff', roughness: 0.74 },
-    glass: { color: '#81c9f5', roughness: 0.22, opacity: 0.72 },
-    lamp: { color: '#ffe49a', roughness: 0.45, emissive: '#ffbd46', emissiveIntensity: 1.15 }
-  },
-  parts: [
-    { box: [-5, 3, -7, 10, 3, 13], material: 'body' },
-    { box: [-4, 6, -8, 8, 3, 7], material: 'accent' },
-    { box: [-4, 5, 0, 8, 2, 6], material: 'body' },
-    { box: [-4, 8, 0, 8, 1, 6], material: 'cream' },
-    { box: [-3, 9, 0, 6, 5, 5], material: 'glass' },
-    { box: [-4, 14, 0, 8, 1, 6], material: 'cream' },
-    { box: [-4, 7, -9, 8, 2, 1], material: 'dark' },
-    { mirror: 'x', parts: [
-      { box: [1, 7, -10, 2, 2, 1], material: 'lamp' },
-      { box: [4, 1, -6, 3, 6, 5], material: 'tire' },
-      { box: [4, 0, 1, 4, 8, 6], material: 'tire' },
-      { box: [5, 3, -5, 1, 2, 3], material: 'cream' },
-      { box: [5, 3, 2, 2, 2, 4], material: 'cream' }
-    ] },
-    { box: [-3, 9, -1, 6, 4, 1], material: 'glass' },
-    { box: [-3, 9, 5, 6, 4, 1], material: 'glass' },
-    { mirror: 'x', parts: [
-      { box: [3, 9, 0, 1, 4, 5], material: 'glass' },
-      { box: [4, 8, 1, 1, 6, 1], material: 'dark' }
-    ] },
-    { box: [-2, 6, -10, 4, 1, 1], material: 'cream' },
-    { box: [-3, 9, -6, 1, 5, 1], material: 'dark' },
-    { voxel: [-3, 14, -6], material: 'dark' },
-    { voxel: [0, 15, 3], material: 'lamp' }
-  ]
-};
+import { buildVoxelGroup, validateModel } from './model.js';
+import { TEST_MODEL_ID, testTractor } from './sample-model.js';
+import { loadStoredModels, putModel, removeStoredModel } from './storage.js';
 
 const canvas = document.querySelector('#renderCanvas');
 const studioEl = document.querySelector('#studio');
@@ -89,131 +42,7 @@ let detailZoom = 1;
 let pointerStart = null;
 let pinchStart = null;
 
-function createMaterial(def) {
-  const opacity = def.opacity ?? 1;
-  const material = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(def.color ?? '#ffffff'),
-    roughness: def.roughness ?? 0.8,
-    metalness: def.metalness ?? 0,
-    transparent: opacity < 1,
-    opacity,
-    depthWrite: opacity >= 1,
-  });
-  if (def.emissive) {
-    material.emissive = new THREE.Color(def.emissive);
-    material.emissiveIntensity = def.emissiveIntensity ?? 1;
-  }
-  return material;
-}
-
-function normalizePart(part, mirrored = false) {
-  const result = [];
-  if (Array.isArray(part.parts)) {
-    for (const child of part.parts) {
-      result.push(...normalizePart(child, false));
-      if (part.mirror === 'x') result.push(...normalizePart(child, true));
-    }
-    return result;
-  }
-
-  if (part.box) {
-    const [x, y, z, w, h, d] = part.box;
-    result.push({
-      type: part.remove ? 'removeBox' : 'box',
-      x: mirrored ? -x - w : x,
-      y, z, w, h, d,
-      material: part.material,
-    });
-  } else if (part.voxel) {
-    const [x, y, z] = part.voxel;
-    result.push({
-      type: part.remove ? 'removeVoxel' : 'voxel',
-      x: mirrored ? -x - 1 : x,
-      y, z,
-      material: part.material,
-    });
-  } else if (part.remove?.box) {
-    const [x, y, z, w, h, d] = part.remove.box;
-    result.push({ type: 'removeBox', x: mirrored ? -x - w : x, y, z, w, h, d });
-  } else if (part.remove?.voxel) {
-    const [x, y, z] = part.remove.voxel;
-    result.push({ type: 'removeVoxel', x: mirrored ? -x - 1 : x, y, z });
-  }
-  return result;
-}
-
-function expandModel(model) {
-  const voxels = new Map();
-  const key = (x, y, z) => `${x},${y},${z}`;
-
-  for (const root of model.parts ?? []) {
-    for (const part of normalizePart(root)) {
-      if (part.type === 'box' || part.type === 'removeBox') {
-        for (let x = part.x; x < part.x + part.w; x++) {
-          for (let y = part.y; y < part.y + part.h; y++) {
-            for (let z = part.z; z < part.z + part.d; z++) {
-              if (part.type === 'removeBox') voxels.delete(key(x, y, z));
-              else voxels.set(key(x, y, z), { x, y, z, material: part.material });
-            }
-          }
-        }
-      } else if (part.type === 'removeVoxel') {
-        voxels.delete(key(part.x, part.y, part.z));
-      } else {
-        voxels.set(key(part.x, part.y, part.z), {
-          x: part.x, y: part.y, z: part.z, material: part.material,
-        });
-      }
-    }
-  }
-
-  return [...voxels.values()];
-}
-
-function buildVoxelGroup(model) {
-  const group = new THREE.Group();
-  const voxelSize = model.grid?.voxelSize ?? 0.1;
-  const voxels = expandModel(model);
-  const byMaterial = new Map();
-
-  for (const voxel of voxels) {
-    if (!byMaterial.has(voxel.material)) byMaterial.set(voxel.material, []);
-    byMaterial.get(voxel.material).push(voxel);
-  }
-
-  const geometry = new THREE.BoxGeometry(voxelSize * 0.985, voxelSize * 0.985, voxelSize * 0.985);
-  const dummy = new THREE.Object3D();
-
-  for (const [materialName, entries] of byMaterial) {
-    const mesh = new THREE.InstancedMesh(
-      geometry,
-      createMaterial(model.materials?.[materialName] ?? {}),
-      entries.length,
-    );
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-
-    entries.forEach((entry, index) => {
-      dummy.position.set(
-        (entry.x + 0.5) * voxelSize,
-        (entry.y + 0.5) * voxelSize,
-        (entry.z + 0.5) * voxelSize,
-      );
-      dummy.updateMatrix();
-      mesh.setMatrixAt(index, dummy.matrix);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    group.add(mesh);
-  }
-
-  const bounds = new THREE.Box3().setFromObject(group);
-  const center = bounds.getCenter(new THREE.Vector3());
-  group.position.sub(center);
-  group.userData.bounds = bounds.getSize(new THREE.Vector3());
-  return group;
-}
-
-function createPreview(model, element) {
+ function createPreview(model, element) {
   const root = new THREE.Group();
   root.add(buildVoxelGroup(model));
   root.rotation.set(0.32, -0.72, 0);
@@ -344,63 +173,7 @@ function closeDetail() {
   detailModel = null;
 }
 
-function validateModel(model) {
-  if (!model || model.format !== 'farmipelago-voxel' || model.version !== 1) {
-    throw new Error('Unsupported voxel model format');
-  }
-  if (!model.name || !Array.isArray(model.parts) || !model.materials) {
-    throw new Error('Voxel model is missing required fields');
-  }
-  return {
-    ...model,
-    id: model.id || `model-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`,
-    category: model.category || 'model',
-  };
-}
-
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function loadStoredModels() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve(req.result ?? []);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function putModel(model) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(model);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function removeStoredModel(id) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function importFiles(files) {
+ async function importFiles(files) {
   for (const file of files) {
     try {
       const model = validateModel(JSON.parse(await file.text()));
@@ -409,12 +182,12 @@ async function importFiles(files) {
       alert(`${file.name}: ${error.message}`);
     }
   }
-  models = [hardcodedTractor, ...(await loadStoredModels()).filter(model => model.id !== TEST_ID)];
+  models = [testTractor, ...(await loadStoredModels()).filter(model => model.id !== TEST_MODEL_ID)];
   renderLibrary();
 }
 
 async function deleteModel(model) {
-  if (model.id === TEST_ID) {
+  if (model.id === TEST_MODEL_ID) {
     alert('The hardcoded test tractor cannot be deleted yet. Imported models can be deleted.');
     return;
   }
@@ -556,7 +329,7 @@ async function init() {
   document.head.appendChild(mobileCapable);
 
   const stored = await loadStoredModels().catch(() => []);
-  models = [hardcodedTractor, ...stored.filter(model => model.id !== TEST_ID)];
+  models = [testTractor, ...stored.filter(model => model.id !== TEST_MODEL_ID)];
   renderLibrary();
   frame();
 }

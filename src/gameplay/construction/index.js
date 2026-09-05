@@ -1,6 +1,7 @@
-import { THREE, TILE, gridKey } from '../../core/shared.js';
-import { cropIds } from '../catalog/crops.js';
+import { TILE, gridKey } from '../../core/shared.js';
 import { createSilo } from './silo-visual.js';
+import { createConstructionOutline } from './outline.js';
+import { isComplete, isDraft, isPenDraft, normalizedConstructionPhase, normalizedContents } from './state.js';
 import {
   BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES, STARTER_COW_COUNT,
   barnPenAnchors, barnPenConnectorSegments, computePenGeometry, cornerToWorld, createCattleBarnVisual,
@@ -14,57 +15,6 @@ const SILO_HEIGHT = 3.7;
 const CATTLE_BARN_RADIUS = 1.45;
 const CATTLE_BARN_HEIGHT = 2.25;
 const BUILDING_HOLD_MS = 280;
-const CONSTRUCTION_PHASES = new Set(['draft', 'pen-draft', 'complete']);
-
-const isDraft = building => building?.constructionPhase === 'draft';
-const isPenDraft = building => building?.constructionPhase === 'pen-draft';
-const isComplete = building => building?.constructionPhase === 'complete';
-
-function createConstructionOutline(root) {
-  const material = new THREE.LineBasicMaterial({
-    color: 0xd9ff78,
-    transparent: true,
-    opacity: .82,
-    depthTest: false,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-  const lines = [];
-  root.traverse(part => {
-    if (!part.isMesh || !part.castShadow || !part.geometry) return;
-    const line = new THREE.LineSegments(new THREE.EdgesGeometry(part.geometry, 24), material);
-    line.name = 'construction-outline';
-    line.scale.setScalar(1.012);
-    line.renderOrder = 8;
-    part.add(line);
-    lines.push(line);
-  });
-  return {
-    animate(elapsed) { material.opacity = .58 + (Math.sin(elapsed * 4.5) * .5 + .5) * .36; },
-    dispose() {
-      for (const line of lines) {
-        line.removeFromParent();
-        line.geometry.dispose();
-      }
-      material.dispose();
-      lines.length = 0;
-    },
-  };
-}
-
-function normalizedConstructionPhase(saved) {
-  if (saved?.type === 'silo' && ['draft', 'complete'].includes(saved?.constructionPhase)) return saved.constructionPhase;
-  if (saved?.type === 'cattle-barn' && CONSTRUCTION_PHASES.has(saved?.constructionPhase)) return saved.constructionPhase;
-  if (saved?.type === 'silo' || saved?.pen?.vertices?.length >= 4 || saved?.animals?.length) return 'complete';
-  return 'draft';
-}
-
-function normalizedContents(contents) {
-  return Object.fromEntries(cropIds.flatMap(cropId => {
-    const amount = Math.max(0, Math.floor(Number(contents?.[cropId]) || 0));
-    return amount ? [[cropId, amount]] : [];
-  }));
-}
 
 export function createBuildingManager({
   getSiteAt, getTerrain, setCollider, registerOccluder = () => {}, unregisterOccluder = () => {},

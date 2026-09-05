@@ -7,8 +7,9 @@ import { createUi } from '../ui/index.js';
 import { createBuildingManager } from '../gameplay/construction/index.js';
 import { generateFarm } from '../world/generator.js';
 import { createArchipelagoRuntime } from '../world/archipelago/runtime.js';
+import { createSaveCoordinator } from './save-coordinator.js';
 import { createMilestoneProgression } from '../gameplay/progression/index.js';
-import { deleteGameState, loadGameState, saveGameState } from '../persistence/index.js';
+import { loadGameState } from '../persistence/index.js';
 import { OWNED_VEHICLES, vehicleType } from '../gameplay/catalog/vehicles.js';
 import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from '../gameplay/catalog/equipment.js';
 import { HAY_BALE_LITRES } from '../gameplay/livestock/index.js';
@@ -19,7 +20,6 @@ const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
 const fpsSampleInterval = 500;
 const poseCheckpointInterval = 2;
-const saveDebounceMs = 250;
 const vehicleSwitchSeconds = .6;
 const cameraRotationSeconds = .22;
 const transferLitresPerTick = 10;
@@ -115,9 +115,6 @@ let driveCameraRotation = defaultDriveCameraYaw;
 let driveCameraRotationTarget = defaultDriveCameraYaw;
 let cameraRotationTransition = null;
 let progression;
-let saveTimer = null;
-let persistenceEnabled = !loadResult.unavailable;
-let persistenceReady = false;
 let lastPoseCheckpoint = 0;
 let vehicleTransition = null;
 let visualDriveAmount = 0;
@@ -209,39 +206,13 @@ function persistentState() {
   };
 }
 
-function writeSave() {
-  if (saveTimer !== null) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  if (!persistenceEnabled || !persistenceReady) return true;
-  const saved = saveGameState(persistentState());
-  if (!saved) {
-    persistenceEnabled = false;
-  }
-  return saved;
-}
-
-function scheduleSave(delay = saveDebounceMs) {
-  if (!persistenceEnabled || !persistenceReady) return;
-  if (saveTimer !== null) clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(writeSave, delay);
-}
-
-function restartGame() {
-  const wasPersistenceEnabled = persistenceEnabled;
-  persistenceEnabled = false;
-  if (saveTimer !== null) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  if (!deleteGameState()) {
-    persistenceEnabled = wasPersistenceEnabled;
-    return false;
-  }
-  location.reload();
-  return true;
-}
+const saveCoordinator = createSaveCoordinator({
+  snapshot: persistentState,
+  unavailable: loadResult.unavailable,
+});
+const writeSave = saveCoordinator.flush;
+const scheduleSave = saveCoordinator.schedule;
+const restartGame = saveCoordinator.restart;
 
 function resetFpsMeter(now) {
   fpsWindowStarted = now;
@@ -659,8 +630,7 @@ function initializeFarm(savedState) {
   applyNightLighting(environmentState);
   ui.setDebugTimeOfDay(environmentState.phase);
   if (progression.state().pickupReady) beginMilestoneCinematic(progression.state());
-  persistenceReady = true;
-  writeSave();
+  saveCoordinator.markReady();
 }
 
 function syncUnlockedProgressionUi() {
@@ -1090,8 +1060,9 @@ function dropOffCargo(selectedCropId = null) {
 }
 
 ui = createUi({
-  onRestart: restartGame,
-  onLoadoutChange: loadout => {
+  commands: {
+  restart: restartGame,
+  changeLoadout: loadout => {
     const vehicle = activeVehicle();
     const normalized = vehicle.definition.slots.length
       ? normalizeLoadout(loadout, progression.state().unlockedGates)
@@ -1107,8 +1078,8 @@ ui = createUi({
     scheduleSave();
     return true;
   },
-  onLoadoutPreview: loadout => loadoutPreviews?.setLoadout(loadout),
-  onEquipmentAction: (slot, enabled) => {
+  previewLoadout: loadout => loadoutPreviews?.setLoadout(loadout),
+  equipmentAction: (slot, enabled) => {
     const vehicle = activeVehicle();
     if (slot === 'front') {
       vehicle.frontToolEnabled = enabled;
@@ -1120,58 +1091,59 @@ ui = createUi({
     vehicle.visual.setToolEnabled(slot, enabled);
     scheduleSave();
   },
-  onCycleVehicle: cycleVehicle,
-  onSiloLoad: loadFromSilo,
-  onSiloUnload: emptyIntoSilo,
-  onBarnFeed: feedBarn,
-  onBarnLoadMilk: loadMilkFromBarn,
-  onPenRepaint: () => {
+  cycleVehicle,
+  siloLoad: loadFromSilo,
+  siloUnload: emptyIntoSilo,
+  barnFeed: feedBarn,
+  barnLoadMilk: loadMilkFromBarn,
+  repaintPen: () => {
     const changed = buildings?.repaintSelected();
     updateConstructionPopup();
     return changed;
   },
-  onBuildingTypeSelected: type => {
+  selectBuildingType: type => {
     const changed = buildings?.placeBuilding(type, mapCameraTarget);
     updateConstructionPopup();
     return changed;
   },
-  onConstructionPrimaryAction: () => {
+  constructionPrimaryAction: () => {
     const changed = buildings?.confirmSelectedConstruction();
     updateConstructionPopup();
     return changed;
   },
-  onConstructionCancel: () => {
+  constructionCancel: () => {
     const changed = buildings?.cancelSelectedConstruction();
     updateConstructionPopup();
     return changed;
   },
-  onConstructionUndo: () => {
+  constructionUndo: () => {
     const changed = buildings?.undoSelectedConstruction();
     updateConstructionPopup();
     return changed;
   },
-  onCargoDropOff: dropOffCargo,
-  onBuildModeChange: applyBuildMode,
-  onBuildPointerStart: beginBuildingDrag,
-  onBuildPointerMove: point => {
+  cargoDropOff: dropOffCargo,
+  changeBuildMode: applyBuildMode,
+  buildPointerStart: beginBuildingDrag,
+  buildPointerMove: point => {
     const worldPoint = worldAtScreenPoint(point, buildings?.interactionLevel());
     if (worldPoint) buildings?.moveDrag(worldPoint);
   },
-  onBuildPointerEnd: point => {
+  buildPointerEnd: point => {
     const worldPoint = worldAtScreenPoint(point, buildings?.interactionLevel());
     if (worldPoint) buildings?.moveDrag(worldPoint);
     if (buildings?.endDrag() === true) ui.clearBuildingSelection();
   },
-  onBuildPointerCancel: () => buildings?.cancelDrag(),
-  onUnlockOverride: setUnlockOverride,
-  onClearUnlockOverrides: clearUnlockOverrides,
-  onMilestoneOverride: setMilestoneOverride,
-  onCameraPresetChange: setDriveCameraPreset,
-  onTimeOfDayChange: setTimeOfDay,
-  onCameraRotateStep: rotateDriveCamera,
+  buildPointerCancel: () => buildings?.cancelDrag(),
+  overrideUnlock: setUnlockOverride,
+  clearUnlockOverrides,
+  overrideMilestone: setMilestoneOverride,
+  changeCameraPreset: setDriveCameraPreset,
+  changeTimeOfDay: setTimeOfDay,
+  rotateCameraStep: rotateDriveCamera,
+  dismissMilestoneCelebration: syncProgressionUi,
+  persistentStateChange: scheduleSave,
+  },
   cameraPresetFov: defaultDriveCameraFov,
-  onMilestoneCelebrationDismissed: syncProgressionUi,
-  onPersistentStateChange: scheduleSave,
   panSurface: renderer.domElement,
 });
 buildings = createBuildingManager({

@@ -1,6 +1,7 @@
 import { cropIds, crops } from '../gameplay/catalog/crops.js';
 import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from '../gameplay/catalog/equipment.js';
 import { dayPhaseLabel, DEFAULT_DAY_PHASE } from '../world/environment/index.js';
+import { queryUiDom } from './dom.js';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', emptyLabel: 'No rear tool', icon: 'plough' },
@@ -18,7 +19,37 @@ const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 const CAMERA_SWIPE_THRESHOLD = 48;
 
-export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycleVehicle, onSiloLoad, onSiloUnload, onBarnFeed, onBarnLoadMilk, onPenRepaint, onBuildingTypeSelected, onConstructionPrimaryAction, onConstructionCancel, onConstructionUndo, onCargoDropOff, onBuildModeChange, onBuildPointerStart, onBuildPointerMove, onBuildPointerEnd, onBuildPointerCancel, onUnlockOverride = () => {}, onClearUnlockOverrides = () => {}, onMilestoneOverride = () => {}, onCameraPresetChange = () => true, onTimeOfDayChange = () => true, onCameraRotateStep = () => true, cameraPresetFov = 38, onMilestoneCelebrationDismissed = () => {}, onPersistentStateChange = () => {}, onLoadoutPreview = () => {}, panSurface }) {
+export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
+  const {
+    restart: onRestart,
+    changeLoadout: onLoadoutChange,
+    equipmentAction: onEquipmentAction,
+    cycleVehicle: onCycleVehicle,
+    siloLoad: onSiloLoad,
+    siloUnload: onSiloUnload,
+    barnFeed: onBarnFeed,
+    barnLoadMilk: onBarnLoadMilk,
+    repaintPen: onPenRepaint,
+    selectBuildingType: onBuildingTypeSelected,
+    constructionPrimaryAction: onConstructionPrimaryAction,
+    constructionCancel: onConstructionCancel,
+    constructionUndo: onConstructionUndo,
+    cargoDropOff: onCargoDropOff,
+    changeBuildMode: onBuildModeChange,
+    buildPointerStart: onBuildPointerStart,
+    buildPointerMove: onBuildPointerMove,
+    buildPointerEnd: onBuildPointerEnd,
+    buildPointerCancel: onBuildPointerCancel,
+    overrideUnlock: onUnlockOverride = () => {},
+    clearUnlockOverrides: onClearUnlockOverrides = () => {},
+    overrideMilestone: onMilestoneOverride = () => {},
+    changeCameraPreset: onCameraPresetChange = () => true,
+    changeTimeOfDay: onTimeOfDayChange = () => true,
+    rotateCameraStep: onCameraRotateStep = () => true,
+    dismissMilestoneCelebration: onMilestoneCelebrationDismissed = () => {},
+    persistentStateChange: onPersistentStateChange = () => {},
+    previewLoadout: onLoadoutPreview = () => {},
+  } = commands;
   const input = { x: 0, y: 0, jumpQueued: false };
   const keys = new Set();
   let activeLoadout = { ...DEFAULT_LOADOUT };
@@ -59,76 +90,22 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
   let debugDayPhase = DEFAULT_DAY_PHASE;
   const amountTickers = new Map();
 
-  const topBar = document.querySelector('#topBar');
-  const overlay = document.querySelector('#overlay');
-  const barnDialog = document.querySelector('#barnDialog');
-  const pauseDialog = document.querySelector('#pauseDialog');
-  const celebrationDialog = document.querySelector('#celebrationDialog');
-  const celebrationEyebrow = document.querySelector('#celebrationEyebrow');
-  const celebrationHeading = document.querySelector('#celebrationHeading');
-  const celebrationTitle = document.querySelector('#celebrationTitle');
-  const celebrationCopy = document.querySelector('#celebrationCopy');
-  const celebrationUnlocksLabel = document.querySelector('#celebrationUnlocksLabel');
-  const celebrationUnlocks = document.querySelector('#celebrationUnlocks');
-  const celebrationContinue = document.querySelector('#celebrationContinue');
-  const celebrationContinueLabel = document.querySelector('#celebrationContinueLabel');
-  const pauseBody = document.querySelector('#pauseBody');
-  const confirmBody = document.querySelector('#confirmBody');
-  const pauseTitle = document.querySelector('#pauseTitle');
-  const controlsList = document.querySelector('#controlsList');
-  const showControls = document.querySelector('#showControls');
-  const hideHud = document.querySelector('#hideHud');
-  const showDebug = document.querySelector('#showDebug');
-  const debugPanel = document.querySelector('#debugPanel');
-  const debugTimeSlider = document.querySelector('#debugTimeSlider');
-  const debugTimeValue = document.querySelector('#debugTimeValue');
-  const debugCameraPresets = [...document.querySelectorAll('.debugCameraPreset')];
-  const debugUnlockList = document.querySelector('#debugUnlockList');
-  const debugMilestoneList = document.querySelector('#debugMilestoneList');
-  const clearUnlockOverrides = document.querySelector('#clearUnlockOverrides');
-  const stickZone = document.querySelector('#stickZone');
-  const stickBase = document.querySelector('#stickBase');
-  const stickKnob = document.querySelector('#stickKnob');
-  const actionCluster = document.querySelector('#actionCluster');
-  const cycleVehicleButton = document.querySelector('#cycleVehicle');
-  const desktopHints = document.querySelector('#desktopHints');
-  const secondaryHint = document.querySelector('#secondaryHint');
-  const secondaryHintLabel = document.querySelector('#secondaryHintLabel');
-  const frontToolToggle = document.querySelector('#frontToolToggle');
-  const rearToolToggle = document.querySelector('#rearToolToggle');
-  const seedCycleControl = document.querySelector('#seedCycleControl');
-  const seedCropToast = document.querySelector('#seedCropToast');
-  const unloadButton = document.querySelector('#unloadButton');
-  const unloadIconUse = document.querySelector('#unloadIconUse');
-  const frontToolState = document.querySelector('#frontToolState');
-  const rearToolState = document.querySelector('#rearToolState');
-  const inventoryMeter = document.querySelector('#inventoryMeter');
-  const siloInventoryElement = document.querySelector('#siloInventory');
-  const siloCropIcon = document.querySelector('#siloCropIcon');
-  const siloCropIconUse = document.querySelector('#siloCropIconUse');
-  const siloCropValue = document.querySelector('#siloCropValue');
-  const previousSiloCrop = document.querySelector('#previousSiloCrop');
-  const nextSiloCrop = document.querySelector('#nextSiloCrop');
-  const siloLoadButton = document.querySelector('#siloLoad');
-  const siloUnloadButton = document.querySelector('#siloUnload');
-  const siloUnloadIconUse = document.querySelector('#siloUnloadIconUse');
-  const milestoneTracker = document.querySelector('#milestoneTracker');
-  const milestoneTitle = document.querySelector('#milestoneTitle');
-  const milestoneRows = document.querySelector('#milestoneRows');
-  const buildingToggle = document.querySelector('#buildingToggle');
-  const buildPalette = document.querySelector('#buildPalette');
-  const buildingOptions = [...document.querySelectorAll('[data-building-id]')];
-  const repaintPen = document.querySelector('#repaintPen');
-  const constructionPopup = document.querySelector('#constructionPopup');
-  const constructionCancel = document.querySelector('#constructionCancel');
-  const constructionUndo = document.querySelector('#constructionUndo');
-  const constructionConfirm = document.querySelector('#constructionConfirm');
-  const barnStorageRows = document.querySelector('#barnStorageRows');
-  const viewHint = document.querySelector('#viewHint');
-  const loadoutSummary = document.querySelector('#loadoutSummary');
-  const vehicleName = document.querySelector('#vehicleName');
-  const vehicleIdentity = document.querySelector('#vehicleIdentity');
-  const applyLoadout = document.querySelector('#applyLoadout');
+  const {
+    topBar, overlay, barnDialog, pauseDialog, celebrationDialog, celebrationEyebrow,
+    celebrationHeading, celebrationTitle, celebrationCopy, celebrationUnlocksLabel,
+    celebrationUnlocks, celebrationContinue, celebrationContinueLabel, pauseBody,
+    confirmBody, pauseTitle, controlsList, showControls, hideHud, showDebug, debugPanel,
+    debugTimeSlider, debugTimeValue, debugCameraPresets, debugUnlockList,
+    debugMilestoneList, clearUnlockOverrides, stickZone, stickBase, stickKnob,
+    actionCluster, cycleVehicleButton, desktopHints, secondaryHint, secondaryHintLabel,
+    frontToolToggle, rearToolToggle, seedCycleControl, seedCropToast, unloadButton,
+    unloadIconUse, frontToolState, rearToolState, inventoryMeter, siloInventoryElement,
+    siloCropIcon, siloCropIconUse, siloCropValue, previousSiloCrop, nextSiloCrop,
+    siloLoadButton, siloUnloadButton, siloUnloadIconUse, milestoneTracker, milestoneTitle,
+    milestoneRows, buildingToggle, buildPalette, buildingOptions, repaintPen,
+    constructionPopup, constructionCancel, constructionUndo, constructionConfirm,
+    barnStorageRows, viewHint, loadoutSummary, vehicleName, vehicleIdentity, applyLoadout,
+  } = queryUiDom();
   const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints, siloInventoryElement, constructionPopup];
 
   document.body.tabIndex = -1;

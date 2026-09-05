@@ -37,15 +37,15 @@ export function reserveWorkshopGround(terrain, site) {
   }
 }
 
-export function findVehicleSpawns(terrain, start, workshopArea) {
+export function findVehicleSpawnPoints(terrain, start, workshopSite) {
   const outsideWorkshop = tile => {
-    if (!workshopArea) return true;
-    const dx = tile.x - workshopArea.x;
-    const dz = tile.z - workshopArea.z;
-    const localX = dx * Math.cos(workshopArea.yaw) - dz * Math.sin(workshopArea.yaw);
-    const localZ = dx * Math.sin(workshopArea.yaw) + dz * Math.cos(workshopArea.yaw);
-    const clearWidth = workshopArea.spawnClearanceWidth || workshopArea.width;
-    const clearDepth = workshopArea.spawnClearanceDepth || workshopArea.depth;
+    if (!workshopSite) return true;
+    const dx = tile.x - workshopSite.x;
+    const dz = tile.z - workshopSite.z;
+    const localX = dx * Math.cos(WORKSHOP_YAW) - dz * Math.sin(WORKSHOP_YAW);
+    const localZ = dx * Math.sin(WORKSHOP_YAW) + dz * Math.cos(WORKSHOP_YAW);
+    const clearWidth = TILE * 3 + 1.6;
+    const clearDepth = TILE * 3 + 1.7;
     return Math.abs(localX) > clearWidth * .5 + .8 || Math.abs(localZ) > clearDepth * .5 + .8;
   };
   const candidates = [...terrain.values()].filter(tile =>
@@ -71,7 +71,19 @@ export function findVehicleSpawns(terrain, start, workshopArea) {
       if (selected.length === 2) break;
     }
   }
-  return selected.length ? selected : [{ x: start.x, y: start.topY, z: start.z }];
+  if (selected.length < 2) throw new Error('Starter island requires distinct tractor and harvester spawn points');
+  return {
+    tractor: selected[0],
+    harvester: selected[1],
+  };
+}
+
+export function reserveVehicleSpawnGround(terrain, spawnPoints) {
+  for (const tile of terrain.values()) {
+    if (Object.values(spawnPoints).some(spawn => Math.hypot(tile.x - spawn.x, tile.z - spawn.z) <= TILE * 1.5)) {
+      tile.noDecoration = true;
+    }
+  }
 }
 
 export function findCargoSite(terrain, island, workshopSite) {
@@ -137,4 +149,3 @@ export function reserveCargoApproach(terrain, site, islandId) {
     if (cargoDeckContains(site, tile.x, tile.z, TILE * 2.75)) tile.noDecoration = true;
   }
 }
-

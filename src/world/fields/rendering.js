@@ -53,6 +53,17 @@ export function createCropInstances(tileCapacity, group) {
   const furrows = addInstances('furrow', .78, .025, .07, mats.furrow, tileCapacity * 3);
   return {
     furrows,
+    refreshFurrows(tiles) {
+      const matrix = new THREE.Matrix4();
+      let count = 0;
+      for (const tile of tiles) {
+        for (const offset of [-.26, 0, .26]) {
+          matrix.makeTranslation(tile.x, tile.topY + .018, tile.z + offset);
+          furrows.setMatrixAt(count++, matrix);
+        }
+      }
+      updateInstances(furrows, count);
+    },
     begin() {
       for (const name of Object.keys(counts)) {
         if (name !== 'furrow') {

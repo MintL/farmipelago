@@ -325,6 +325,7 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 - **3,600 L** internal crop tank
 
 Both vehicles remain parked in the world when not controlled. Their positions, loadouts and compatible stored cargo are saved.
+The tractor and combine each have their own generated starter-island spawn point. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
 
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 

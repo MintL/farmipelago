@@ -40,6 +40,8 @@ World-space tile lookup remains available at the runtime boundary. Code stored
 inside an island should use local coordinates; references crossing an island
 boundary use `{ islandId, gx, gz }`. Bridges are connection records with an
 anchor on each island instead of being treated as anonymous world geometry.
+Named vehicle spawn points are likewise stored as island-local poses and
+resolved through the archipelago runtime when a vehicle is created or rescued.
 
 Attached islands currently have identity rotation and fixed transforms. A
 passing island may later change its transform, but policy such as encounter

@@ -90,7 +90,6 @@ const fleet = OWNED_VEHICLES.map(owned => {
     equipmentState: { balerLitres: 0, carriedBaleId: null },
     baleReleasePending: false,
     balePickupCooldown: 0,
-    spawn: null,
     storage: { capacity: definition.storageCapacity, contents: {} },
   };
 });
@@ -492,8 +491,9 @@ function updateConstructionPopup() {
 
 function resetActiveVehicle() {
   const vehicle = activeVehicle();
-  physics.resetVehicle(vehicle.id, vehicle.spawn);
-  vehicle.heading = 0;
+  const spawn = farm.vehicleSpawnPoint(vehicle.spawnPoint);
+  physics.resetVehicle(vehicle.id, spawn.position);
+  vehicle.heading = spawn.heading;
   const state = activeVehicleState();
   vehicle.visual.sync(state, vehicle.heading, 0, 0, 0, elapsed);
   if (viewMode === 'build') {
@@ -505,10 +505,9 @@ function resetActiveVehicle() {
 }
 
 function resetFleet() {
-  fleet.forEach((vehicle, index) => {
-    const spawn = farm.vehicleSpawns[index % farm.vehicleSpawns.length];
-    vehicle.spawn = spawn;
-    vehicle.heading = 0;
+  fleet.forEach(vehicle => {
+    const spawn = farm.vehicleSpawnPoint(vehicle.spawnPoint);
+    vehicle.heading = spawn.heading;
     vehicle.frontToolEnabled = false;
     vehicle.rearToolEnabled = false;
     vehicle.equipmentState.balerLitres = 0;
@@ -520,8 +519,8 @@ function resetFleet() {
     vehicle.visual.setLoadout(vehicle.loadout);
     vehicle.visual.setToolEnabled('front', false, true);
     vehicle.visual.setToolEnabled('rear', false, true);
-    if (physics.hasVehicle(vehicle.id)) physics.resetVehicle(vehicle.id, spawn);
-    else physics.createVehicle(vehicle.id, spawn);
+    if (physics.hasVehicle(vehicle.id)) physics.resetVehicle(vehicle.id, spawn.position);
+    else physics.createVehicle(vehicle.id, spawn.position);
   });
   physics.setActiveVehicle(activeVehicle().id);
   fleet.forEach(vehicle => {

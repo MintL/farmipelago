@@ -61,6 +61,9 @@ export function createArchipelagoRuntime(farm) {
         heading: (pose.heading || 0) + island.transform.yaw,
       };
     },
+    vehicleSpawnPoint(id) {
+      return this.worldPose(farm.vehicleSpawnPoints[id]);
+    },
     islandToWorld(islandId, position) {
       const island = islands.get(islandId);
       return island ? islandToWorld(island.transform, position) : null;

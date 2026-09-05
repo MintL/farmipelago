@@ -180,8 +180,6 @@ export function createVehicle(scene, vehicle) {
       selectionPulse = 1;
       wakeUpElapsed = selected ? 0 : wakeUpDuration;
       if (!selected) {
-        wakeUp.position.set(0, 0, 0);
-        wakeUp.rotation.set(0, 0, 0);
         wakeUp.scale.setScalar(1);
       }
     },
@@ -282,26 +280,11 @@ export function createVehicle(scene, vehicle) {
         const growEase = 1 - Math.pow(1 - growProgress, 3);
         const settleEase = THREE.MathUtils.smoothstep(settleProgress, 0, 1);
         const wakeScale = progress < .44
-          ? THREE.MathUtils.lerp(.58, 1.2, growEase)
+          ? THREE.MathUtils.lerp(1, 1.2, growEase)
           : THREE.MathUtils.lerp(1.2, 1, settleEase);
-        const shakeIn = Math.sin(Math.min(1, progress / .1) * Math.PI * .5);
-        const shakeOut = 1 - THREE.MathUtils.smoothstep(progress, .08, 1);
-        const shake = shakeIn * shakeOut;
-        wakeUp.position.set(
-          Math.sin(progress * Math.PI * 14) * .14 * shake,
-          Math.sin(progress * Math.PI * 20) * .045 * shake,
-          Math.cos(progress * Math.PI * 12) * .055 * shake,
-        );
-        wakeUp.rotation.set(
-          Math.cos(progress * Math.PI * 12) * .035 * shake,
-          Math.sin(progress * Math.PI * 10) * .055 * shake,
-          Math.sin(progress * Math.PI * 18) * .105 * shake,
-        );
         wakeUp.scale.setScalar(wakeScale);
       }
       else {
-        wakeUp.position.set(0, 0, 0);
-        wakeUp.rotation.set(0, 0, 0);
         wakeUp.scale.setScalar(1);
       }
       const selection = selectionDirection * selectionPulse;

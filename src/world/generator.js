@@ -5,8 +5,16 @@ import { createForageSystem } from './forage/index.js';
 import { createWildlifeSystem } from './wildlife/index.js';
 import { BASE_ISLAND_LAYOUT, ISLAND_CONNECTION_PAIRS, NORTH_ISLAND_ID, STARTER_ISLAND_ID, WORKSHOP_YAW } from './config.js';
 import { createOcclusionSystem, disposeObjectResources } from './occlusion.js';
-import { findCargoSite, findVehicleSpawns, findWorkshopSite, reserveCargoApproach, reserveWorkshopGround } from './sites.js';
+import {
+  findCargoSite,
+  findVehicleSpawnPoints,
+  findWorkshopSite,
+  reserveCargoApproach,
+  reserveVehicleSpawnGround,
+  reserveWorkshopGround,
+} from './sites.js';
 import { createOrganicCells, createPerlin, environmentalAxis, environmentProfile, normalizeNoise, plateauHeight, scaleIslandLayout, seededRandom } from './islands/procedural.js';
+import { worldToIsland } from './islands/coordinates.js';
 import { createIslandConnections, createIslandRecords } from './islands/model.js';
 import { STATIC_LANTERN_LIGHT_RADIUS, addBridgeBetween, closestIslandGap, createStaticLanternLighting, reserveBridgeLandings } from './bridges.js';
 import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
@@ -1010,6 +1018,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   cargoSite = findCargoSite(terrain, hubIsland, workshopSite);
   if (workshopSite) reserveWorkshopGround(terrain, workshopSite);
   reserveCargoApproach(terrain, cargoSite, hubIsland.id);
+  const start = terrain.get(gridKey(hubIsland.cx, hubIsland.cz)) || terrain.values().next().value;
+  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, workshopSite);
+  reserveVehicleSpawnGround(terrain, vehicleSpawnPositions);
 
   const bridgeGaps = islandConnections
     .map(([fromId, toId]) => closestIslandGap(terrain, fromId, toId))
@@ -1170,15 +1181,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const cropInstances = createCropInstances(terrain.size, group);
   const fieldEffects = createFieldEffects(group);
   const refreshFurrowInstances = () => {
-    const matrix = new THREE.Matrix4();
-    let furrowCount = 0;
-    for (const tile of ploughedTiles) {
-      for (const offset of [-.26, 0, .26]) {
-        matrix.makeTranslation(tile.x, tile.topY + .018, tile.z + offset);
-        cropInstances.furrows.setMatrixAt(furrowCount++, matrix);
-      }
-    }
-    updateInstances(cropInstances.furrows, furrowCount);
+    cropInstances.refreshFurrows(ploughedTiles);
     furrowInstancesDirty = false;
   };
   const refreshCropInstances = () => {
@@ -1234,9 +1237,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
   const islandRecords = createIslandRecords(islands, terrain, seed);
   const connectionRecords = createIslandConnections(islandConnections, bridgeGaps, islandRecords);
-  const starterIsland = islands[STARTER_ISLAND_ID];
-  const start = terrain.get(gridKey(starterIsland.cx, starterIsland.cz)) || terrain.values().next().value;
-  const vehicleSpawns = findVehicleSpawns(terrain, start, workshopArea);
+  const starterIsland = islandRecords.find(island => island.legacyId === STARTER_ISLAND_ID);
+  const vehicleSpawnPoints = Object.fromEntries(Object.entries(vehicleSpawnPositions).map(([id, position]) => [id, {
+    islandId: starterIsland.id,
+    position: worldToIsland(starterIsland.transform, position),
+    heading: 0,
+  }]));
   const bridgeLanternGlowMaterials = [...new Set(bridgeLanternGlowMeshes.map(mesh => mesh.material))];
   return {
     group,
@@ -1245,8 +1251,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     connections: connectionRecords,
     cargoPort,
     seed,
-    spawn: vehicleSpawns[0],
-    vehicleSpawns,
+    spawn: vehicleSpawnPositions.tractor,
+    vehicleSpawnPoints,
     setNightAmount(amount, lanternAmount = amount) {
       setWorkshopNightAmount(lanternAmount);
       cargoPort.setNightAmount(amount, lanternAmount);

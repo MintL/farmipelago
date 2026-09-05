@@ -20,8 +20,8 @@ export const VEHICLE_TYPES = {
 };
 
 export const OWNED_VEHICLES = [
-  { id: 'tractor-1', type: 'tractor' },
-  { id: 'harvester-1', type: 'harvester' },
+  { id: 'tractor-1', type: 'tractor', spawnPoint: 'tractor' },
+  { id: 'harvester-1', type: 'harvester', spawnPoint: 'harvester' },
 ];
 
 export function vehicleType(type) {

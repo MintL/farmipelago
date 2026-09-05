@@ -1,7 +1,5 @@
-import { ISLAND_LAYOUT_SCALE, NORTH_ISLAND_ID } from '../config.js';
-import { LEVEL_HEIGHT, THREE } from '../../core/shared.js';
-
-const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
+import { ISLAND_LAYOUT_SCALE } from '../config.js';
+import { THREE } from '../../core/shared.js';
 
 export function scaleIslandLayout(island) {
   return {
@@ -124,29 +122,4 @@ export function createOrganicCells(cx, cz, radius, seed) {
   }
   if (!cells.some(cell => cell.gx === cx && cell.gz === cz)) cells.push({ gx: cx, gz: cz, dx: 0, dz: 0, dist: 0 });
   return cells;
-}
-
-export function plateauHeight(cell, island, angle) {
-  if (island.id === NORTH_ISLAND_ID) {
-    const skew = Math.sin(angle) * .14;
-    const northward = -cell.dz + cell.dx * skew;
-    const across = cell.dx + cell.dz * skew * .35;
-    const terraces = [
-      { north: -island.r * .28, width: island.r * .74 },
-      { north: 0, width: island.r * .55 },
-      { north: island.r * .27, width: island.r * .36 },
-    ];
-    const plateauLevels = terraces.reduce((levels, terrace) =>
-      levels + Number(northward >= terrace.north && Math.abs(across) <= terrace.width), 0);
-    return PLATEAU_BLOCK_HEIGHT * plateauLevels;
-  }
-
-  const along = cell.dx * Math.cos(angle) + cell.dz * Math.sin(angle);
-  const across = -cell.dx * Math.sin(angle) + cell.dz * Math.cos(angle);
-  // Every non-starter island uses one large, contiguous raised plot. Its base
-  // remains equally broad, so both of the island's two elevations are useful
-  // for farming rather than reading as narrow decorative ledges.
-  const onRaisedPlot = along >= -island.r * .72 && along <= island.r * .42 &&
-    Math.abs(across) <= island.r * .62;
-  return onRaisedPlot ? PLATEAU_BLOCK_HEIGHT : 0;
 }

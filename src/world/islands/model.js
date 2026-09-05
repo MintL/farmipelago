@@ -1,14 +1,6 @@
 import { TILE, gridKey } from '../../core/shared.js';
 import { islandToWorld, localTileCoordinates } from './coordinates.js';
 
-const islandId = legacyId => `island-${legacyId}`;
-
-function islandRole(legacyId) {
-  if (legacyId === 0) return 'hub';
-  if (legacyId === 1) return 'northern-farm';
-  return 'farm';
-}
-
 function islandBounds(tiles) {
   const bounds = {
     minX: Infinity,
@@ -31,14 +23,14 @@ function islandBounds(tiles) {
 
 export function createIslandRecords(layout, terrain, worldSeed) {
   const records = layout.map(source => {
-    const id = islandId(source.id);
     const transform = { x: source.cx * TILE, y: source.h, z: source.cz * TILE, yaw: 0 };
     const record = {
-      id,
-      legacyId: source.id,
-      seed: (worldSeed + source.id * 911) >>> 0,
-      role: islandRole(source.id),
-      status: 'attached',
+      id: source.id,
+      legacyId: source.legacyId,
+      seed: (worldSeed + source.legacyId * 911) >>> 0,
+      role: source.role,
+      capabilities: { ...source.capabilities },
+      status: source.status || 'attached',
       transform,
       gridOrigin: { gx: source.cx, gz: source.cz },
       bounds: null,
@@ -47,7 +39,6 @@ export function createIslandRecords(layout, terrain, worldSeed) {
     for (const tile of terrain.values()) {
       if (tile.islandId !== source.id) continue;
       const local = localTileCoordinates(record, tile);
-      tile.islandId = id;
       tile.localGx = local.gx;
       tile.localGz = local.gz;
       tile.localX = local.gx * TILE;
@@ -66,19 +57,20 @@ function localAnchor(island, tile) {
   return { gx: local.gx, gz: local.gz, y: tile.topY - island.transform.y };
 }
 
-export function createIslandConnections(pairs, bridgeGaps, islandRecords) {
-  const byLegacyId = new Map(islandRecords.map(island => [island.legacyId, island]));
-  return pairs.map(([fromLegacyId, toLegacyId], index) => {
-    const fromIsland = byLegacyId.get(fromLegacyId);
-    const toIsland = byLegacyId.get(toLegacyId);
+export function createIslandConnections(connections, bridgeGaps, islandRecords) {
+  const byId = new Map(islandRecords.map(island => [island.id, island]));
+  return connections.map(source => {
+    const fromIsland = byId.get(source.fromId);
+    const toIsland = byId.get(source.toId);
+    if (!fromIsland || !toIsland) throw new Error(`Connection ${source.id} has unresolved island endpoints`);
     const gap = bridgeGaps.find(candidate =>
       candidate.from.islandId === fromIsland.id && candidate.to.islandId === toIsland.id
       || candidate.from.islandId === toIsland.id && candidate.to.islandId === fromIsland.id);
     const forward = gap?.from.islandId === fromIsland.id;
     return {
-      id: `connection-${index}`,
-      kind: 'bridge',
-      status: 'attached',
+      id: source.id,
+      kind: source.kind,
+      status: source.status || 'attached',
       from: {
         islandId: fromIsland.id,
         anchor: gap ? localAnchor(fromIsland, forward ? gap.from : gap.to) : null,
@@ -96,6 +88,7 @@ export function serializeIsland(island) {
     id: island.id,
     seed: island.seed,
     role: island.role,
+    capabilities: { ...island.capabilities },
     status: island.status,
     transform: { ...island.transform },
   };

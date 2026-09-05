@@ -37,7 +37,8 @@ export function createArchipelagoRuntime(farm) {
     },
     islandAtWorld(x, z) {
       const tile = farm.terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
-      return tile ? islands.get(tile.islandId) || null : null;
+      const island = tile ? islands.get(tile.islandId) : null;
+      return island?.status === 'attached' ? island : null;
     },
     tileAtWorld(x, z) {
       return farm.terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5))) || null;

@@ -3,6 +3,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
+  server: {
+    allowedHosts: ['barge-decaf-swore.ngrok-free.dev'],
+  },
   build: {
     rollupOptions: {
       input: {

@@ -2,7 +2,7 @@ import { TILE, THREE, gridKey, mats } from '../../core/shared.js';
 
 const INITIAL_BALE_CAPACITY = 32;
 
-export function createForageSystem(terrain, group, physics, onChange = () => {}) {
+export function createForageSystem(terrain, group, physics, onChange = () => {}, canFarmTile = () => true) {
   const forageGroup = new THREE.Group();
   forageGroup.name = 'forage';
   group.add(forageGroup);
@@ -65,7 +65,20 @@ export function createForageSystem(terrain, group, physics, onChange = () => {})
     baleBodies.receiveShadow = baleBands.receiveShadow = true;
     baleBodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     baleBands.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // InstancedMesh defaults its draw count to capacity and its slots to the
+    // identity transform. Keep an empty pool genuinely invisible until the
+    // live bale matrices have been populated.
+    updateCount(baleBodies, 0);
+    updateCount(baleBands, 0);
     forageGroup.add(baleBodies, baleBands);
+  };
+
+  const assertBaleRenderCounts = () => {
+    const expectedBodies = bales.length;
+    const expectedBands = expectedBodies * 8;
+    if (baleBodies.count !== expectedBodies || baleBands.count !== expectedBands) {
+      throw new Error(`Hay-bale render pool is out of sync (${baleBodies.count}/${baleBands.count}; expected ${expectedBodies}/${expectedBands})`);
+    }
   };
 
   const refreshBales = () => {
@@ -103,6 +116,7 @@ export function createForageSystem(terrain, group, physics, onChange = () => {})
     });
     updateCount(baleBodies, bales.length);
     updateCount(baleBands, bandIndex);
+    assertBaleRenderCounts();
   };
 
   const yawRotation = heading => ({
@@ -139,19 +153,21 @@ export function createForageSystem(terrain, group, physics, onChange = () => {})
 
   createBaleMeshes();
   refreshField();
+  refreshBales();
 
   return {
     hasForage(tile) {
       return Boolean(tile?.looseGrassLitres || 0);
     },
     addLoose(tile, litres) {
-      if (!tile || litres <= 0) return false;
+      if (!tile || !canFarmTile(tile) || litres <= 0) return false;
       tile.looseGrassLitres = Math.max(0, tile.looseGrassLitres || 0) + litres;
       refreshField();
       return true;
     },
     takeLooseAt(x, z, levelY) {
       const tile = tileAt(x, z, levelY);
+      if (!canFarmTile(tile)) return 0;
       const amount = Math.max(0, tile?.looseGrassLitres || 0);
       if (!amount) return 0;
       tile.looseGrassLitres = 0;
@@ -236,7 +252,7 @@ export function createForageSystem(terrain, group, physics, onChange = () => {})
       }
       for (const savedTile of Array.isArray(savedState?.tiles) ? savedState.tiles : []) {
         const tile = terrain.get(savedTile?.key);
-        if (!tile || tile.water) continue;
+        if (!tile || tile.water || !canFarmTile(tile)) continue;
         tile.looseGrassLitres = Math.max(0, Math.floor(Number(savedTile.looseGrassLitres) || 0))
           + Math.max(0, Math.floor(Number(savedTile.windrowLitres) || 0));
       }

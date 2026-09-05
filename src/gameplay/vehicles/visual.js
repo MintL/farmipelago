@@ -15,6 +15,8 @@ export function createVehicle(scene, vehicle) {
   let landingSquash = 0;
   let wakeUpElapsed = wakeUpDuration;
   root.scale.setScalar(.92);
+  root.name = `vehicle-${vehicle}`;
+  wakeUp.name = `vehicle-${vehicle}-model`;
   wakeUp.add(tractor?.group || combine.group);
   root.add(wakeUp);
   scene.add(root);
@@ -114,8 +116,34 @@ export function createVehicle(scene, vehicle) {
     velocity *= Math.exp(-damping * dt);
     return { value: value + velocity * dt, velocity };
   };
+  const assertSceneOwnership = () => {
+    const model = tractor?.group || combine.group;
+    if (root.parent !== scene || effectGroup.parent !== scene || model.parent !== wakeUp) {
+      throw new Error(`${vehicle} visual must remain scene-owned outside island presentation roots`);
+    }
+  };
 
   return {
+    assertSceneOwnership,
+    resetTransientState() {
+      transfer = null;
+      transferPulse = 0;
+      selectionPulse = 0;
+      selectionDirection = 0;
+      landingSquash = 0;
+      baleKick = 0;
+      wakeUpElapsed = wakeUpDuration;
+      wakeUp.scale.setScalar(1);
+      spray.slots.forEach((slot, index) => hide(spray, index));
+      spray.mesh.instanceMatrix.needsUpdate = true;
+      if (combine) {
+        augerYaw = 0;
+        augerExtension = 0;
+        combine.auger.rotation.y = 0;
+        combine.auger.scale.x = .04;
+      }
+      assertSceneOwnership();
+    },
     setNightAmount(amount) {
       if (!tractor) return;
       const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);

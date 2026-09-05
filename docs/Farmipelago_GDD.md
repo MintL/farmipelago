@@ -1,7 +1,7 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-04
+**Updated from implementation:** 2026-09-05
 
 ## 1. Game Concept
 
@@ -206,20 +206,21 @@ Main progression should primarily be driven by increasingly complex production d
 
 The world consists of multiple voxel islands generated from a persistent seed.
 
-The current generator provides:
+The current generator provides a permanent two-island opening:
 
-- a two-island starter area
-- a level starter farmyard with a walk-in 3×3 workshop at the northern end of the starter island's west edge
-- a broad, irregular lake along the starter island's south coast, feeding an east-flowing river and waterfall
-- a separate cargo-hub island connected by bridge
-- additional larger lobed islands with stepped elevations
-- a large northern island whose north side climbs through three distinct terraces above its base, with fully snow-covered upper terraces and a summit clear of generated props
-- broad farming areas across the base and raised levels of generated islands
-- broad, gently crowned wooden bridges with railings and warm day/night lanterns across larger gaps
-- lakes, animated rivers and waterfalls
+- a dominant, level Farm Island with the farmyard, starter field space and a walk-in 3×3 workshop at the northern end of its west edge
+- a broad, irregular lake along the Farm Island's south coast, feeding an east-flowing river and waterfall
+- a much smaller, mostly level Settlement Island held stationary directly north, with the tractor and combine spawns, reserved turnaround space, and the cargo hub
+- a compact non-interactive settlement shell with voxel-built homes, a communal receiving structure, worn paths and warm lighting
+- a fresh opening cinematic that first establishes both parked vehicles on Settlement, pans to reveal the visible, non-colliding Farm approaching from the south along negative Z, travels with its final docking, then eases back over the vehicles into the normal drive camera; HUD and gameplay input remain suppressed until that camera release, and the final center-aligned separation is measured from the generated shores before either footprint is placed
+- one broad, gently crowned wooden bridge with railings and warm day/night lanterns providing the pair's only physical connection from the Farm Island's north shore to the Settlement Island's south shore; its modeled deck targets `2.0 ± 0.25` terrain tiles while the terrain itself retains an air gap greater than one tile
 - grass, dirt and stone terrain layers with deep pointed undersides
-- generated trees, rocks and grass tufts across both terrain elevations
-- rare seed-stable wildlife beyond the starter island, with two reindeer per qualifying island, one red fox and one white snow fox
+- generated trees, rocks and ground cover around the retained terrain
+
+Island identity, role and land-use capabilities are explicit. The Farm Island
+allows farming and player construction. The Settlement Island remains
+traversable and supports cargo interaction, but rejects field work and player
+construction so it reads as a community destination rather than a second farm.
 
 Vehicles can jump, so elevation and gaps are part of navigation without requiring ramps.
 
@@ -245,7 +246,10 @@ The world also runs a persistent ten-minute visual day/night cycle in which ever
 
 The Farm Tractor's paired front lamps follow the same late-afternoon-through-sunrise timing as other local fixtures and cast warm, focused beams ahead across the terrain.
 
-Forested clearings beyond the starter island support rare ambient voxel wildlife. Every sufficiently large island with substantial forest habitat receives exactly two reindeer. A single red fox roams the world's non-starter forests, and a separate white snow fox wanders the snowy terraces of the northern island. Wildlife uses exaggerated toy-like gait animation, jumps with tractor-style squash and stretch when a route climbs one terrain level, keeps to traversable habitat, avoids developed fields, buildings and cattle pastures, and is excluded from camera auto-hide. It adds no collisions, damage, progression requirements or management systems.
+Ambient reindeer and foxes are temporarily absent from the two-island opening.
+Their implementation remains available for a later island slice, but the
+current Farmipelago owns no ambient wildlife scene or simulation. Cattle and
+their farming gameplay remain unchanged.
 
 ---
 
@@ -325,13 +329,13 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 - **3,600 L** internal crop tank
 
 Both vehicles remain parked in the world when not controlled. Their positions, loadouts and compatible stored cargo are saved.
-The tractor and combine each have their own generated starter-island spawn point. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
+The tractor and combine each have their own generated Settlement Island spawn point with reserved turnaround space. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
 
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 
 ### Workshop
 
-The workshop is a permanent starter structure at the northern end of the starter island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area; the cargo hub occupies the southern west-edge site.
+The workshop is a permanent starter structure at the northern end of the Farm Island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area. The cargo hub is across the north bridge on the Settlement Island's outer east side.
 
 The player drives into it and receives a live 3D preview of the active vehicle and compatible equipment. Selecting an equipped rear or front attachment again leaves that slot empty. The UI distinguishes unavailable slots for vehicles such as the combine.
 
@@ -389,7 +393,8 @@ Permanent commitment makes scarce clear, level land and future farm layout part 
 The permanent starter structures are:
 
 - vehicle workshop
-- cargo hub and landing pad
+- Settlement Island homes and communal receiving structure
+- cargo hub and landing pad on the Settlement Island
 
 Future buildings may support:
 
@@ -407,7 +412,7 @@ The design should continue to require buildings to have clear gameplay functions
 
 ## 16. Cargo Hub and Deliveries
 
-The current progression receiver is a **cargo hub** permanently attached to the second starter island.
+The current progression receiver is a **cargo hub** permanently attached to the smaller northern Settlement Island.
 
 It contains:
 
@@ -509,7 +514,6 @@ Current visual language includes:
 - a consistent small-model construction grid of five voxels across one terrain tile, beginning with the starter workshop
 - stepped rooflines, structural thickness, openings and details that read as assembled voxel forms rather than smooth low-poly slabs
 - muted grass, dirt and stone layers
-- continuous snow surfaces across the two highest terraces of the northern island
 - softly lit terrain and gentle fog
 - a time-varying flat-color backdrop with sun/moon-driven global lighting, animated celestial shadows, warm bright twilight and darker readable blue moonlight
 - a hanging warm lantern above the permanent starter workshop entrance, lit from late afternoon until after sunrise
@@ -520,7 +524,7 @@ Current visual language includes:
 - a blue hero tractor with glazed cab, lamps and beacon
 - squash-and-stretch on vehicle jumps and crop growth
 - animated trees and vegetation
-- articulated voxel reindeer, red fox and snow fox with exaggerated wandering gaits and squash-and-stretch jumps between adjacent terrain levels
+- compact voxel-built settlement homes and a communal receiving structure with stepped roofs, constructed openings and warm doorway lighting
 - sparse environment-driven prop clusters across both elevations, with off-grid placement and subtle rotation, mirroring and scale variation
 - waterfalls, flat landing splashes matched to the day/night base-water palette, and environmental motion
 - guided crop and milk transfer swarms made from small color-matched cuboids, coordinated with animated machinery, responsive storage objects and delivery crates
@@ -555,7 +559,17 @@ A building passes the visual test when, beside the terrain, the terrain reads as
 
 ## 20. Persistence and Free Play
 
-The game automatically saves to browser-local storage.
+The game automatically saves to browser-local storage. The two-island direction
+starts a fresh schema-0 lineage under `farmipelago.gameState.v2`. Older saves
+under `farmipelago.gameState` are ignored and left untouched for rollback or
+manual recovery rather than migrated into the new topology.
+
+Schema 0 records the Farm and bridge coherently as either `approaching` or
+`attached`, while Settlement is always attached. Reloading during the opening
+replays the deterministic cinematic from its establishing shot, with input and
+HUD suppression restored but without discarding the rest of the valid save.
+Once attachment completes, the status is saved and later reloads begin with the
+fixed connected pair and normal drive camera rather than replaying the intro.
 
 The current save includes:
 
@@ -614,7 +628,7 @@ Automation may eventually support the player, but personally operating agricultu
 
 The playable prototype currently proves the following major systems together:
 
-- persistent procedurally generated archipelago
+- persistent procedurally generated Farm Island + Settlement Island pair
 - persistent visual day/night cycle with a Debug time scrubber
 - vehicle driving and jumping
 - tractor attachments
@@ -625,7 +639,8 @@ The playable prototype currently proves the following major systems together:
 - persistent placeable silos
 - trailer-based transport
 - cattle barns, draft-editable permanently confirmed custom pens and persistent herds
-- rare seed-stable non-starter wildlife: two reindeer per qualifying island, one red fox and one northern snow fox
+- compact non-simulated settlement shell with cargo receiving on the smaller northern island
+- explicit per-island farming and construction capabilities
 - hay-fed milk production with grazing fallback
 - Water / Milk Tank transport and milk delivery
 - cargo-hub deliveries

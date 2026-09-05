@@ -3,6 +3,17 @@ import { shuffle } from '../../core/random.js';
 
 export const WATER_DEPTH = .22;
 
+function applyWaterPatternOffset(renderer, scene, camera, geometry, material) {
+  const offset = this.userData.waterPatternRoot?.userData.waterPatternOffset;
+  material.uniforms.patternOffset.value.set(offset?.x || 0, offset?.z || 0);
+}
+
+function addPatternedWaterMesh(water, mesh) {
+  mesh.userData.waterPatternRoot = water;
+  mesh.onBeforeRender = applyWaterPatternOffset;
+  water.add(mesh);
+}
+
 export function addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, strictBanks) {
   const candidates = shuffle(cells.filter(cell => {
     if (cell.dist < 1.25 || cell.dist > island.r - 1.55) return false;
@@ -199,7 +210,7 @@ function addWaterSurface(tile, water, lake) {
   surface.castShadow = false;
   surface.receiveShadow = false;
   surface.name = lake ? 'lake-surface' : 'river-surface';
-  water.add(surface);
+  addPatternedWaterMesh(water, surface);
 }
 
 function addCurrentStreak(tile, direction, water, waterMotion, random) {
@@ -232,7 +243,7 @@ function addRiverDrop(from, to, direction, water) {
   if (direction.x) sheet.rotation.y = direction.x > 0 ? Math.PI * .5 : -Math.PI * .5;
   else if (direction.z < 0) sheet.rotation.y = Math.PI;
   sheet.name = 'river-drop';
-  water.add(sheet);
+  addPatternedWaterMesh(water, sheet);
 }
 
 function addWaterfall(tile, direction, water, waterfalls, random) {
@@ -251,7 +262,7 @@ function addWaterfall(tile, direction, water, waterfalls, random) {
     tile.topY - height * .5 + .02,
     tile.z + direction.z * (TILE * .5 + .02),
   );
-  water.add(waterfall);
+  addPatternedWaterMesh(water, waterfall);
 
   const streams = [];
   for (let index = 0; index < 3; index++) {
@@ -275,4 +286,3 @@ function addWaterfall(tile, direction, water, waterfalls, random) {
   }
   waterfalls.push({ streams, topY: tile.topY + .05, height });
 }
-

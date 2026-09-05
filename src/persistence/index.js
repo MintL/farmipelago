@@ -1,4 +1,3 @@
-import { migrateState } from './migrations.js';
 import { SCHEMA_VERSION, validState } from './schema.js';
 import { readStoredState, removeStoredState, writeStoredState } from './storage.js';
 
@@ -6,11 +5,7 @@ export function loadGameState() {
   try {
     const storedState = readStoredState();
     if (!storedState) return { state: null, invalid: false, unavailable: false };
-    const state = migrateState(storedState);
-    if (validState(state)) {
-      if (state !== storedState) writeStoredState({ ...state, savedAt: Date.now() });
-      return { state, invalid: false, unavailable: false };
-    }
+    if (validState(storedState)) return { state: storedState, invalid: false, unavailable: false };
     removeStoredState();
     return { state: null, invalid: true, unavailable: false };
   }

@@ -1,5 +1,6 @@
 import { LEVEL_HEIGHT, TILE, gridKey } from '../../core/shared.js';
-import { CARDINAL_STEPS, MIN_REGION_TILES, NORTH_ISLAND_ID, SNOW_LEVEL, STARTER_ISLAND_ID } from './config.js';
+import { FARM_ISLAND_ID } from '../config.js';
+import { CARDINAL_STEPS, MIN_REGION_TILES } from './config.js';
 
 function connectedRegions(habitat, minimumTiles) {
   const regions = [];
@@ -33,13 +34,13 @@ function connectedRegions(habitat, minimumTiles) {
 }
 
 export function isSnowTile(tile) {
-  return tile?.islandId === NORTH_ISLAND_ID && tile.topY - tile.baseY >= SNOW_LEVEL - .01;
+  return false;
 }
 
 export function forestRegions(terrain) {
   const habitat = new Map();
   for (const tile of terrain.values()) {
-    if (tile.islandId === STARTER_ISLAND_ID || tile.water || tile.hasTree || tile.stones.length ||
+    if (tile.islandId === FARM_ISLAND_ID || tile.water || tile.hasTree || tile.stones.length ||
       tile.reserved || tile.ploughed || tile.crop) continue;
     let nearbyTrees = 0;
     for (let dx = -2; dx <= 2; dx++) {
@@ -66,7 +67,7 @@ export function snowRegions(terrain) {
 export function clearLandRegions(terrain) {
   const habitat = new Map();
   for (const tile of terrain.values()) {
-    if (tile.islandId === STARTER_ISLAND_ID || isSnowTile(tile) || tile.water || tile.hasTree ||
+    if (tile.islandId === FARM_ISLAND_ID || isSnowTile(tile) || tile.water || tile.hasTree ||
       tile.stones.length || tile.reserved || tile.ploughed || tile.crop) continue;
     habitat.set(gridKey(tile.gx, tile.gz), tile);
   }
@@ -96,4 +97,3 @@ export function randomTile(region, random, occupied = new Set(), near = null) {
   const pool = available.length ? available : candidates.length ? candidates : region.tiles;
   return pool[Math.floor(random() * pool.length)];
 }
-

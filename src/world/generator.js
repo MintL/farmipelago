@@ -1,9 +1,15 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from '../core/shared.js';
+import { GRASS_TOP, LAYER_DEPTH, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from '../core/shared.js';
 import { crops } from '../gameplay/catalog/crops.js';
 import { cargoDeckContains, createCargoPort } from '../gameplay/logistics/cargo-port.js';
 import { createForageSystem } from './forage/index.js';
-import { createWildlifeSystem } from './wildlife/index.js';
-import { BASE_ISLAND_LAYOUT, ISLAND_CONNECTION_PAIRS, NORTH_ISLAND_ID, STARTER_ISLAND_ID, WORKSHOP_YAW } from './config.js';
+import {
+  FARM_ISLAND_ID,
+  SETTLEMENT_ISLAND_ID,
+  STARTER_ISLAND_CONNECTIONS,
+  STARTER_ISLAND_LAYOUT,
+  WORKSHOP_YAW,
+  validateIslandConfiguration,
+} from './config.js';
 import { createOcclusionSystem, disposeObjectResources } from './occlusion.js';
 import {
   findCargoSite,
@@ -13,16 +19,25 @@ import {
   reserveVehicleSpawnGround,
   reserveWorkshopGround,
 } from './sites.js';
-import { createOrganicCells, createPerlin, environmentalAxis, environmentProfile, normalizeNoise, plateauHeight, scaleIslandLayout, seededRandom } from './islands/procedural.js';
+import { createOrganicCells, createPerlin, environmentalAxis, environmentProfile, normalizeNoise, scaleIslandLayout, seededRandom } from './islands/procedural.js';
 import { worldToIsland } from './islands/coordinates.js';
 import { createIslandConnections, createIslandRecords } from './islands/model.js';
-import { STATIC_LANTERN_LIGHT_RADIUS, addBridgeBetween, closestIslandGap, createStaticLanternLighting, reserveBridgeLandings } from './bridges.js';
-import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
+import {
+  STATIC_LANTERN_LIGHT_RADIUS,
+  addBridgeBetween,
+  bridgeDeckSpan,
+  closestIslandGap,
+  createStaticLanternLighting,
+  facingIslandGap,
+  reserveBridgeLandings,
+  resolveNorthernIslandPlacement,
+} from './bridges.js';
+import { WATER_DEPTH, addStarterCoastLake } from './water/system.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
 import { CROP_STAGE_SECONDS, GRASS_STAGE_SECONDS, TILE_YIELD_LITRES, WEED_CHANCE } from './fields/config.js';
 import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
+import { createSettlementVisual } from './settlement/visual.js';
 
-const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;
 const PROP_SPREAD = TILE * .64;
 const TREE_CHANCE_CAP = .22;
@@ -35,8 +50,10 @@ const SURFACE_TOP_LIFT = .002;
 const SURFACE_CELL_COUNT = Math.round(TILE / MODEL_VOXEL);
 const SURFACE_CELL_VARIATION = .1;
 const SURFACE_CELL_LEVELS = [-1, -.5, -.25, 0, 0, .25, .5, 1];
-const SNOW_COLOR = new THREE.Color(0xe8f0ed);
 const CONTACT_BED_HEIGHT = .008;
+const FARM_APPROACH_START_TILES = 12;
+const FARM_APPROACH_SECONDS = 6;
+const FARM_APPROACH_REDUCED_SECONDS = 2;
 const BARE_SOIL_COLOR = new THREE.Color(0x94795d);
 const PROP_DIRT_COLOR = new THREE.Color(0x82694f);
 const SOIL_STRATA_HEIGHT = .28;
@@ -44,7 +61,14 @@ const SOIL_STRATA_COLORS = [0x896754, 0x8f6b55, 0x83614e, 0x8b6751].map(color =>
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ease = value => value * value * (3 - 2 * value);
 
-export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff) >>> 0, attempt = 0, onChange = () => {}) {
+export function generateFarm(
+  scene,
+  physics,
+  seed = (Math.random() * 0xffffffff) >>> 0,
+  attempt = 0,
+  onChange = () => {},
+  options = {},
+) {
   const random = seededRandom(seed);
   const terrainNoise = createPerlin(seed ^ 0x9e3779b9);
   const moistureNoise = createPerlin(seed ^ 0x243f6a88);
@@ -71,6 +95,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const waterMotion = [];
   const waterfalls = [];
   const waterParticles = [];
+  const farmRevealObjects = [];
+  const bridgeRevealObjects = [];
   const bridgeLanternGlowMaterial = new THREE.MeshStandardMaterial({
     color: 0xffdfa0,
     emissive: 0xffa62e,
@@ -98,9 +124,11 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   let effectElapsed = 0;
   tallGrass.name = 'tall-grass';
   water.name = 'water';
+  water.userData.waterPatternOffset = { x: 0, z: 0 };
   scene.add(group);
   group.add(tallGrass);
   group.add(water);
+  farmRevealObjects.push(water);
 
   const emitSplash = (x, y, z, impact, material, countScale = 1, sizeScale = 1) => {
     const count = Math.max(2, Math.round((10 + Math.min(8, impact * 1.2)) * countScale));
@@ -131,12 +159,17 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const addTile = (gx, gz, topY, islandId, radial, baseY = topY) => {
     const x = gx * TILE;
     const z = gz * TILE;
+    const key = gridKey(gx, gz);
+    const existing = terrain.get(key);
+    if (existing && existing.islandId !== islandId) {
+      throw new Error(`Configured starter islands overlap at ${key}`);
+    }
     const dirtDepth = SOIL_DEPTH + Math.max(0, topY - baseY);
     const environment = {
       moisture: environmentalAxis(moistureNoise(gx * .18 + 17.3, gz * .18 - 8.1)),
       sun: environmentalAxis(sunNoise(gx * .16 - 31.7, gz * .16 + 22.4)),
     };
-    terrain.set(gridKey(gx, gz), {
+    terrain.set(key, {
       gx, gz, x, z, topY, baseY, islandId, radial, dirtDepth,
       environment, normalGrassColor: null, bareSoil: 0,
       surfaceBatch: null, surfaceInstance: -1,
@@ -307,8 +340,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     for (const placement of groundCoverPlacements) {
       const soilTolerant = placement.type === 'dryScrub' || placement.type === 'yellowGrass';
       if (placement.tile.bareSoil > .7 || (placement.tile.bareSoil > .42 && !soilTolerant)) continue;
-      if (!placementsByType.has(placement.type)) placementsByType.set(placement.type, []);
-      placementsByType.get(placement.type).push(placement);
+      const key = `${placement.tile.islandId}:${placement.type}`;
+      if (!placementsByType.has(key)) placementsByType.set(key, {
+        islandId: placement.tile.islandId,
+        type: placement.type,
+        placements: [],
+      });
+      placementsByType.get(key).placements.push(placement);
       const radius = placement.type === 'leafyBush' ? .28 : placement.type === 'dryScrub' ? .24 : .18;
       contactBedPlacements.push({
         tile: placement.tile,
@@ -320,11 +358,11 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
     const transform = new THREE.Object3D();
     const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
-    for (const [type, placements] of placementsByType) {
+    for (const { islandId, type, placements } of placementsByType.values()) {
       const design = groundCoverDesign(type);
       design.forEach((part, partIndex) => {
         const mesh = new THREE.InstancedMesh(geometry, materials[part.material], placements.length);
-        mesh.name = `ground-cover-${type}-${partIndex}`;
+        mesh.name = `ground-cover-${islandId}-${type}-${partIndex}`;
         mesh.castShadow = shadowCastingTypes.has(type);
         mesh.receiveShadow = false;
         placements.forEach((placement, index) => {
@@ -350,54 +388,59 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         mesh.instanceMatrix.needsUpdate = true;
         mesh.computeBoundingSphere();
         tallGrass.add(mesh);
+        if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(mesh);
       });
     }
   };
 
   const buildContactBeds = () => {
-    const pieceCount = contactBedPlacements.reduce((sum, placement) => sum + placement.pieces, 0);
-    if (!pieceCount) return;
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
-    const mesh = new THREE.InstancedMesh(geometry, material, pieceCount);
-    const transform = new THREE.Object3D();
-    const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
-    let instance = 0;
-    mesh.name = 'ground-contact-beds';
-    mesh.castShadow = false;
-    mesh.receiveShadow = true;
-    for (const placement of contactBedPlacements) {
-      const baseColor = (placement.tile.normalGrassColor || mats.grass.color).clone()
-        .lerp(BARE_SOIL_COLOR, placement.tile.bareSoil * .88);
-      for (let piece = 0; piece < placement.pieces; piece++) {
-        const angle = contactRandom() * Math.PI * 2;
-        const distance = placement.radius * (piece ? .18 + contactRandom() * .62 : contactRandom() * .22);
-        transform.position.set(
-          placement.x + Math.cos(angle) * distance,
-          placement.tile.topY + SURFACE_TOP_LIFT + CONTACT_BED_HEIGHT * .5,
-          placement.z + Math.sin(angle) * distance,
-        );
-        transform.rotation.set(0, Math.round(contactRandom() * 3) * Math.PI * .5, 0);
-        transform.scale.set(
-          placement.radius * (.7 + contactRandom() * .7),
-          CONTACT_BED_HEIGHT,
-          placement.radius * (.22 + contactRandom() * .2),
-        );
-        transform.updateMatrix();
-        mesh.setMatrixAt(instance, transform.matrix);
-        mesh.setColorAt(instance, baseColor.clone().multiplyScalar(.76 + contactRandom() * .09));
-        placement.tile.groundCover.push({ mesh, index: instance, hidden });
-        instance++;
+    for (const islandId of [FARM_ISLAND_ID, SETTLEMENT_ISLAND_ID]) {
+      const placements = contactBedPlacements.filter(placement => placement.tile.islandId === islandId);
+      const pieceCount = placements.reduce((sum, placement) => sum + placement.pieces, 0);
+      if (!pieceCount) continue;
+      const mesh = new THREE.InstancedMesh(geometry, material, pieceCount);
+      const transform = new THREE.Object3D();
+      const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+      let instance = 0;
+      mesh.name = `ground-contact-beds-${islandId}`;
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      for (const placement of placements) {
+        const baseColor = (placement.tile.normalGrassColor || mats.grass.color).clone()
+          .lerp(BARE_SOIL_COLOR, placement.tile.bareSoil * .88);
+        for (let piece = 0; piece < placement.pieces; piece++) {
+          const angle = contactRandom() * Math.PI * 2;
+          const distance = placement.radius * (piece ? .18 + contactRandom() * .62 : contactRandom() * .22);
+          transform.position.set(
+            placement.x + Math.cos(angle) * distance,
+            placement.tile.topY + SURFACE_TOP_LIFT + CONTACT_BED_HEIGHT * .5,
+            placement.z + Math.sin(angle) * distance,
+          );
+          transform.rotation.set(0, Math.round(contactRandom() * 3) * Math.PI * .5, 0);
+          transform.scale.set(
+            placement.radius * (.7 + contactRandom() * .7),
+            CONTACT_BED_HEIGHT,
+            placement.radius * (.22 + contactRandom() * .2),
+          );
+          transform.updateMatrix();
+          mesh.setMatrixAt(instance, transform.matrix);
+          mesh.setColorAt(instance, baseColor.clone().multiplyScalar(.76 + contactRandom() * .09));
+          placement.tile.groundCover.push({ mesh, index: instance, hidden });
+          instance++;
+        }
       }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor.needsUpdate = true;
+      mesh.computeBoundingBox();
+      mesh.computeBoundingSphere();
+      tallGrass.add(mesh);
+      if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(mesh);
     }
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingBox();
-    mesh.computeBoundingSphere();
-    tallGrass.add(mesh);
   };
 
-  const addLowerLayers = (cells, topY, radius) => {
+  const addLowerLayers = (cells, topY, radius, islandId) => {
     for (let layer = 1; layer <= 8; layer++) {
       const maxRadius = radius - layer * 0.34;
       if (maxRadius < 0.35) break;
@@ -407,6 +450,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         const wobble = terrainNoise(cell.gx * .22 + layer * 2.7, cell.gz * .22 - layer * 1.9) * (0.13 + layer * 0.018);
         if (cell.dist <= maxRadius + wobble) {
           lowerBlocks.push({
+            islandId,
             x: cell.gx * TILE,
             y,
             z: cell.gz * TILE,
@@ -452,34 +496,37 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       [TILE, 0, 0], [-TILE, 0, 0], [0, 0, TILE], [0, 0, -TILE],
       [0, -LAYER_DEPTH, 0],
     ].some(([dx, dy, dz]) => !occupied.has(lowerBlockKey(block.x + dx, block.y + dy, block.z + dz))));
-    for (const material of [mats.soil, mats.stone, mats.stoneDark]) {
-      const blocks = shellBlocks.filter(block => block.material === material);
-      if (!blocks.length) continue;
-      const renderedBlocks = material === mats.soil
-        ? blocks.flatMap(block => soilStrata(
-          block.x, block.z, block.y + block.height * .5,
-          block.height, block.width, block.depth,
-        ))
-        : blocks;
-      const mesh = new THREE.InstancedMesh(
-        geometry,
-        material === mats.soil ? soilStrataMaterial : material,
-        renderedBlocks.length,
-      );
-      mesh.name = 'lower-layers';
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      renderedBlocks.forEach((block, index) => {
-        transform.makeScale(block.width / TILE, block.height / LAYER_DEPTH, block.depth / TILE);
-        transform.setPosition(block.x, block.y, block.z);
-        mesh.setMatrixAt(index, transform);
-        if (material === mats.soil) mesh.setColorAt(index, soilStrataColor(block));
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.computeBoundingBox();
-      mesh.computeBoundingSphere();
-      group.add(mesh);
+    for (const islandId of [FARM_ISLAND_ID, SETTLEMENT_ISLAND_ID]) {
+      for (const material of [mats.soil, mats.stone, mats.stoneDark]) {
+        const blocks = shellBlocks.filter(block => block.islandId === islandId && block.material === material);
+        if (!blocks.length) continue;
+        const renderedBlocks = material === mats.soil
+          ? blocks.flatMap(block => soilStrata(
+            block.x, block.z, block.y + block.height * .5,
+            block.height, block.width, block.depth,
+          ))
+          : blocks;
+        const mesh = new THREE.InstancedMesh(
+          geometry,
+          material === mats.soil ? soilStrataMaterial : material,
+          renderedBlocks.length,
+        );
+        mesh.name = `lower-layers-${islandId}`;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        renderedBlocks.forEach((block, index) => {
+          transform.makeScale(block.width / TILE, block.height / LAYER_DEPTH, block.depth / TILE);
+          transform.setPosition(block.x, block.y, block.z);
+          mesh.setMatrixAt(index, transform);
+          if (material === mats.soil) mesh.setColorAt(index, soilStrataColor(block));
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.computeBoundingBox();
+        mesh.computeBoundingSphere();
+        group.add(mesh);
+        if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(mesh);
+      }
     }
   };
 
@@ -511,10 +558,6 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     return SURFACE_CELL_LEVELS[value & 7] * SURFACE_CELL_VARIATION;
   };
 
-  const plateauLevelFor = tile => Math.round((tile.topY - tile.baseY) / PLATEAU_BLOCK_HEIGHT);
-  const isSnowTile = tile => tile?.islandId === NORTH_ISLAND_ID && plateauLevelFor(tile) >= 2;
-  const isHighestNorthTerrace = tile => tile?.islandId === NORTH_ISLAND_ID && plateauLevelFor(tile) >= 3;
-
   const surfaceCellColor = (tile, corners, column, row) => {
     const u = (column + .5) / SURFACE_CELL_COUNT;
     const v = (row + .5) / SURFACE_CELL_COUNT;
@@ -524,9 +567,6 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const x = tile.x - TILE * .5 + (column + .5) * MODEL_VOXEL;
     const z = tile.z - TILE * .5 + (row + .5) * MODEL_VOXEL;
     const variation = surfaceCellVariationAt(x, z);
-    if (isSnowTile(tile)) {
-      return SNOW_COLOR.clone().offsetHSL(variation * .01, 0, variation * .025);
-    }
     const bareSoil = bareSoilAt(x, z, tile.islandId, tile.topY);
     const propDirt = propDirtAt(x, z, tile.islandId, tile.topY);
     const hsl = { h: 0, s: 0, l: 0 };
@@ -597,7 +637,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       tiles.forEach((tile, index) => {
         matrix.makeTranslation(tile.x, tile.topY - GRASS_TOP * .5, tile.z);
         surface.setMatrixAt(index, matrix);
-        surface.setColorAt(index, isSnowTile(tile) ? SNOW_COLOR : tile.normalGrassColor || mats.grass.color);
+        surface.setColorAt(index, tile.normalGrassColor || mats.grass.color);
         tile.surfaceBatch = surface;
         tile.surfaceInstance = index;
 
@@ -657,33 +697,38 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       topGeometry.computeBoundingBox();
       topGeometry.computeBoundingSphere();
       group.add(surface, soil, top);
+      if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(surface, soil, top);
     }
 
-    const edgeCaps = new THREE.InstancedMesh(edgeCapGeometry, edgeCapMaterial, exposedEdges.length);
-    const edgeCapTransform = new THREE.Matrix4();
-    edgeCaps.name = 'terrain-grass-edge-caps';
-    edgeCaps.castShadow = false;
-    edgeCaps.receiveShadow = true;
-    exposedEdges.forEach(({ tile, dx, dz }, index) => {
-      edgeCapTransform.makeScale(
-        dx ? GRASS_EDGE_CAP_DEPTH : TILE,
-        1,
-        dz ? GRASS_EDGE_CAP_DEPTH : TILE,
-      );
-      edgeCapTransform.setPosition(
-        tile.x + dx * (TILE * .5 - GRASS_EDGE_CAP_DEPTH * .5),
-        tile.topY - GRASS_EDGE_CAP_RECESS - GRASS_EDGE_CAP_HEIGHT * .5,
-        tile.z + dz * (TILE * .5 - GRASS_EDGE_CAP_DEPTH * .5),
-      );
-      edgeCaps.setMatrixAt(index, edgeCapTransform);
-      const edgeColor = isSnowTile(tile) ? SNOW_COLOR : tile.normalGrassColor || mats.grass.color;
-      edgeCaps.setColorAt(index, edgeColor.clone().multiplyScalar(isSnowTile(tile) ? .92 : .84));
-    });
-    edgeCaps.instanceMatrix.needsUpdate = true;
-    edgeCaps.instanceColor.needsUpdate = true;
-    edgeCaps.computeBoundingBox();
-    edgeCaps.computeBoundingSphere();
-    group.add(edgeCaps);
+    for (const islandId of [FARM_ISLAND_ID, SETTLEMENT_ISLAND_ID]) {
+      const islandEdges = exposedEdges.filter(edge => edge.tile.islandId === islandId);
+      const edgeCaps = new THREE.InstancedMesh(edgeCapGeometry, edgeCapMaterial, islandEdges.length);
+      const edgeCapTransform = new THREE.Matrix4();
+      edgeCaps.name = `terrain-grass-edge-caps-${islandId}`;
+      edgeCaps.castShadow = false;
+      edgeCaps.receiveShadow = true;
+      islandEdges.forEach(({ tile, dx, dz }, index) => {
+        edgeCapTransform.makeScale(
+          dx ? GRASS_EDGE_CAP_DEPTH : TILE,
+          1,
+          dz ? GRASS_EDGE_CAP_DEPTH : TILE,
+        );
+        edgeCapTransform.setPosition(
+          tile.x + dx * (TILE * .5 - GRASS_EDGE_CAP_DEPTH * .5),
+          tile.topY - GRASS_EDGE_CAP_RECESS - GRASS_EDGE_CAP_HEIGHT * .5,
+          tile.z + dz * (TILE * .5 - GRASS_EDGE_CAP_DEPTH * .5),
+        );
+        edgeCaps.setMatrixAt(index, edgeCapTransform);
+        const edgeColor = tile.normalGrassColor || mats.grass.color;
+        edgeCaps.setColorAt(index, edgeColor.clone().multiplyScalar(.84));
+      });
+      edgeCaps.instanceMatrix.needsUpdate = true;
+      edgeCaps.instanceColor.needsUpdate = true;
+      edgeCaps.computeBoundingBox();
+      edgeCaps.computeBoundingSphere();
+      group.add(edgeCaps);
+      if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(edgeCaps);
+    }
   };
 
   const addTree = (x, y, z, silhouette, large, profile) => {
@@ -730,6 +775,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     group.add(tree);
     const tile = tileAt(x, z, terrain);
     if (tile) {
+      if (tile.islandId === FARM_ISLAND_ID) farmRevealObjects.push(tree);
       tile.hasTree = true;
       contactBedPlacements.push({ tile, x, z, radius: design.radius * scale * .82, pieces: 5 });
     }
@@ -738,7 +784,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       phase: random() * Math.PI * 2,
       strength: large ? .052 : .065,
     });
-    obstacles.push({ x, y, z, radius: design.radius * scale, height: trunkHeight });
+    obstacles.push({ islandId: tile?.islandId, x, y, z, radius: design.radius * scale, height: trunkHeight });
   };
 
   const addStone = (x, y, z, scale) => {
@@ -756,6 +802,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     group.add(stone);
     const tile = tileAt(x, z, terrain);
     if (tile) {
+      if (tile.islandId === FARM_ISLAND_ID) farmRevealObjects.push(stone);
       tile.stones.push(stone);
       contactBedPlacements.push({ tile, x, z, radius: .22 * scale, pieces: 3 });
       addPropDirt(tile, x, z, scale);
@@ -775,6 +822,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     workshop.position.set(x, y, z);
     workshop.rotation.y = yaw;
     group.add(workshop);
+    farmRevealObjects.push(workshop);
     workshopArea = { x, z, width, depth, yaw, spawnClearanceWidth: width + 1.6, spawnClearanceDepth: depth + 1.7 };
 
     const localToWorld = (localX, localZ) => ({
@@ -784,6 +832,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     const addStaticBox = (boxWidth, boxHeight, boxDepth, localX, localZ, baseY = 0) => {
       const position = localToWorld(localX, localZ);
       obstacles.push({
+        islandId: FARM_ISLAND_ID,
         shape: 'box', x: position.x, y: y + baseY, z: position.z,
         width: boxWidth, height: boxHeight, depth: boxDepth, yaw,
       });
@@ -984,62 +1033,125 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   };
 
-  const islandLayout = BASE_ISLAND_LAYOUT.map(scaleIslandLayout);
-  const islands = islandLayout.map((island, id) => ({ ...island, id }));
-  const islandConnections = ISLAND_CONNECTION_PAIRS;
+  validateIslandConfiguration();
+  const attachmentComplete = Boolean(options.attachmentComplete);
+  const farmApproachSeconds = options.reducedMotion ? FARM_APPROACH_REDUCED_SECONDS : FARM_APPROACH_SECONDS;
+  const islands = STARTER_ISLAND_LAYOUT.map(source => ({
+    ...scaleIslandLayout(source),
+    capabilities: { ...source.capabilities },
+    status: source.role === 'farm' && !attachmentComplete ? 'approaching' : 'attached',
+  }));
+  const islandById = new Map(islands.map(island => [island.id, island]));
+  const islandConnections = STARTER_ISLAND_CONNECTIONS.map(connection => ({
+    ...connection,
+    status: attachmentComplete ? 'attached' : 'approaching',
+  }));
   let workshopSite;
   let cargoSite;
-  let watercourseCount = 0;
-  const islandGeneration = [];
-
-  islands.forEach((island, id) => {
+  islands.forEach(island => {
     island.r += (random() - .5) * 0.22;
-    const cells = createOrganicCells(island.cx, island.cz, island.r, seed + id * 911);
-    const angle = random() * Math.PI * 2;
-    const tileHeight = cell => id === STARTER_ISLAND_ID
-      ? 0
-      : plateauHeight(cell, island, angle);
-    cells.forEach(cell => addTile(cell.gx, cell.gz, island.h + tileHeight(cell), id, cell.dist / island.r, island.h));
-    addLowerLayers(cells, island.h, island.r);
-    const waterTiles = id === STARTER_ISLAND_ID
+  });
+  const localGeneration = islands.map(island => ({
+    island,
+    cells: createOrganicCells(0, 0, island.r, seed + island.legacyId * 911),
+  }));
+  const farmIsland = islandById.get(FARM_ISLAND_ID);
+  const settlementIsland = islandById.get(SETTLEMENT_ISLAND_ID);
+  const farmLocalCells = localGeneration.find(entry => entry.island.id === farmIsland.id).cells;
+  const settlementLocalCells = localGeneration.find(entry => entry.island.id === settlementIsland.id).cells;
+  const settlementPlacement = resolveNorthernIslandPlacement(
+    farmIsland,
+    settlementIsland,
+    farmLocalCells,
+    settlementLocalCells,
+    settlementIsland.placement,
+  );
+  settlementIsland.cx = settlementPlacement.cx;
+  settlementIsland.cz = settlementPlacement.cz;
+  const islandGeneration = localGeneration.map(({ island, cells: localCells }) => ({
+    island,
+    cells: localCells.map(cell => ({
+      ...cell,
+      gx: cell.gx + island.cx,
+      gz: cell.gz + island.cz,
+    })),
+  }));
+
+  islandGeneration.forEach(generation => {
+    const { island, cells } = generation;
+    cells.forEach(cell => addTile(cell.gx, cell.gz, island.h, island.id, cell.dist / island.r, island.h));
+    addLowerLayers(cells, island.h, island.r, island.id);
+    const waterTiles = island.role === 'farm'
       ? addStarterCoastLake(
         cells, island, terrain, water, waterMotion, waterfalls, seededRandom(seed ^ 0x6a09e667)
       )
-      : id > 1 && (id === 2 || id === 4 || random() < .25)
-        ? addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, random, true)
-        : new Set();
-    if (id !== STARTER_ISLAND_ID && waterTiles.size) watercourseCount++;
+      : new Set();
     finalizeEnvironment(cells, waterTiles);
-    islandGeneration.push({ island, id, cells, waterTiles });
+    generation.waterTiles = waterTiles;
   });
-
-  const hubIsland = islands[STARTER_ISLAND_ID];
-  workshopSite = findWorkshopSite(terrain, hubIsland);
-  cargoSite = findCargoSite(terrain, hubIsland, workshopSite);
+  workshopSite = findWorkshopSite(terrain, farmIsland);
+  cargoSite = findCargoSite(terrain, settlementIsland);
+  if (!cargoSite) {
+    scene.remove(group);
+    disposeObjectResources(group);
+    if (attempt >= 20) throw new Error('Unable to generate a clear cargo deck site on the Settlement Island');
+    return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange, options);
+  }
   if (workshopSite) reserveWorkshopGround(terrain, workshopSite);
-  reserveCargoApproach(terrain, cargoSite, hubIsland.id);
-  const start = terrain.get(gridKey(hubIsland.cx, hubIsland.cz)) || terrain.values().next().value;
-  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, workshopSite);
-  reserveVehicleSpawnGround(terrain, vehicleSpawnPositions);
+  reserveCargoApproach(terrain, cargoSite, settlementIsland.id);
 
-  const bridgeGaps = islandConnections
-    .map(([fromId, toId]) => closestIslandGap(terrain, fromId, toId))
+  const terrainGaps = islandConnections
+    .map(connection => closestIslandGap(terrain, connection.fromId, connection.toId))
     .filter(Boolean);
+  if (terrainGaps.length !== islandConnections.length || terrainGaps.some(gap => gap.distance <= TILE)) {
+    throw new Error('Permanent starter islands require a clear air gap wider than one terrain tile');
+  }
+  const bridgeGaps = islandConnections.map(connection => facingIslandGap(
+    terrain,
+    islandById.get(connection.fromId),
+    islandById.get(connection.toId),
+  )).filter(Boolean);
+  if (bridgeGaps.length !== islandConnections.length || bridgeGaps.some(gap =>
+    Math.abs(bridgeDeckSpan(gap) / TILE - settlementIsland.placement.bridgeSpanTiles) >
+      settlementIsland.placement.bridgeSpanToleranceTiles)) {
+    throw new Error('Permanent starter bridge must remain within its configured two-tile span tolerance');
+  }
+  const starterBridgeGap = bridgeGaps[0];
+  if (starterBridgeGap.from.islandId !== farmIsland.id || starterBridgeGap.to.islandId !== settlementIsland.id ||
+    starterBridgeGap.from.gz >= farmIsland.cz || starterBridgeGap.to.gz <= settlementIsland.cz) {
+    throw new Error('Permanent bridge endpoints must use the Farm north shore and Settlement south shore');
+  }
   bridgeGaps.forEach(gap => reserveBridgeLandings(terrain, gap));
+  const start = terrain.get(gridKey(settlementIsland.cx, settlementIsland.cz));
+  if (!start) throw new Error('Settlement Island requires a solid center spawn tile');
+  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, settlementIsland.id);
+  reserveVehicleSpawnGround(terrain, vehicleSpawnPositions);
+  const settlementBridgeGap = bridgeGaps.find(gap => gap.from.islandId === settlementIsland.id || gap.to.islandId === settlementIsland.id);
+  const settlementBridgeLanding = settlementBridgeGap?.from.islandId === settlementIsland.id
+    ? settlementBridgeGap.from
+    : settlementBridgeGap?.to;
+  if (!settlementBridgeLanding) throw new Error('Settlement bridge requires a valid landing');
+  const settlement = createSettlementVisual({
+    island: settlementIsland,
+    terrain,
+    cargoSite,
+    bridgeLanding: settlementBridgeLanding,
+  });
   const cargoGroundTile = cargoSite
     ? terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)))
     : null;
+  settlement.pathTiles.forEach(tile => addWearPatch(tile, TILE * .82, .82));
   buildBareSoilWear(workshopSite, cargoGroundTile, bridgeGaps, islands);
 
-  islandGeneration.forEach(({ island, id, cells, waterTiles }) => {
+  islandGeneration.forEach(({ island, cells, waterTiles }) => {
     const decorationCells = cells.filter(candidate => {
-      const starterField = id === STARTER_ISLAND_ID && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
+      const starterField = island.role === 'farm' && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
       const tile = terrain.get(gridKey(candidate.gx, candidate.gz));
       return candidate.dist > 1.1 && candidate.dist < island.r - .15 && !starterField &&
         !waterTiles.has(gridKey(candidate.gx, candidate.gz)) &&
-        !tile?.reserved && !tile?.noDecoration && !isHighestNorthTerrace(tile);
+        !tile?.reserved && !tile?.noDecoration;
     });
-    const grassPatches = chooseGrassPatches(decorationCells, random, id === STARTER_ISLAND_ID ? 1 : 2);
+    const grassPatches = chooseGrassPatches(decorationCells, random, island.role === 'farm' ? 1 : 2);
     for (const cell of decorationCells) {
       const tile = terrain.get(gridKey(cell.gx, cell.gz));
       const profile = environmentProfile(tile.environment);
@@ -1056,9 +1168,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         .001,
         .25,
       );
-      const starterDensityScale = id === STARTER_ISLAND_ID ? .16 : id === 1 ? .45 : 1;
+      const starterDensityScale = island.role === 'farm' ? .16 : .34;
       const effectiveTreeChance = Math.min(
-        treeChance * starterDensityScale + (id === STARTER_ISLAND_ID ? .006 : 0),
+        treeChance * starterDensityScale + (island.role === 'farm' ? .006 : 0),
         TREE_CHANCE_CAP,
       );
       const effectiveRockChance = Math.min(rockChance, ROCK_CHANCE_CAP);
@@ -1068,7 +1180,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         .78,
       );
       const effectiveGroundChance = Math.min(
-        groundChance * (id === STARTER_ISLAND_ID ? .70 : 1),
+        groundChance * (island.role === 'farm' ? .70 : .82),
         GROUND_COVER_CHANCE_CAP,
       );
       const clusterChance = THREE.MathUtils.clamp(
@@ -1081,7 +1193,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         const x = cell.gx * TILE + (random() - .5) * PROP_SPREAD;
         const z = cell.gz * TILE + (random() - .5) * PROP_SPREAD;
         const y = tile?.topY ?? island.h;
-        const nearWorkshop = workshopSite && id === STARTER_ISLAND_ID &&
+        const nearWorkshop = workshopSite && island.role === 'farm' &&
           Math.hypot(x - workshopSite.x, z - workshopSite.z) < WORKSHOP_TREE_CLEARANCE;
         let blockingDecoration = false;
         if (!nearWorkshop && random() < effectiveTreeChance) {
@@ -1104,18 +1216,13 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   });
 
-  if (!cargoSite) {
-    scene.remove(group);
-    disposeObjectResources(group);
-    if (attempt >= 20) throw new Error('Unable to generate a clear west-side cargo deck site on the starter hub');
-    return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange);
-  }
   const cargoAnchor = terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)));
   if (!cargoAnchor || Math.abs(cargoAnchor.topY - cargoAnchor.baseY) > .01) {
     throw new Error('Cargo deck must be anchored on the first floor');
   }
-  if (cargoAnchor.gx >= hubIsland.cx || cargoSite.outward.x !== -1 || cargoSite.outward.z !== 0) {
-    throw new Error('Cargo deck must stay on the west side of the starter hub island');
+  if (cargoAnchor.islandId !== settlementIsland.id || cargoAnchor.gx <= settlementIsland.cx ||
+    cargoSite.outward.x !== 1 || cargoSite.outward.z !== 0) {
+    throw new Error('Cargo deck must stay on the Settlement Island receiving edge');
   }
   const terrainOverlap = [...terrain.values()].find(tile =>
     cargoDeckContains(cargoSite, tile.x, tile.z, TILE * .72) && tile.topY > cargoSite.y + .01
@@ -1125,6 +1232,10 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   addLowerLayerInstances();
 
   if (workshopSite) addWorkshop(workshopSite.x, workshopSite.topY, workshopSite.z);
+  group.add(settlement.group);
+  obstacles.push(...settlement.colliders);
+  staticLanternPositions.push(...settlement.lanternPositions);
+  staticLightSurfaceQuads.push(...settlement.lightSurfaceQuads);
   const cargoPort = createCargoPort(cargoSite, seed);
   group.add(cargoPort.group);
   cargoPort.lanternPositions.forEach(position => {
@@ -1133,12 +1244,15 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   cargoPort.lightSurfaceQuads.forEach(quad => {
     staticLightSurfaceQuads.push(quad.map(position => cargoPort.group.localToWorld(position.clone())));
   });
-  obstacles.push(...cargoPort.colliders);
+  obstacles.push(...cargoPort.colliders.map(collider => ({ ...collider, islandId: settlementIsland.id })));
 
-  for (const [fromId, toId] of islandConnections) {
-    addBridgeBetween(
-      islands[fromId],
-      islands[toId],
+  for (const connection of islandConnections) {
+    const fromIsland = islandById.get(connection.fromId);
+    const toIsland = islandById.get(connection.toId);
+    const gap = bridgeGaps.find(candidate => candidate.from.islandId === fromIsland.id && candidate.to.islandId === toIsland.id);
+    const bridge = addBridgeBetween(
+      fromIsland,
+      toIsland,
       terrain,
       group,
       bridgeBlocks,
@@ -1146,13 +1260,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       bridgeLanternGlowMeshes,
       staticLanternPositions,
       staticLightSurfaceQuads,
+      gap,
     );
-  }
-
-  if (!watercourseCount && attempt < 7) {
-    scene.remove(group);
-    disposeObjectResources(group);
-    return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange);
+    if (bridge) bridgeRevealObjects.push(bridge);
   }
 
   addTerrainInstances();
@@ -1212,8 +1322,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     cropInstances.finish();
     cropInstancesDirty = false;
   };
+  const islandAllows = (tile, capability) => {
+    const island = islandById.get(tile?.islandId);
+    return island?.status === 'attached' && Boolean(island.capabilities?.[capability]);
+  };
   const ploughTile = (tile, heading = 0, showEffect = true) => {
-    if (!tile || tile.ploughed || tile.water || tile.hasTree || tile.reserved) return false;
+    if (!tile || !islandAllows(tile, 'farming') || tile.ploughed || tile.water || tile.hasTree || tile.reserved) return false;
     tile.ploughed = true;
     tile.surfaceBatch.setColorAt(tile.surfaceInstance, mats.ploughed.color);
     tile.surfaceBatch.instanceColor.needsUpdate = true;
@@ -1231,18 +1345,91 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     return true;
   };
 
-  const forage = createForageSystem(terrain, group, physics, onChange);
-  const wildlife = createWildlifeSystem(terrain, group, seed);
-  const occlusion = createOcclusionSystem(group, cargoPort.occluders);
-  physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
+  const forage = createForageSystem(terrain, group, physics, onChange, tile => islandAllows(tile, 'farming'));
+  const occlusion = createOcclusionSystem(group, [...cargoPort.occluders, ...settlement.occluders]);
+  const farmArrivalVisual = new THREE.Group();
+  farmArrivalVisual.name = 'farm-island-arrival';
+  const farmArrivalEntries = farmRevealObjects.map(object => ({ object, parent: object.parent }));
+  farmArrivalVisual.position.z = FARM_APPROACH_START_TILES * TILE;
+  group.add(farmArrivalVisual);
+  let arrivalComplete = attachmentComplete;
+  let arrivalElapsed = 0;
+  let arrivalLanternAmount = 0;
+  const assertArrivalVisualOwnership = attached => {
+    const waterEntry = farmArrivalEntries.find(entry => entry.object === water);
+    const patternOffset = water.userData.waterPatternOffset;
+    if (!waterEntry || water.position.lengthSq() > .000001) {
+      throw new Error('Farm water requires a zero-offset arrival-owned visual root');
+    }
+    if (Math.abs(patternOffset.x - (attached ? 0 : farmArrivalVisual.position.x)) > .000001 ||
+      Math.abs(patternOffset.z - (attached ? 0 : farmArrivalVisual.position.z)) > .000001) {
+      throw new Error('Farm water pattern offset must match its arrival transform');
+    }
+    if (!attached && (farmArrivalEntries.some(entry => entry.object.parent !== farmArrivalVisual) ||
+      farmArrivalVisual.getObjectByName('combine-harvester'))) {
+      throw new Error('Approaching Farm visuals must be exclusively arrival-owned and vehicle-free');
+    }
+    if (attached && farmArrivalEntries.some(entry => entry.object.parent !== entry.parent)) {
+      throw new Error('Attached Farm visuals must return to their authored world roots');
+    }
+  };
+  const setAttachedVisuals = attached => {
+    farmArrivalEntries.forEach(entry => {
+      const parent = attached ? entry.parent : farmArrivalVisual;
+      if (entry.object.parent !== parent) parent.add(entry.object);
+      entry.object.visible = true;
+    });
+    bridgeRevealObjects.forEach(object => { object.visible = attached; });
+    farmArrivalVisual.visible = !attached;
+    water.userData.waterPatternOffset.x = attached ? 0 : farmArrivalVisual.position.x;
+    water.userData.waterPatternOffset.z = attached ? 0 : farmArrivalVisual.position.z;
+    assertArrivalVisualOwnership(attached);
+  };
+  const rebuildArrivalColliders = attached => {
+    const activeTerrain = attached
+      ? terrain
+      : new Map([...terrain].filter(([, tile]) => tile.islandId === SETTLEMENT_ISLAND_ID));
+    const activeObstacles = attached
+      ? obstacles
+      : obstacles.filter(obstacle => obstacle.islandId === SETTLEMENT_ISLAND_ID);
+    const activeLowerBlocks = attached
+      ? lowerBlocks
+      : lowerBlocks.filter(block => block.islandId === SETTLEMENT_ISLAND_ID);
+    physics.rebuildStaticColliders(
+      activeTerrain,
+      activeObstacles,
+      activeLowerBlocks,
+      attached ? bridgeBlocks : [],
+    );
+  };
+  setAttachedVisuals(arrivalComplete);
+  if (arrivalComplete) {
+    farmArrivalVisual.removeFromParent();
+    farmArrivalVisual.clear();
+  }
+  rebuildArrivalColliders(arrivalComplete);
   const islandRecords = createIslandRecords(islands, terrain, seed);
   const connectionRecords = createIslandConnections(islandConnections, bridgeGaps, islandRecords);
-  const starterIsland = islandRecords.find(island => island.legacyId === STARTER_ISLAND_ID);
+  const spawnIsland = islandRecords.find(island => island.id === SETTLEMENT_ISLAND_ID);
   const vehicleSpawnPoints = Object.fromEntries(Object.entries(vehicleSpawnPositions).map(([id, position]) => [id, {
-    islandId: starterIsland.id,
-    position: worldToIsland(starterIsland.transform, position),
+    islandId: spawnIsland.id,
+    position: worldToIsland(spawnIsland.transform, position),
     heading: 0,
   }]));
+  const completeArrival = () => {
+    if (arrivalComplete) return;
+    arrivalComplete = true;
+    farmIsland.status = 'attached';
+    islandConnections.forEach(connection => { connection.status = 'attached'; });
+    islandRecords.find(island => island.id === FARM_ISLAND_ID).status = 'attached';
+    connectionRecords.forEach(connection => { connection.status = 'attached'; });
+    setAttachedVisuals(true);
+    farmArrivalVisual.removeFromParent();
+    farmArrivalVisual.clear();
+    rebuildArrivalColliders(true);
+    staticLanternLighting.setAmount(arrivalLanternAmount);
+    onChange();
+  };
   const bridgeLanternGlowMaterials = [...new Set(bridgeLanternGlowMeshes.map(mesh => mesh.material))];
   return {
     group,
@@ -1253,12 +1440,38 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     seed,
     spawn: vehicleSpawnPositions.tractor,
     vehicleSpawnPoints,
+    arrivalState() {
+      const bridgeGap = bridgeGaps[0];
+      return {
+        complete: arrivalComplete,
+        elapsed: arrivalElapsed,
+        duration: farmApproachSeconds,
+        progress: arrivalComplete ? 1 : THREE.MathUtils.clamp(arrivalElapsed / farmApproachSeconds, 0, 1),
+        farmCenter: {
+          x: farmIsland.cx * TILE,
+          y: farmIsland.h,
+          z: farmIsland.cz * TILE + (arrivalComplete ? 0 : farmArrivalVisual.position.z),
+        },
+        settlementCenter: {
+          x: settlementIsland.cx * TILE,
+          y: settlementIsland.h,
+          z: settlementIsland.cz * TILE,
+        },
+        bridgeCenter: {
+          x: (bridgeGap.from.x + bridgeGap.to.x) * .5,
+          y: (bridgeGap.from.topY + bridgeGap.to.topY) * .5,
+          z: (bridgeGap.from.z + bridgeGap.to.z) * .5,
+        },
+      };
+    },
     setNightAmount(amount, lanternAmount = amount) {
       setWorkshopNightAmount(lanternAmount);
+      settlement.setNightAmount(lanternAmount);
       cargoPort.setNightAmount(amount, lanternAmount);
       const bridgeLanternAmount = THREE.MathUtils.clamp(Number(lanternAmount) || 0, 0, 1);
+      arrivalLanternAmount = bridgeLanternAmount;
       bridgeLanternGlowMaterials.forEach(material => { material.emissiveIntensity = .25 + bridgeLanternAmount * 2.75; });
-      staticLanternLighting.setAmount(bridgeLanternAmount);
+      staticLanternLighting.setAmount(arrivalComplete ? bridgeLanternAmount : 0);
     },
     dispose() {
       forage.dispose();
@@ -1268,6 +1481,14 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     animate(elapsed, delta = 0, isWildlifeBlockedAt = () => false) {
       let persistentChange = false;
+      if (!arrivalComplete) {
+        arrivalElapsed = Math.min(farmApproachSeconds, arrivalElapsed + delta);
+        const progress = THREE.MathUtils.smoothstep(arrivalElapsed / farmApproachSeconds, 0, 1);
+        farmArrivalVisual.position.z = THREE.MathUtils.lerp(FARM_APPROACH_START_TILES * TILE, 0, progress);
+        water.userData.waterPatternOffset.x = farmArrivalVisual.position.x;
+        water.userData.waterPatternOffset.z = farmArrivalVisual.position.z;
+        if (arrivalElapsed >= farmApproachSeconds) completeArrival();
+      }
       waterElapsed = elapsed;
       effectElapsed = elapsed;
       mats.water.uniforms.time.value = elapsed;
@@ -1331,7 +1552,6 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
         fieldEffects.animate(elapsed);
       }
       forage.animate();
-      wildlife.animate(elapsed, delta, isWildlifeBlockedAt);
       if (persistentChange) onChange();
     },
     updateOcclusion(cameraPosition, vehicleState, delta) {
@@ -1358,12 +1578,12 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       const gx = Math.floor(x / TILE + .5);
       const gz = Math.floor(z / TILE + .5);
       const center = terrain.get(gridKey(gx, gz));
-      if (!center || center.water) return null;
+      if (!center || center.water || !islandAllows(center, 'construction')) return null;
       const span = Math.max(0, Math.ceil(radius - .5));
       for (let dx = -span; dx <= span; dx++) {
         for (let dz = -span; dz <= span; dz++) {
           const tile = terrain.get(gridKey(gx + dx, gz + dz));
-          if (!tile || tile.water || tile.hasTree || tile.reserved || Math.abs(tile.topY - center.topY) > .01) return null;
+          if (!tile || !islandAllows(tile, 'construction') || tile.water || tile.hasTree || tile.reserved || Math.abs(tile.topY - center.topY) > .01) return null;
         }
       }
       if (workshopArea) {
@@ -1399,7 +1619,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     seedAt(x, z, levelY, elapsed, cropId = 'corn') {
       const tile = tileAtLevel(x, z, levelY, terrain);
-      if (!tile || !tile.ploughed || tile.crop || !crops[cropId]) return false;
+      if (!tile || !islandAllows(tile, 'farming') || !tile.ploughed || tile.crop || !crops[cropId]) return false;
       tile.crop = { cropId, stage: 1, stageStarted: elapsed, animationStarted: elapsed, weeds: false };
       plantedCount++;
       growingCrops.add(tile);
@@ -1409,7 +1629,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     sprayAt(x, z, levelY) {
       const tile = tileAtLevel(x, z, levelY, terrain);
-      if (!tile?.crop?.weeds) return false;
+      if (!islandAllows(tile, 'farming') || !tile?.crop?.weeds) return false;
       tile.crop.weeds = false;
       weedCount--;
       if (!reducedMotion) fieldEffects.weed(tile, effectElapsed);
@@ -1419,7 +1639,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     mowAt(x, z, levelY, elapsed) {
       const tile = tileAtLevel(x, z, levelY, terrain);
-      if (tile?.crop?.cropId !== 'grass' || tile.crop.stage !== 4 || forage.hasForage(tile)) return 0;
+      if (!islandAllows(tile, 'farming') || tile?.crop?.cropId !== 'grass' || tile.crop.stage !== 4 || forage.hasForage(tile)) return 0;
       tile.crop.stage = 1;
       tile.crop.stageStarted = elapsed;
       tile.crop.animationStarted = elapsed;
@@ -1454,7 +1674,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     harvestAt(x, z, levelY, acceptedCropId = null) {
       const tile = tileAtLevel(x, z, levelY, terrain);
-      if (tile?.crop?.stage !== 4 || tile.crop.cropId === 'grass') return false;
+      if (!islandAllows(tile, 'farming') || tile?.crop?.stage !== 4 || tile.crop.cropId === 'grass') return false;
       const cropId = tile.crop.cropId;
       if (acceptedCropId && cropId !== acceptedCropId) return false;
       if (tile.crop.weeds) weedCount = Math.max(0, weedCount - 1);
@@ -1490,7 +1710,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
       for (const savedTile of savedState.tiles) {
         if (typeof savedTile?.key !== 'string' || restoredKeys.has(savedTile.key)) continue;
         const tile = terrain.get(savedTile.key);
-        if (!tile || tile.water || tile.hasTree || tile.reserved || isBlockedAt(tile.x, tile.z)) continue;
+        if (!tile || !islandAllows(tile, 'farming') || tile.water || tile.hasTree || tile.reserved || isBlockedAt(tile.x, tile.z)) continue;
         restoredKeys.add(savedTile.key);
         if (savedTile.ploughed || savedTile.crop) ploughTile(tile, 0, false);
         const savedCrop = savedTile.crop;
@@ -1527,7 +1747,7 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     },
     splashAt(x, z, impact) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
-      if (!tile?.water) return false;
+      if (!tile?.water || islandById.get(tile.islandId)?.status !== 'attached') return false;
       emitSplash(x, tile.topY + WATER_DEPTH, z, impact, mats.waterSplash);
       return true;
     },

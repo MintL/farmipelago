@@ -1,5 +1,6 @@
 import { LEVEL_HEIGHT, TILE, THREE, gridKey } from '../../core/shared.js';
-import { CARDINAL_STEPS, MIN_REINDEER_ISLAND_TILES, MIN_REINDEER_REGION_TILES, REINDEER_PER_QUALIFYING_ISLAND, STARTER_ISLAND_ID } from './config.js';
+import { FARM_ISLAND_ID } from '../config.js';
+import { CARDINAL_STEPS, MIN_REINDEER_ISLAND_TILES, MIN_REINDEER_REGION_TILES, REINDEER_PER_QUALIFYING_ISLAND } from './config.js';
 import { clearLandRegions, forestRegions, isSnowTile, largestRegion, randomTile, seededRandom, snowRegions } from './habitat.js';
 import { createFoxVisual, createReindeerVisual, jumpMotion } from './visuals.js';
 
@@ -12,7 +13,7 @@ export function createWildlifeSystem(terrain, parent, seed) {
   const snowyRegions = snowRegions(terrain);
   const islandSizes = new Map();
   for (const tile of terrain.values()) {
-    if (!tile.water && tile.islandId !== STARTER_ISLAND_ID) {
+    if (!tile.water && tile.islandId !== FARM_ISLAND_ID) {
       islandSizes.set(tile.islandId, (islandSizes.get(tile.islandId) || 0) + 1);
     }
   }

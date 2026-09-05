@@ -23,6 +23,12 @@ const fpsSampleInterval = 500;
 const poseCheckpointInterval = 2;
 const vehicleSwitchSeconds = .6;
 const cameraRotationSeconds = .22;
+const openingEstablishSeconds = 1.4;
+const openingRevealSeconds = 3.6;
+const openingCameraReturnSeconds = 2.4;
+const openingReducedEstablishSeconds = .45;
+const openingReducedRevealSeconds = 1.1;
+const openingCameraReducedReturnSeconds = 1;
 const baseDriveCameraFov = 38;
 const defaultDriveCameraFov = 28;
 const driveCameraFovs = [38, 30, 28, 24];
@@ -119,6 +125,7 @@ let visualDriveAmount = 0;
 let visualSteer = 0;
 let lastTrailerGrainTrail = -Infinity;
 let milestoneCinematic = null;
+let openingCinematic = null;
 const buildRaycaster = new THREE.Raycaster();
 const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -259,7 +266,7 @@ function setDriveCameraPreset(nextFov) {
   const fov = Number(nextFov);
   if (!driveCameraFovs.includes(fov)) return false;
   driveCameraFov = fov;
-  if (viewMode === 'drive' && !milestoneCinematic) {
+  if (viewMode === 'drive' && !openingCinematic && !milestoneCinematic) {
     applyDriveCameraProjection();
     updateDriveCamera(activeVehicleState(), 0, true);
     renderRequested = true;
@@ -268,6 +275,7 @@ function setDriveCameraPreset(nextFov) {
 }
 
 function currentEnvironmentFocus() {
+  if (openingCinematic) return openingCinematic.target;
   if (milestoneCinematic) return milestoneCinematic.target;
   return viewMode === 'build' ? mapCameraTarget : driveCameraTarget;
 }
@@ -287,7 +295,7 @@ function setTimeOfDay(nextPhase) {
 }
 
 function rotateDriveCamera(direction) {
-  if (viewMode !== 'drive' || milestoneCinematic) return false;
+  if (viewMode !== 'drive' || openingCinematic || milestoneCinematic) return false;
   const step = direction < 0 ? -1 : 1;
   driveCameraRotationStep = (driveCameraRotationStep + step + 4) % 4;
   driveCameraRotationTarget += step * Math.PI * .5;
@@ -322,8 +330,141 @@ function updateDriveCameraRotation(dt) {
   }
 }
 
+function beginOpeningCinematic() {
+  const arrival = farm?.arrivalState();
+  if (!arrival || arrival.complete) return false;
+  const fleetCenter = openingFleetCenter();
+  const establishOffset = new THREE.Vector3(
+    reducedMotion ? 8 : 9,
+    reducedMotion ? 14 : 16,
+    reducedMotion ? 17 : 19,
+  );
+  openingCinematic = {
+    target: fleetCenter.clone(),
+    returnElapsed: 0,
+    returnFromPosition: null,
+    returnFromTarget: null,
+    returnFromFov: reducedMotion ? 31 : 34,
+  };
+  visualDriveAmount = 0;
+  visualSteer = 0;
+  vehicleTransition = null;
+  cameraRotationTransition = null;
+  transferEffects.clear();
+  fleet.forEach(vehicle => vehicle.visual.resetTransientState());
+  driveCameraTarget.copy(fleetCenter);
+  camera.position.copy(fleetCenter).add(establishOffset);
+  camera.fov = openingCinematic.returnFromFov;
+  camera.updateProjectionMatrix();
+  setCameraFogScale(driveCameraDistanceScale(camera.fov));
+  camera.lookAt(fleetCenter);
+  ui.setConstructionPopup(null);
+  ui.setStoragePopup(null);
+  ui.setCinematicActive(true);
+  return true;
+}
+
+function openingFleetCenter() {
+  const center = new THREE.Vector3();
+  fleet.forEach(vehicle => {
+    const state = physics.vehicleState(vehicle.id);
+    center.add(new THREE.Vector3(state.x, state.y + .65, state.z));
+  });
+  return center.multiplyScalar(1 / fleet.length);
+}
+
+function updateOpeningPhysics(dt) {
+  visualDriveAmount = 0;
+  visualSteer = 0;
+  physics.drive(dt, { x: 0, z: 0 }, 0, false, false);
+  physics.step(dt);
+}
+
+function finishOpeningCinematic() {
+  openingCinematic = null;
+  applyDriveCameraProjection();
+  updateDriveCamera(activeVehicleState(), 0, true);
+  ui.setCinematicActive(false);
+  renderRequested = true;
+  if (progression.state().pickupReady) beginMilestoneCinematic(progression.state());
+}
+
+function updateOpeningCamera(dt) {
+  const cinematic = openingCinematic;
+  const arrival = farm.arrivalState();
+  if (!cinematic || !arrival) return;
+  const fleetCenter = openingFleetCenter();
+  const farmCenter = new THREE.Vector3(arrival.farmCenter.x, arrival.farmCenter.y + .5, arrival.farmCenter.z);
+  const bridgeCenter = new THREE.Vector3(arrival.bridgeCenter.x, arrival.bridgeCenter.y + .5, arrival.bridgeCenter.z);
+  let targetGoal;
+  let cameraGoal;
+  let fovGoal;
+
+  if (!arrival.complete) {
+    const establishEnd = (reducedMotion ? openingReducedEstablishSeconds : openingEstablishSeconds) / arrival.duration;
+    const revealEnd = (reducedMotion ? openingReducedRevealSeconds : openingRevealSeconds) / arrival.duration;
+    if (arrival.progress < establishEnd) {
+      targetGoal = fleetCenter;
+      cameraGoal = fleetCenter.clone().add(new THREE.Vector3(
+        reducedMotion ? 8 : 9,
+        reducedMotion ? 14 : 16,
+        reducedMotion ? 17 : 19,
+      ));
+      fovGoal = reducedMotion ? 31 : 34;
+    }
+    else if (arrival.progress < revealEnd) {
+      targetGoal = fleetCenter.clone().lerp(farmCenter, reducedMotion ? .3 : .42);
+      cameraGoal = targetGoal.clone().add(new THREE.Vector3(
+        reducedMotion ? 10 : 12,
+        reducedMotion ? 18 : 23,
+        reducedMotion ? 21 : 28,
+      ));
+      fovGoal = reducedMotion ? 35 : 42;
+    }
+    else {
+      targetGoal = bridgeCenter.clone().lerp(farmCenter, reducedMotion ? .32 : .48);
+      cameraGoal = targetGoal.clone().add(new THREE.Vector3(
+        reducedMotion ? 9 : 12,
+        reducedMotion ? 17 : 22,
+        reducedMotion ? 20 : 25,
+      ));
+      fovGoal = reducedMotion ? 34 : 40;
+    }
+    const positionBlend = 1 - Math.exp(-(reducedMotion ? 5.5 : 3.2) * dt);
+    const targetBlend = 1 - Math.exp(-(reducedMotion ? 6.5 : 4.2) * dt);
+    camera.position.lerp(cameraGoal, positionBlend);
+    cinematic.target.lerp(targetGoal, targetBlend);
+    camera.fov = THREE.MathUtils.lerp(camera.fov, fovGoal, positionBlend);
+  }
+  else {
+    if (!cinematic.returnFromPosition) {
+      cinematic.returnFromPosition = camera.position.clone();
+      cinematic.returnFromTarget = cinematic.target.clone();
+      cinematic.returnFromFov = camera.fov;
+    }
+    const returnSeconds = reducedMotion ? openingCameraReducedReturnSeconds : openingCameraReturnSeconds;
+    cinematic.returnElapsed = Math.min(returnSeconds, cinematic.returnElapsed + dt);
+    const amount = THREE.MathUtils.smoothstep(cinematic.returnElapsed / returnSeconds, 0, 1);
+    const state = activeVehicleState();
+    targetGoal = new THREE.Vector3(state.x, state.y + .75, state.z);
+    cameraGoal = targetGoal.clone().add(driveCameraOffset);
+    camera.position.lerpVectors(cinematic.returnFromPosition, cameraGoal, amount);
+    cinematic.target.lerpVectors(cinematic.returnFromTarget, targetGoal, amount);
+    camera.fov = THREE.MathUtils.lerp(cinematic.returnFromFov, driveCameraFov, amount);
+    if (cinematic.returnElapsed >= returnSeconds) {
+      finishOpeningCinematic();
+      return;
+    }
+  }
+  camera.updateProjectionMatrix();
+  setCameraFogScale(driveCameraDistanceScale(camera.fov));
+  driveCameraTarget.copy(cinematic.target);
+  camera.lookAt(cinematic.target);
+  farm.updateOcclusion(camera.position, activeVehicleState(), dt);
+}
+
 function beginMilestoneCinematic(milestone) {
-  if (milestoneCinematic || !milestone?.pickupReady) return;
+  if (openingCinematic || milestoneCinematic || !milestone?.pickupReady) return;
   milestoneCinematic = {
     milestone: {
       id: milestone.id,
@@ -601,7 +742,15 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
 }
 
 function initializeFarm(savedState) {
-  farm = createArchipelagoRuntime(generateFarm(scene, physics, savedState?.world?.seed, 0, scheduleSave));
+  const attachmentComplete = savedState?.world?.connections?.[0]?.status === 'attached';
+  farm = createArchipelagoRuntime(generateFarm(
+    scene,
+    physics,
+    savedState?.world?.seed,
+    0,
+    scheduleSave,
+    { attachmentComplete, reducedMotion },
+  ));
   physics.setSupportResolver((x, z) => farm.islandAtWorld(x, z)?.id || null);
   buildings.setParent(farm.group);
   progression = createMilestoneProgression(savedState?.progression);
@@ -626,7 +775,8 @@ function initializeFarm(savedState) {
   const environmentState = environment.setPhase(savedState?.environment?.phase ?? DEFAULT_DAY_PHASE, driveCameraTarget);
   applyNightLighting(environmentState);
   ui.setDebugTimeOfDay(environmentState.phase);
-  if (progression.state().pickupReady) beginMilestoneCinematic(progression.state());
+  const openingStarted = beginOpeningCinematic();
+  if (!openingStarted && progression.state().pickupReady) beginMilestoneCinematic(progression.state());
   saveCoordinator.markReady();
 }
 
@@ -752,7 +902,7 @@ function syncActiveVehicleUi() {
 }
 
 function cycleVehicle() {
-  if (vehicleTransition || transferController.isActive()) return;
+  if (openingCinematic || vehicleTransition || transferController.isActive()) return;
   const previous = activeVehicle();
   const from = driveCameraTarget.clone();
   ui.setBarnAvailable(false);
@@ -809,7 +959,7 @@ const transferController = createTransferController({
   getProgression: () => progression,
   getUi: () => ui,
   getElapsed: () => elapsed,
-  isCinematicActive: () => Boolean(milestoneCinematic),
+  isCinematicActive: () => Boolean(openingCinematic || milestoneCinematic),
   canTransferCargo,
   vehicleStorageKind,
   storageAmount,
@@ -1274,8 +1424,9 @@ function update(dt) {
   ui.animate(dt);
   if (ui.isGameplayBlocked()) return;
   elapsed += dt;
-  if (viewMode === 'drive' && !milestoneCinematic) updateDriveCameraRotation(dt);
-  if (milestoneCinematic) updateMilestoneCinematic(dt);
+  if (viewMode === 'drive' && !openingCinematic && !milestoneCinematic) updateDriveCameraRotation(dt);
+  if (openingCinematic) updateOpeningPhysics(dt);
+  else if (milestoneCinematic) updateMilestoneCinematic(dt);
   else if (vehicleTransition) updateVehicleTransition(dt);
   else if (viewMode === 'build') {
     visualDriveAmount = 0;
@@ -1283,7 +1434,7 @@ function update(dt) {
     updateMap(dt);
   }
   else updateDrive(dt);
-  transferController.update(dt);
+  if (!openingCinematic) transferController.update(dt);
   const cargoEvent = farm?.cargoPort.update(dt, camera, progression.state().pickupReady);
   if (cargoEvent?.shipmentPickedUp) collectMilestoneShipment();
   if (cargoEvent?.departed) finishMilestoneCinematic();
@@ -1293,6 +1444,7 @@ function update(dt) {
   ui.setDebugTimeOfDay(environmentState.phase);
   farm?.animate(elapsed, dt, (x, z) =>
     buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z));
+  if (openingCinematic) updateOpeningCamera(dt);
   buildings?.animate(elapsed, dt);
   transferEffects.animate(elapsed);
   updateConstructionPopup();

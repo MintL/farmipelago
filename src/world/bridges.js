@@ -1,6 +1,8 @@
 import { MODEL_VOXEL, TILE, THREE, box, createVoxelLantern, mats } from '../core/shared.js';
 
 const BRIDGE_GAP_TILES = 1;
+const BRIDGE_LANDING_INSET_TILES = .48;
+const PLACEMENT_SEARCH_TILES = 24;
 const BRIDGE_WIDTH = TILE * 2;
 const BRIDGE_THICKNESS = .18;
 const BRIDGE_SEGMENT_LENGTH = .42;
@@ -20,12 +22,114 @@ const BRIDGE_OCCLUSION_HEIGHT_CLEARANCE = TILE * .75;
 export const STATIC_LANTERN_LIGHT_RADIUS = 5;
 const ease = value => value * value * (3 - 2 * value);
 
+const tileCenterDistance = (first, second) => Math.hypot(first.x - second.x, first.z - second.z);
+
+function tileEdgeDistance(first, second) {
+  const dx = Math.max(0, Math.abs(first.x - second.x) - TILE);
+  const dz = Math.max(0, Math.abs(first.z - second.z) - TILE);
+  return Math.hypot(dx, dz);
+}
+
+function boundaryCells(cells) {
+  const keys = new Set(cells.map(cell => `${cell.gx},${cell.gz}`));
+  return cells.filter(cell => [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    .some(([dx, dz]) => !keys.has(`${cell.gx + dx},${cell.gz + dz}`)));
+}
+
+function placedCells(cells, cx, cz, islandId) {
+  return cells.map(cell => ({
+    ...cell,
+    gx: cell.gx + cx,
+    gz: cell.gz + cz,
+    x: (cell.gx + cx) * TILE,
+    z: (cell.gz + cz) * TILE,
+    islandId,
+  }));
+}
+
+function closestGapBetween(fromTiles, toTiles) {
+  let closest = null;
+  for (const from of fromTiles) {
+    for (const to of toTiles) {
+      const distance = tileEdgeDistance(from, to);
+      const centerDistance = tileCenterDistance(from, to);
+      if (!closest || distance < closest.distance ||
+        distance === closest.distance && centerDistance < closest.centerDistance) {
+        closest = { from, to, distance, centerDistance };
+      }
+    }
+  }
+  return closest;
+}
+
+function facingGapBetween(fromTiles, toTiles, fromCenterZ, toCenterZ) {
+  let closest = null;
+  for (const from of fromTiles) {
+    if (from.gz >= fromCenterZ) continue;
+    for (const to of toTiles) {
+      if (to.gz <= toCenterZ) continue;
+      const centerDistance = tileCenterDistance(from, to);
+      if (!closest || centerDistance < closest.centerDistance) {
+        closest = { from, to, distance: tileEdgeDistance(from, to), centerDistance };
+      }
+    }
+  }
+  return closest;
+}
+
+export function bridgeDeckSpan(gap) {
+  return gap ? gap.centerDistance - BRIDGE_LANDING_INSET_TILES * TILE * 2 : Infinity;
+}
+
+export function resolveNorthernIslandPlacement(fromIsland, toIsland, fromLocalCells, toLocalCells, placement) {
+  const fromBoundary = placedCells(boundaryCells(fromLocalCells), fromIsland.cx, fromIsland.cz, fromIsland.id);
+  const toBoundary = boundaryCells(toLocalCells);
+  const fromNorthEdge = Math.min(...fromBoundary.map(cell => cell.gz));
+  const toSouthEdge = Math.max(...toBoundary.map(cell => cell.gz));
+  const touchingCenterZ = fromNorthEdge - toSouthEdge;
+  const targetSpan = placement.bridgeSpanTiles * TILE;
+  const minimumGap = placement.minimumTerrainGapTiles * TILE;
+  let best = null;
+
+  for (let centerZ = Math.min(fromIsland.cz - 1, touchingCenterZ + 4);
+    centerZ >= touchingCenterZ - PLACEMENT_SEARCH_TILES; centerZ--) {
+    const placedToBoundary = placedCells(toBoundary, fromIsland.cx, centerZ, toIsland.id);
+    const terrainGap = closestGapBetween(fromBoundary, placedToBoundary);
+    if (!terrainGap || terrainGap.distance <= minimumGap) continue;
+    const bridgeGap = facingGapBetween(fromBoundary, placedToBoundary, fromIsland.cz, centerZ);
+    if (!bridgeGap) continue;
+    const span = bridgeDeckSpan(bridgeGap);
+    const score = Math.abs(span - targetSpan);
+    if (!best || score < best.score || score === best.score && terrainGap.distance < best.terrainGap.distance) {
+      best = { cx: fromIsland.cx, cz: centerZ, bridgeGap, terrainGap, span, score };
+    }
+  }
+
+  if (!best || best.score > placement.bridgeSpanToleranceTiles * TILE) {
+    throw new Error('Unable to place the Settlement Island at the configured bridge span');
+  }
+  return best;
+}
+
+export function facingIslandGap(terrain, fromIsland, toIsland) {
+  const fromTiles = [];
+  const toTiles = [];
+  for (const tile of terrain.values()) {
+    if (tile.water) continue;
+    if (tile.islandId === fromIsland.id) fromTiles.push(tile);
+    else if (tile.islandId === toIsland.id) toTiles.push(tile);
+  }
+  return facingGapBetween(fromTiles, toTiles, fromIsland.cz, toIsland.cz);
+}
+
 export function reserveBridgeLandings(terrain, gap) {
   if (!gap) return;
   for (const tile of terrain.values()) {
     if (Math.hypot(tile.x - gap.from.x, tile.z - gap.from.z) <= 2.6 * TILE ||
       Math.hypot(tile.x - gap.to.x, tile.z - gap.to.z) <= 2.6 * TILE) {
       tile.noDecoration = true;
+      if (Math.hypot(tile.x - gap.from.x, tile.z - gap.from.z) <= 1.55 * TILE ||
+        Math.hypot(tile.x - gap.to.x, tile.z - gap.to.z) <= 1.55 * TILE) tile.reserved = true;
     }
   }
 }
@@ -104,21 +208,22 @@ export function addBridgeBetween(
   lanternGlowMeshes,
   lanternPositions,
   lightSurfaceQuads,
+  connectionGap = null,
 ) {
-  const gap = closestIslandGap(terrain, fromIsland.id, toIsland.id);
+  const gap = connectionGap || closestIslandGap(terrain, fromIsland.id, toIsland.id);
   if (!gap || gap.distance / TILE <= BRIDGE_GAP_TILES) return;
 
   const centerDistance = Math.hypot(gap.to.x - gap.from.x, gap.to.z - gap.from.z);
   const direction = { x: (gap.to.x - gap.from.x) / centerDistance, z: (gap.to.z - gap.from.z) / centerDistance };
   const start = {
-    x: gap.from.x + direction.x * TILE * .48,
+    x: gap.from.x + direction.x * TILE * BRIDGE_LANDING_INSET_TILES,
     y: gap.from.topY,
-    z: gap.from.z + direction.z * TILE * .48,
+    z: gap.from.z + direction.z * TILE * BRIDGE_LANDING_INSET_TILES,
   };
   const end = {
-    x: gap.to.x - direction.x * TILE * .48,
+    x: gap.to.x - direction.x * TILE * BRIDGE_LANDING_INSET_TILES,
     y: gap.to.topY,
-    z: gap.to.z - direction.z * TILE * .48,
+    z: gap.to.z - direction.z * TILE * BRIDGE_LANDING_INSET_TILES,
   };
   const span = Math.hypot(end.x - start.x, end.z - start.z);
   const desiredCrownY = Math.max(start.y, end.y) + THREE.MathUtils.clamp(
@@ -277,6 +382,7 @@ export function addBridgeBetween(
     lanternGlowMeshes.push(glowMesh);
     railingGroups.get(side).add(lantern);
   }
+  return bridge;
 }
 
 export function closestIslandGap(terrain, fromId, toId) {
@@ -288,20 +394,5 @@ export function closestIslandGap(terrain, fromId, toId) {
     else if (tile.islandId === toId) toTiles.push(tile);
   }
 
-  let closest = null;
-  for (const from of fromTiles) {
-    for (const to of toTiles) {
-      const distance = tileEdgeDistance(from, to);
-      if (!closest || distance < closest.distance) {
-        closest = { from, to, distance };
-      }
-    }
-  }
-  return closest;
-}
-
-function tileEdgeDistance(first, second) {
-  const dx = Math.max(0, Math.abs(first.x - second.x) - TILE);
-  const dz = Math.max(0, Math.abs(first.z - second.z) - TILE);
-  return Math.hypot(dx, dz);
+  return closestGapBetween(fromTiles, toTiles);
 }

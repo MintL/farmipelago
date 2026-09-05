@@ -1,4 +1,5 @@
-export const STORAGE_KEY = 'farmipelago.gameState';
+export const STORAGE_KEY = 'farmipelago.gameState.v2';
+export const LEGACY_STORAGE_KEY = 'farmipelago.gameState';
 
 export function readStoredState() {
   const serialized = localStorage.getItem(STORAGE_KEY);

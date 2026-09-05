@@ -63,6 +63,7 @@ export const mats = {
     uniforms: {
       time: { value: 0 },
       nightAmount: { value: 0 },
+      patternOffset: { value: new THREE.Vector2() },
     },
     transparent: false,
     blending: THREE.NoBlending,
@@ -71,16 +72,20 @@ export const mats = {
     side: THREE.DoubleSide,
     vertexShader: `
       uniform float time;
+      uniform vec2 patternOffset;
       varying vec3 vWorldPosition;
+      varying vec2 vPatternPosition;
       varying float vWave;
 
       void main() {
         vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-        float broadWave = sin(worldPosition.x * 2.2 + worldPosition.z * 1.7 + time * 1.15) * .014;
-        float fineWave = sin(worldPosition.x * 8.7 - worldPosition.z * 6.2 + time * 2.4) * .006;
+        vec2 patternPosition = worldPosition.xz - patternOffset;
+        float broadWave = sin(patternPosition.x * 2.2 + patternPosition.y * 1.7 + time * 1.15) * .014;
+        float fineWave = sin(patternPosition.x * 8.7 - patternPosition.y * 6.2 + time * 2.4) * .006;
         vWave = broadWave + fineWave;
         worldPosition.y += vWave;
         vWorldPosition = worldPosition.xyz;
+        vPatternPosition = patternPosition;
         gl_Position = projectionMatrix * viewMatrix * worldPosition;
       }
     `,
@@ -88,11 +93,12 @@ export const mats = {
       uniform float time;
       uniform float nightAmount;
       varying vec3 vWorldPosition;
+      varying vec2 vPatternPosition;
       varying float vWave;
 
       void main() {
-        float ripples = sin(vWorldPosition.x * 13.0 + vWorldPosition.z * 9.0 - time * 2.6);
-        ripples += sin(vWorldPosition.x * 7.0 - vWorldPosition.z * 15.0 + time * 1.8) * .55;
+        float ripples = sin(vPatternPosition.x * 13.0 + vPatternPosition.y * 9.0 - time * 2.6);
+        ripples += sin(vPatternPosition.x * 7.0 - vPatternPosition.y * 15.0 + time * 1.8) * .55;
         float glint = smoothstep(.72, 1.32, ripples + vWave * 24.0);
         vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
         float fresnel = pow(1.0 - max(dot(viewDirection, vec3(0.0, 1.0, 0.0)), 0.0), 2.4);

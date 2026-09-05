@@ -3,16 +3,20 @@ import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './
 import { THREE } from './shared.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wakeUpDuration = .78;
 
 export function createVehicle(scene, vehicle) {
   const root = new THREE.Group();
+  const wakeUp = new THREE.Group();
   const tractor = vehicle === 'tractor' ? createTractorAsset() : null;
   const combine = vehicle === 'harvester' ? createCombineAsset() : null;
   let wasGrounded = false;
   let lastVerticalSpeed = 0;
   let landingSquash = 0;
+  let wakeUpElapsed = wakeUpDuration;
   root.scale.setScalar(.92);
-  root.add(tractor?.group || combine.group);
+  wakeUp.add(tractor?.group || combine.group);
+  root.add(wakeUp);
   scene.add(root);
   const toolDownY = .3;
   const toolUpY = .78;
@@ -174,6 +178,12 @@ export function createVehicle(scene, vehicle) {
       if (reducedMotion) return;
       selectionDirection = selected ? 1 : -1;
       selectionPulse = 1;
+      wakeUpElapsed = selected ? 0 : wakeUpDuration;
+      if (!selected) {
+        wakeUp.position.set(0, 0, 0);
+        wakeUp.rotation.set(0, 0, 0);
+        wakeUp.scale.setScalar(1);
+      }
     },
     transferPort(direction, itemId) {
       root.updateMatrixWorld(true);
@@ -264,6 +274,36 @@ export function createVehicle(scene, vehicle) {
       const airStretch = state.grounded ? 0 : .14;
       selectionPulse *= Math.exp(-7 * dt);
       transferPulse *= Math.exp(-(reducedMotion ? 11 : 8) * dt);
+      wakeUpElapsed = Math.min(wakeUpDuration, wakeUpElapsed + dt);
+      if (wakeUpElapsed < wakeUpDuration) {
+        const progress = wakeUpElapsed / wakeUpDuration;
+        const growProgress = THREE.MathUtils.clamp(progress / .44, 0, 1);
+        const settleProgress = THREE.MathUtils.clamp((progress - .44) / .56, 0, 1);
+        const growEase = 1 - Math.pow(1 - growProgress, 3);
+        const settleEase = THREE.MathUtils.smoothstep(settleProgress, 0, 1);
+        const wakeScale = progress < .44
+          ? THREE.MathUtils.lerp(.58, 1.2, growEase)
+          : THREE.MathUtils.lerp(1.2, 1, settleEase);
+        const shakeIn = Math.sin(Math.min(1, progress / .1) * Math.PI * .5);
+        const shakeOut = 1 - THREE.MathUtils.smoothstep(progress, .08, 1);
+        const shake = shakeIn * shakeOut;
+        wakeUp.position.set(
+          Math.sin(progress * Math.PI * 14) * .14 * shake,
+          Math.sin(progress * Math.PI * 20) * .045 * shake,
+          Math.cos(progress * Math.PI * 12) * .055 * shake,
+        );
+        wakeUp.rotation.set(
+          Math.cos(progress * Math.PI * 12) * .035 * shake,
+          Math.sin(progress * Math.PI * 10) * .055 * shake,
+          Math.sin(progress * Math.PI * 18) * .105 * shake,
+        );
+        wakeUp.scale.setScalar(wakeScale);
+      }
+      else {
+        wakeUp.position.set(0, 0, 0);
+        wakeUp.rotation.set(0, 0, 0);
+        wakeUp.scale.setScalar(1);
+      }
       const selection = selectionDirection * selectionPulse;
       const transferAge = transfer ? Math.max(0, elapsed - transfer.started) : 0;
       const transferAnticipation = !reducedMotion && transfer

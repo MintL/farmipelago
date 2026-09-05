@@ -977,10 +977,24 @@ export function createUi({ onRestart, onLoadoutChange, onEquipmentAction, onCycl
     event.preventDefault();
     input.jumpQueued = true;
   });
-  cycleVehicleButton.addEventListener('click', cycleVehicle);
-  frontToolToggle.addEventListener('click', () => toggleEquipment('front'));
-  rearToolToggle.addEventListener('click', () => toggleEquipment('rear'));
-  unloadButton.addEventListener('click', useSecondaryAction);
+  const bindGameplayPress = (button, action) => {
+    let suppressClickUntil = 0;
+    button.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      event.preventDefault();
+      suppressClickUntil = performance.now() + 800;
+      action();
+    });
+    button.addEventListener('click', event => {
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+      if (event.detail > 0 && performance.now() < suppressClickUntil) return;
+      action();
+    });
+  };
+  bindGameplayPress(cycleVehicleButton, cycleVehicle);
+  bindGameplayPress(frontToolToggle, () => toggleEquipment('front'));
+  bindGameplayPress(rearToolToggle, () => toggleEquipment('rear'));
+  bindGameplayPress(unloadButton, useSecondaryAction);
   buildingToggle.addEventListener('click', () => setBuildMode(!buildMode));
   for (const option of buildingOptions) option.addEventListener('click', () => {
     if (!buildMode || option.disabled) return;

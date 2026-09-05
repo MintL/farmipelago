@@ -11,8 +11,8 @@
       --ink: #292b25;
       --muted: #66695f;
       --faint: #85877d;
-      --glass: rgba(239, 230, 207, .78);
-      --hud-glass-strong: rgba(242, 234, 214, .92);
+      --glass: rgba(239, 230, 207, .8);
+      --hud-glass-strong: rgba(242, 234, 214, .8);
       --glass-strong: rgba(242, 234, 214, .96);
       --glass-soft: rgba(48, 55, 43, .07);
       --line: rgba(43, 47, 38, .2);
@@ -58,8 +58,8 @@
       gap: 6px;
       padding: 4px 7px;
       border-radius: 999px;
-      background: rgba(41, 43, 37, .62);
-      color: rgba(255, 249, 233, .82);
+      background: rgba(41, 43, 37, .8);
+      color: rgb(255, 249, 233);
       font-size: 9px;
       font-weight: 760;
       font-variant-numeric: tabular-nums;
@@ -98,7 +98,7 @@
     .cropMeterHeading strong { min-width: 42px; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 790; text-align: right; transform: translateY(1px); }
     .cropMeterTrack { min-width: 0; width: 100%; height: 7px; overflow: hidden; border-radius: 999px; background: rgba(43, 47, 38, .14); }
     .cropMeterTrack span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f824d, #a7c967); transition: width .22s ease-out; }
-    #milestoneTracker[data-complete="true"] { border-color: rgba(82, 102, 72, .55); background: rgba(218, 225, 183, .9); }
+    #milestoneTracker[data-complete="true"] { border-color: rgba(82, 102, 72, .55); background: rgba(218, 225, 183, .8); }
     #buildingControl { pointer-events: auto; }
     #buildingToggle {
       width: 48px;
@@ -115,7 +115,7 @@
       -webkit-backdrop-filter: blur(16px) saturate(120%);
     }
     #buildingToggle .icon { width: 21px; height: 21px; }
-    #buildingToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); color: var(--accent-strong); }
+    #buildingToggle[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .8); color: var(--accent-strong); }
     #buildingToggle:active { transform: scale(.95); }
     #inventoryMeter {
       position: absolute;
@@ -341,7 +341,7 @@
       height: 100%;
       border: 1px solid rgba(43, 47, 38, .28);
       border-radius: 50%;
-      background: rgba(234, 224, 200, .68);
+      background: rgba(234, 224, 200, .8);
       box-shadow: inset 0 0 0 9px rgba(49, 56, 43, .04), 0 12px 34px rgba(5, 10, 9, .14);
       opacity: 1;
       transform: scale(1);
@@ -366,7 +366,7 @@
       margin: -29px;
       border: 1px solid rgba(43, 47, 38, .34);
       border-radius: 50%;
-      background: rgba(73, 86, 64, .92);
+      background: rgba(73, 86, 64, .8);
       box-shadow: 0 8px 20px rgba(5, 10, 9, .23);
       transform: translate(0, 0);
     }
@@ -418,7 +418,7 @@
     }
     #frontToolToggle { left: 108.7px; bottom: 69.3px; }
     #rearToolToggle { left: 87px; bottom: 17px; }
-    .equipmentAction[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .92); }
+    .equipmentAction[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .8); }
     .equipmentAction[aria-pressed="true"]::after {
       content: "";
       position: absolute;
@@ -468,7 +468,7 @@
     }
     #unloadButton .icon { width: 22px; height: 22px; }
     #unloadButton[aria-disabled="true"] { opacity: .52; color: var(--muted); }
-    #unloadButton[aria-disabled="false"] { border-color: var(--accent-strong); background: rgba(255, 252, 239, .82); }
+    #unloadButton[aria-disabled="false"] { border-color: var(--accent-strong); background: rgba(255, 252, 239, .8); }
     .toolCopy, .keycap { display: none; }
 
     #desktopHints {
@@ -838,6 +838,21 @@
     }
     .confirmActions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 6px; }
 
+    #milestoneTracker,
+    #buildingToggle,
+    #inventoryMeter,
+    #siloInventory,
+    #constructionPopup button,
+    #viewHint,
+    #menuToggle,
+    #buildPalette,
+    #stickBase,
+    .actionButton,
+    #desktopHints {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
     @media (hover: hover) {
       #pauseDialog .iconButton:hover, .pauseAction:hover { background: rgba(52, 60, 45, .06); }
     }
@@ -891,14 +906,14 @@
     }
 
     @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-      #menuToggle, .actionButton, #desktopHints { background: rgba(239, 230, 207, .94); }
+      #menuToggle, .actionButton, #desktopHints { background: rgba(239, 230, 207, .8); }
       #overlay { background: rgba(232, 222, 196, .96); }
     }
   </style>
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.218</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.225</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
         <section id="milestoneTracker" data-complete="false" aria-live="polite">

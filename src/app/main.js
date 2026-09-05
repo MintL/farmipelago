@@ -15,6 +15,7 @@ import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from '.
 import { HAY_BALE_LITRES } from '../gameplay/livestock/index.js';
 import { createEnvironment, DEFAULT_DAY_PHASE } from '../world/environment/index.js';
 import { createTransferEffects } from '../gameplay/logistics/transfer-effects.js';
+import { createTransferController } from '../gameplay/logistics/transfer-controller.js';
 
 const pixelRatioCap = 1.5;
 const targetFrameInterval = 1000 / 60 * .96;
@@ -22,8 +23,6 @@ const fpsSampleInterval = 500;
 const poseCheckpointInterval = 2;
 const vehicleSwitchSeconds = .6;
 const cameraRotationSeconds = .22;
-const transferLitresPerTick = 10;
-const transferTicksPerSecond = 120;
 const baseDriveCameraFov = 38;
 const defaultDriveCameraFov = 28;
 const driveCameraFovs = [38, 30, 28, 24];
@@ -119,7 +118,6 @@ let lastPoseCheckpoint = 0;
 let vehicleTransition = null;
 let visualDriveAmount = 0;
 let visualSteer = 0;
-let activeTransfer = null;
 let lastTrailerGrainTrail = -Infinity;
 let milestoneCinematic = null;
 const buildRaycaster = new THREE.Raycaster();
@@ -682,11 +680,7 @@ function clearUnlockOverrides() {
 
 function setMilestoneOverride(milestoneId) {
   if (!progression.setMilestoneOverride(milestoneId)) return false;
-  if (activeTransfer) {
-    activeTransfer.visuals?.setActive(false);
-    activeTransfer = null;
-    transferEffects.clear();
-  }
+  transferController.cancel();
   const state = syncProgressionUi();
   syncCargoPort();
   ui.setStoragePopup(null);
@@ -759,7 +753,7 @@ function syncActiveVehicleUi() {
 }
 
 function cycleVehicle() {
-  if (vehicleTransition || activeTransfer) return;
+  if (vehicleTransition || transferController.isActive()) return;
   const previous = activeVehicle();
   const from = driveCameraTarget.clone();
   ui.setBarnAvailable(false);
@@ -805,261 +799,29 @@ function syncCargoPort() {
   farm.cargoPort.setLoadRatio(milestoneLoadRatio());
 }
 
-function startTransfer(transfer) {
-  if (activeTransfer) return false;
-  const vehicle = fleet.find(candidate => candidate.id === transfer.vehicleId);
-  if (!vehicle) return false;
-  const itemId = transfer.itemId;
-  const vehiclePort = direction => vehicle.visual.transferPort(direction, itemId);
-  let source;
-  let target;
-  let setActive;
-  let pulseTarget;
-  if (transfer.kind === 'load') {
-    source = () => buildings.transferPort(transfer.siloId, 'output', itemId);
-    target = () => vehiclePort('input');
-    setActive = active => {
-      buildings.setTransferState(transfer.siloId, { active, direction: 'output', itemId, elapsed });
-      vehicle.visual.setTransferState({ active, direction: 'input', itemId, elapsed });
-    };
-    pulseTarget = () => vehicle.visual.pulseTransfer('input');
-  }
-  else if (transfer.kind === 'unload') {
-    source = () => vehiclePort('output');
-    target = () => buildings.transferPort(transfer.siloId, 'input', itemId);
-    setActive = active => {
-      vehicle.visual.setTransferState({ active, direction: 'output', target: target(), itemId, elapsed });
-      buildings.setTransferState(transfer.siloId, { active, direction: 'input', itemId, elapsed });
-    };
-    pulseTarget = () => buildings.pulseTransfer(transfer.siloId, 'input');
-  }
-  else if (transfer.kind === 'barn-load-milk') {
-    source = () => buildings.transferPort(transfer.barnId, 'output', itemId);
-    target = () => vehiclePort('input');
-    setActive = active => {
-      buildings.setTransferState(transfer.barnId, { active, direction: 'output', itemId, elapsed });
-      vehicle.visual.setTransferState({ active, direction: 'input', itemId, elapsed });
-    };
-    pulseTarget = () => vehicle.visual.pulseTransfer('input');
-  }
-  else {
-    source = () => vehiclePort('output');
-    target = () => farm.cargoPort.transferPort();
-    setActive = active => {
-      vehicle.visual.setTransferState({ active, direction: 'output', target: target(), itemId, elapsed });
-      farm.cargoPort.setTransferState({ active, direction: 'input', itemId, elapsed });
-    };
-    pulseTarget = () => farm.cargoPort.pulseTransfer('input');
-  }
-  const visuals = { source, target, setActive, pulseTarget };
-  activeTransfer = { ...transfer, remaining: transfer.amount, moved: 0, tickElapsed: 0, visuals };
-  visuals.setActive(true);
-  transferEffects.begin({ source, target, itemId, onArrive: pulseTarget });
-  return true;
-}
+const transferController = createTransferController({
+  physics,
+  effects: transferEffects,
+  getFleet: () => fleet,
+  getActiveVehicle: activeVehicle,
+  getActiveVehicleState: activeVehicleState,
+  getBuildings: () => buildings,
+  getFarm: () => farm,
+  getProgression: () => progression,
+  getUi: () => ui,
+  getElapsed: () => elapsed,
+  isCinematicActive: () => Boolean(milestoneCinematic),
+  canTransferCargo,
+  vehicleStorageKind,
+  storageAmount,
+  storageItemId,
+  syncInventoryUi,
+  syncCargoPort,
+  beginMilestoneCinematic,
+  scheduleSave,
+});
 
-function transferVehicle() {
-  return activeTransfer ? fleet.find(vehicle => vehicle.id === activeTransfer.vehicleId) || null : null;
-}
-
-function transferIsInRange(transfer, vehicle) {
-  const state = physics.vehicleState(vehicle.id);
-  if (transfer.kind === 'cargo') return farm.cargoPort.isNear(state.x, state.z);
-  if (transfer.kind === 'barn-load-milk') {
-    const barn = buildings?.cattleBarn(transfer.barnId);
-    return Boolean(barn?.pen && Math.hypot(state.x - barn.site.x, state.z - barn.site.z) <= 3.05);
-  }
-  return buildings?.siloAt(state.x, state.z)?.id === transfer.siloId;
-}
-
-function finishTransfer() {
-  const transfer = activeTransfer;
-  if (!transfer) return;
-  const vehicle = transferVehicle();
-  activeTransfer = null;
-  transfer.visuals?.setActive(false);
-  transferEffects.finish();
-  if (vehicle?.id === activeVehicle().id) syncInventoryUi();
-  if (transfer.kind === 'cargo') {
-    const nextState = progression.state();
-    ui.setMilestone(nextState);
-    syncCargoPort();
-  }
-  scheduleSave();
-}
-
-function transferTick() {
-  const transfer = activeTransfer;
-  const vehicle = transferVehicle();
-  if (!transfer) return false;
-  if (!vehicle || vehicle.id !== activeVehicle().id || !transferIsInRange(transfer, vehicle)) {
-    finishTransfer();
-    return false;
-  }
-  const amount = Math.min(transferLitresPerTick, transfer.remaining);
-  let moved = 0;
-  if (transfer.kind === 'load') {
-    moved = buildings.takeFrom(transfer.siloId, transfer.itemId, amount, false);
-    if (moved) vehicle.storage.contents[transfer.itemId] = (vehicle.storage.contents[transfer.itemId] || 0) + moved;
-  }
-  else if (transfer.kind === 'unload') {
-    const available = Math.max(0, vehicle.storage.contents[transfer.itemId] || 0);
-    moved = Math.min(amount, available);
-    if (moved && buildings.storeIn(transfer.siloId, transfer.itemId, moved, elapsed, false)) {
-      vehicle.storage.contents[transfer.itemId] -= moved;
-      if (!vehicle.storage.contents[transfer.itemId]) delete vehicle.storage.contents[transfer.itemId];
-    }
-    else moved = 0;
-  }
-  else if (transfer.kind === 'barn-load-milk') {
-    const space = vehicle.storage.capacity - storageAmount(vehicle);
-    moved = buildings.takeMilk(transfer.barnId, Math.min(amount, space), false);
-    if (moved) vehicle.storage.contents.milk = (vehicle.storage.contents.milk || 0) + moved;
-  }
-  else {
-    const wasComplete = progression.state().complete;
-    const accepted = progression.accept({ [transfer.itemId]: amount });
-    moved = accepted[transfer.itemId] || 0;
-    if (moved) {
-      vehicle.storage.contents[transfer.itemId] -= moved;
-      if (!vehicle.storage.contents[transfer.itemId]) delete vehicle.storage.contents[transfer.itemId];
-      if (!wasComplete && progression.state().complete) beginMilestoneCinematic(progression.state());
-    }
-  }
-  if (!moved) {
-    finishTransfer();
-    return false;
-  }
-  transfer.remaining -= moved;
-  transfer.moved += moved;
-  transferEffects.emitMovedAmount(moved, elapsed);
-  if (transfer.remaining <= 0) finishTransfer();
-  return true;
-}
-
-function updateTransfer(dt) {
-  if (!activeTransfer) return;
-  activeTransfer.tickElapsed += dt;
-  const ticks = Math.floor(activeTransfer.tickElapsed * transferTicksPerSecond);
-  if (!ticks) return;
-  activeTransfer.tickElapsed -= ticks / transferTicksPerSecond;
-  let changed = false;
-  let cargoChanged = false;
-  for (let index = 0; index < ticks && activeTransfer; index++) {
-    const kind = activeTransfer.kind;
-    if (transferTick()) {
-      changed = true;
-      cargoChanged ||= kind === 'cargo';
-    }
-  }
-  if (!changed) return;
-  syncInventoryUi();
-  if (cargoChanged) {
-    ui.setMilestone(progression.state());
-    syncCargoPort();
-  }
-  scheduleSave();
-}
-
-function emptyIntoSilo(siloId) {
-  const vehicle = activeVehicle();
-  if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop') return;
-  const state = activeVehicleState();
-  const amount = storageAmount();
-  if (!amount) return;
-  const cropId = storageItemId();
-  const silo = buildings?.siloAt(state.x, state.z);
-  if (silo?.id !== siloId) return;
-  startTransfer({
-    kind: 'unload', vehicleId: vehicle.id, siloId, itemId: cropId, amount,
-    target: { x: silo.site.x, y: silo.site.y + 3.58, z: silo.site.z },
-  });
-}
-
-function loadFromSilo(siloId, cropId) {
-  if (!crops[cropId]) return;
-  const vehicle = activeVehicle();
-  if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop') return;
-  const state = activeVehicleState();
-  const silo = buildings?.siloAt(state.x, state.z);
-  if (silo?.id !== siloId) return;
-  const storedCropId = storageItemId();
-  if (storedCropId && storedCropId !== cropId) return;
-  const space = vehicle.storage.capacity - storageAmount();
-  if (space <= 0) return;
-  const available = Math.max(0, Math.floor(Number(silo.contents[cropId]) || 0));
-  const amount = Math.min(available, space);
-  if (!amount) return;
-  startTransfer({ kind: 'load', vehicleId: vehicle.id, siloId, itemId: cropId, amount });
-}
-
-function feedBarn(barnId) {
-  const vehicle = activeVehicle();
-  const state = activeVehicleState();
-  const barn = buildings?.cattleBarn(barnId);
-  if (!barn?.pen || Math.hypot(state.x - barn.site.x, state.z - barn.site.z) > 3.05) return;
-  const baleId = vehicle.equipmentState.carriedBaleId;
-  if (!baleId || !farm.hasBale(baleId) || !buildings.addHayBale(barnId, HAY_BALE_LITRES)) return;
-  if (!farm.removeBale(baleId)) return;
-  vehicle.equipmentState.carriedBaleId = null;
-  vehicle.baleReleasePending = false;
-  vehicle.balePickupCooldown = elapsed + .65;
-  scheduleSave();
-}
-
-function loadMilkFromBarn(barnId) {
-  const vehicle = activeVehicle();
-  if (vehicleStorageKind(vehicle) !== 'liquid') return;
-  const state = activeVehicleState();
-  const barn = buildings?.cattleBarn(barnId);
-  if (!barn?.pen || Math.hypot(state.x - barn.site.x, state.z - barn.site.z) > 3.05
-    || (storageItemId(vehicle) && storageItemId(vehicle) !== 'milk')) return;
-  const amount = Math.min(Math.floor(barn.milkLitres), vehicle.storage.capacity - storageAmount(vehicle));
-  if (amount > 0) startTransfer({ kind: 'barn-load-milk', vehicleId: vehicle.id, barnId, itemId: 'milk', amount });
-}
-
-function dropOffCargo(selectedCropId = null) {
-  if (milestoneCinematic) return;
-  const vehicle = activeVehicle();
-  const state = activeVehicleState();
-  if (!farm.cargoPort.isNear(state.x, state.z)) return;
-  const milestone = progression.state();
-  if (milestone.complete) return;
-  const baleRequirement = milestone.requirements.find(requirement => requirement.itemId === 'hay-bale');
-  if (selectedCropId === 'hay-bale' || (!canTransferCargo(vehicle) && baleRequirement)) {
-    const baleId = vehicle.equipmentState.carriedBaleId;
-    if (!baleRequirement?.accepting || !baleId || !farm.hasBale(baleId)) return;
-    const wasComplete = milestone.complete;
-    const accepted = progression.accept({ 'hay-bale': 1 });
-    if (!accepted['hay-bale'] || !farm.removeBale(baleId)) return;
-    vehicle.equipmentState.carriedBaleId = null;
-    vehicle.baleReleasePending = false;
-    vehicle.balePickupCooldown = elapsed + .65;
-    ui.setMilestone(progression.state());
-    syncCargoPort();
-    if (!wasComplete && progression.state().complete) beginMilestoneCinematic(progression.state());
-    scheduleSave();
-    return;
-  }
-  if (!canTransferCargo(vehicle)) return;
-  const storage = vehicle.storage;
-  if (!storageAmount()) return;
-  const storedItemId = storageItemId();
-  const itemId = selectedCropId && storage.contents[selectedCropId] > 0
-    ? selectedCropId
-    : storedItemId;
-  const requirement = milestone.requirements.find(entry => (entry.itemId || entry.cropId) === itemId);
-  const amount = requirement?.accepting
-    ? Math.min(storage.contents[itemId] || 0, Math.max(0, requirement.target - requirement.delivered))
-    : 0;
-  if (!amount) return;
-  startTransfer({
-    kind: 'cargo', vehicleId: vehicle.id, itemId, amount,
-    target: farm.cargoPort.unloadTarget(),
-  });
-}
-
-ui = createUi({
+ ui = createUi({
   commands: {
   restart: restartGame,
   changeLoadout: loadout => {
@@ -1092,10 +854,10 @@ ui = createUi({
     scheduleSave();
   },
   cycleVehicle,
-  siloLoad: loadFromSilo,
-  siloUnload: emptyIntoSilo,
-  barnFeed: feedBarn,
-  barnLoadMilk: loadMilkFromBarn,
+  siloLoad: transferController.loadSilo,
+  siloUnload: transferController.unloadSilo,
+  barnFeed: transferController.feedBarn,
+  barnLoadMilk: transferController.loadBarnMilk,
   repaintPen: () => {
     const changed = buildings?.repaintSelected();
     updateConstructionPopup();
@@ -1121,7 +883,7 @@ ui = createUi({
     updateConstructionPopup();
     return changed;
   },
-  cargoDropOff: dropOffCargo,
+  cargoDropOff: transferController.dropOffCargo,
   changeBuildMode: applyBuildMode,
   buildPointerStart: beginBuildingDrag,
   buildPointerMove: point => {
@@ -1522,7 +1284,7 @@ function update(dt) {
     updateMap(dt);
   }
   else updateDrive(dt);
-  updateTransfer(dt);
+  transferController.update(dt);
   const cargoEvent = farm?.cargoPort.update(dt, camera, progression.state().pickupReady);
   if (cargoEvent?.shipmentPickedUp) collectMilestoneShipment();
   if (cargoEvent?.departed) finishMilestoneCinematic();

@@ -1,4 +1,4 @@
-import { MODEL_VOXEL, THREE, createVoxelLantern, createVoxelModel, mats } from './shared.js';
+import { MODEL_VOXEL, THREE, createVoxelLantern, createVoxelModel, mats } from '../../core/shared.js';
 
 const DECK_HEIGHT = .18;
 const DECK_CLEARANCE = .04;

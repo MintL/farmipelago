@@ -1,4 +1,4 @@
-import { box, mats, THREE } from './shared.js';
+import { box, mats, THREE } from '../../core/shared.js';
 
 const previewMats = {
   green: new THREE.MeshStandardMaterial({ color: 0x6eab37, roughness: .7 }),

@@ -1,4 +1,4 @@
-import { THREE } from './shared.js';
+import { THREE } from '../core/shared.js';
 
 const DB_NAME = 'farmipelago-voxel-studio';
 const DB_VERSION = 1;

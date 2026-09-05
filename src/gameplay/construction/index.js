@@ -1,12 +1,12 @@
-import { THREE, TILE, box, gridKey } from './shared.js';
-import { cropIds } from './crops.js';
+import { THREE, TILE, box, gridKey } from '../../core/shared.js';
+import { cropIds } from '../catalog/crops.js';
 import {
   BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES, STARTER_COW_COUNT,
   barnPenAnchors, barnPenConnectorSegments, computePenGeometry, cornerToWorld, createCattleBarnVisual,
   createCowVisual, createPenGateVisual, createPenLassoPreview, createPenPreview,
   createPenVisual, normalizeCattleBarnState, penGeometryFromLasso,
   reconcileCattleBarnAnimals, removeCollinearVertices, snapPenPoint, updateCattleBarn,
-} from './livestock.js';
+} from '../livestock/index.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SILO_RADIUS = 1.05;

@@ -1,0 +1,71 @@
+#milestoneTracker,
+#buildingToggle,
+#inventoryMeter,
+#siloInventory,
+#constructionPopup button,
+#viewHint,
+#menuToggle,
+#buildPalette,
+#stickBase,
+.actionButton,
+#desktopHints {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (hover: hover) {
+  #pauseDialog .iconButton:hover, .pauseAction:hover { background: rgba(52, 60, 45, .06); }
+}
+
+@keyframes veilIn { from { opacity: 0; } }
+@keyframes panelIn { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+
+@media (max-width: 680px) {
+  #topLeftGroup { width: 148px; }
+  #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 148px; }
+  #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .dialog { border-radius: 18px; }
+  #barnDialog { width: 100%; height: 100%; }
+  .dialogHeader { min-height: 68px; padding: 12px 12px 10px 16px; }
+  .dialogTitle { font-size: 19px; }
+  #barnDialog .dialogHeader { min-height: 40px; padding: 2px 4px; }
+  #barnDialog .dialogTitle { font-size: 21px; }
+  #loadoutBays { padding: 0 8px; }
+  .optionGrid { grid-auto-rows: 96px; }
+  .loadoutBay[data-category="vehicles"] .optionPresentation { min-height: 132px; }
+  .bayLabel { margin: 8px 0 0 5px; font-size: 10px; }
+  .optionName { font-size: 10px; }
+  .optionState { font-size: 8px; }
+  #loadoutFooter { min-height: 60px; padding: 7px 8px; }
+  #loadoutSummary { display: none; }
+  #loadoutFooter .button { flex: 1; }
+  #pauseDialog, #celebrationDialog { width: 100%; align-self: center; }
+  #pauseDialog .dialogHeader, #celebrationDialog .dialogHeader { min-height: 52px; padding: 2px 4px 8px 10px; }
+  #pauseDialog .dialogTitle, #celebrationDialog .dialogTitle { font-size: 21px; }
+  #pauseBody, #confirmBody, #celebrationBody { padding: 8px 8px 12px; }
+  #controlsList { padding-left: 47px; }
+  .confirmActions { padding: 0; }
+  .confirmActions .button { flex: 1; }
+}
+
+@media (max-width: 380px) {
+  #topBar, #topLeftGroup, #topActions, #fieldControls { gap: 6px; }
+  #topLeftGroup { width: 136px; }
+  #milestoneTracker { padding: 8px 9px; }
+  #milestoneTitle { font-size: 10px; }
+  #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
+  #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 136px; padding: 8px 9px; }
+  #performanceBadge { top: calc(var(--safe-top) + 48px); }
+  #stickZone { width: 108px; height: 108px; --stick-travel: 30px; }
+  #stickKnob { width: 48px; height: 48px; margin: -24px; }
+  #cycleVehicle { bottom: calc(var(--safe-bottom) + 120px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #menuToggle, .actionButton, #desktopHints { background: rgba(239, 230, 207, .8); }
+  #overlay { background: rgba(232, 222, 196, .96); }
+}

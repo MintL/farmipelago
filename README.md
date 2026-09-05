@@ -44,24 +44,15 @@ A phone-first Three.js prototype for driving and farming across generated floati
 
 ## Code layout
 
-- `main.js` — rendering, fleet gameplay, camera modes, and gameplay loop
-- `environment.js` — persistent day/night clock, sky, celestial lighting, fog, and animated shadows
-- `physics.js` — Rapier world, seamless static meshes, and active-vehicle character controller
-- `world-generator.js` — procedural islands, environmental fields, terrain meshes, and collider inputs
-- `cargo-port.js` — procedural cargo hub, staged cargo, and recurring VTOL flight cycle
-- `progression.js` — delivery milestone requirements, acceptance, completion, and pickup rollover
-- `persistence.js` — versioned browser-local save loading, writing, validation, and deletion
-- `crops.js` — crop identifiers and display names
-- `equipment.js` — shared rear/front attachment catalog, gates, and loadout validation
-- `forage.js` — loose cut-grass state plus persistent instanced hay bales
-- `buildings.js` — building placement/edit operations, silo state, cattle-barn lifecycle, and building/fence colliders
-- `livestock.js` — cattle tuning, barn/cow/fence assets, pen geometry, wandering, and herd simulation
-- `wildlife.js` — voxel reindeer, red fox, and snow fox assets plus habitat selection and wandering
-- `tractor.js` — persistent vehicle and swappable attachment visuals
-- `vehicles.js` — owned fleet order, vehicle capabilities, and default per-instance loadouts
-- `farm-assets.js` — reusable procedural vehicle and equipment factories shared by gameplay and UI previews
-- `ui.js` — touch and keyboard controls, HUD, workshop, construction controls, and menus
-- `shared.js` — shared Three.js materials, constants, and mesh helpers
+- `src/app/` — rendering setup and the game-session entry point
+- `src/core/` — shared Three.js materials, dimensions, voxel helpers, and grid keys
+- `src/world/` — generated terrain, environment, forage, and wildlife
+- `src/gameplay/` — catalogs, vehicles, construction, livestock, logistics, and progression
+- `src/physics/` — Rapier simulation, terrain colliders, vehicles, and bales
+- `src/ui/` — touch and keyboard controls, HUD, workshop, construction controls, and menus
+- `src/persistence/` — versioned browser-local save loading, validation, and writing
+- `src/voxel-studio/` — the standalone voxel editor
+- `src/styles/` — focused game and Voxel Studio stylesheets
 
 ## Run
 

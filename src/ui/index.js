@@ -1,6 +1,6 @@
-import { cropIds, crops } from './crops.js';
-import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from './equipment.js';
-import { dayPhaseLabel, DEFAULT_DAY_PHASE } from './environment.js';
+import { cropIds, crops } from '../gameplay/catalog/crops.js';
+import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from '../gameplay/catalog/equipment.js';
+import { dayPhaseLabel, DEFAULT_DAY_PHASE } from '../world/environment/index.js';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', emptyLabel: 'No rear tool', icon: 'plough' },

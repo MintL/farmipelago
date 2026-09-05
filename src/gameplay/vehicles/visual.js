@@ -1,6 +1,6 @@
-import { createCombineAsset, createFrontToolAsset, createLiquidTankAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './farm-assets.js';
-import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from './equipment.js';
-import { THREE } from './shared.js';
+import { createCombineAsset, createFrontToolAsset, createLiquidTankAsset, createLoadoutAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './assets.js';
+import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from '../catalog/equipment.js';
+import { THREE } from '../../core/shared.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const wakeUpDuration = .78;

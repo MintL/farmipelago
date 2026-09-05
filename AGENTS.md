@@ -77,20 +77,17 @@ the GDD as well:
 
 ## Code map
 
-- `index.html` contains the complete HUD markup and CSS.
-- `main.js` owns renderer/scene setup, camera-relative movement, the animation
-  loop, regeneration, rescue, and plough application.
-- `world-generator.js` builds seeded floating islands, decorative meshes,
-  bridges, tile metadata, and collider inputs. `generateFarm()` returns the
-  rendered group, spawn point, terrain map, and `ploughAt()` API.
-- `physics.js` owns the Rapier world and the kinematic capsule controller.
-  Simulation runs at a fixed 60 Hz behind the variable-rate render loop.
-- `tractor.js` contains only tractor/plough visuals and visual animation.
-- `ui.js` translates touch and keyboard input, owns the HUD state, and calls
-  callbacks supplied by `main.js`.
-- `shared.js` is the source of truth for Three.js, tile/layer dimensions,
-  shared materials, the `MODEL_VOXEL` / `createVoxelModel()` construction
-  convention, box meshes, and `gridKey()`.
+- `index.html` contains the HUD markup; `src/styles/` contains its styles.
+- `src/app/` owns renderer/scene setup and game-session orchestration.
+- `src/world/` owns generated terrain, environment, forage, and wildlife.
+- `src/gameplay/` owns vehicles, construction, livestock, logistics, catalogs,
+  and progression.
+- `src/physics/` owns Rapier simulation and collider construction.
+- `src/ui/` translates touch and keyboard input and owns HUD presentation.
+- `src/persistence/` owns save validation, migration, loading, and writing.
+- `src/core/shared.js` is the source of truth for Three.js, tile/layer
+  dimensions, shared materials, the `MODEL_VOXEL` / `createVoxelModel()`
+  construction convention, box meshes, and `gridKey()`.
 
 ## Important invariants
 

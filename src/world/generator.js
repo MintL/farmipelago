@@ -1,8 +1,8 @@
-import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from './shared.js';
-import { crops } from './crops.js';
-import { cargoDeckContains, createCargoPort } from './cargo-port.js';
-import { createForageSystem } from './forage.js';
-import { createWildlifeSystem } from './wildlife.js';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from '../core/shared.js';
+import { crops } from '../gameplay/catalog/crops.js';
+import { cargoDeckContains, createCargoPort } from '../gameplay/logistics/cargo-port.js';
+import { createForageSystem } from './forage/index.js';
+import { createWildlifeSystem } from './wildlife/index.js';
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const BRIDGE_GAP_TILES = 1;

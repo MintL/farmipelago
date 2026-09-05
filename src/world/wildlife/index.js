@@ -1,4 +1,4 @@
-import { LEVEL_HEIGHT, MODEL_VOXEL, TILE, THREE, box, gridKey } from './shared.js';
+import { LEVEL_HEIGHT, MODEL_VOXEL, TILE, THREE, box, gridKey } from '../../core/shared.js';
 
 const MIN_REGION_TILES = 6;
 const MIN_REINDEER_REGION_TILES = 20;

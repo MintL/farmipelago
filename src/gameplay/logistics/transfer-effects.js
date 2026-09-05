@@ -1,4 +1,4 @@
-import { THREE } from './shared.js';
+import { THREE } from '../../core/shared.js';
 
 const PARTICLE_CAPACITY = 96;
 const EMISSION_RATE = 46;

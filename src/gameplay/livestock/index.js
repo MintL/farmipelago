@@ -1,4 +1,4 @@
-import { THREE, TILE, box, gridKey, mats } from './shared.js';
+import { THREE, TILE, box, gridKey, mats } from '../../core/shared.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const STARTER_COW_COUNT = 2;

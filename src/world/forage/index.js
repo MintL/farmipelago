@@ -1,4 +1,4 @@
-import { TILE, THREE, gridKey, mats } from './shared.js';
+import { TILE, THREE, gridKey, mats } from '../../core/shared.js';
 
 const INITIAL_BALE_CAPACITY = 32;
 

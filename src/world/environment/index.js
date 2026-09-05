@@ -1,4 +1,4 @@
-import { mats, THREE } from './shared.js';
+import { mats, THREE } from '../../core/shared.js';
 
 export const DAY_CYCLE_SECONDS = 10 * 60;
 export const DEFAULT_DAY_PHASE = 10 / 24;

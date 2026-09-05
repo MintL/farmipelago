@@ -6,6 +6,7 @@ import { createLoadoutPreview } from '../gameplay/vehicles/loadout-preview.js';
 import { createUi } from '../ui/index.js';
 import { createBuildingManager } from '../gameplay/construction/index.js';
 import { generateFarm } from '../world/generator.js';
+import { createArchipelagoRuntime } from '../world/archipelago/runtime.js';
 import { createMilestoneProgression } from '../gameplay/progression/index.js';
 import { deleteGameState, loadGameState, saveGameState } from '../persistence/index.js';
 import { OWNED_VEHICLES, vehicleType } from '../gameplay/catalog/vehicles.js';
@@ -174,10 +175,18 @@ function canTransferCargo(vehicle = activeVehicle()) {
 }
 
 function persistentState() {
+  const savedBuildings = buildings.persistentState().map(building => ({
+    ...building,
+    pose: farm.poseAtWorld({
+      x: building.x,
+      y: farm.farmingLevelNear(building.x, building.z) ?? 0,
+      z: building.z,
+    }),
+  }));
   return {
     world: farm.persistentState(elapsed),
     environment: environment.persistentState(),
-    buildings: buildings.persistentState(),
+    buildings: savedBuildings,
     progression: progression.persistentState(),
     vehicles: fleet.map(vehicle => {
       const state = physics.vehicleState(vehicle.id);
@@ -185,6 +194,7 @@ function persistentState() {
         id: vehicle.id,
         type: vehicle.type,
         position: { x: state.x, y: state.y, z: state.z },
+        pose: farm.poseAtWorld({ x: state.x, y: state.y, z: state.z }, vehicle.heading),
         grounded: state.grounded,
         heading: vehicle.heading,
         loadout: { ...vehicle.loadout },
@@ -570,8 +580,10 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
     ? savedVehicles.filter(saved => typeof saved?.id === 'string').map(saved => [saved.id, saved])
     : []);
   for (const vehicle of fleet) {
-    const saved = savedById.get(vehicle.id);
-    if (!saved || saved.type !== vehicle.type) continue;
+    const stored = savedById.get(vehicle.id);
+    if (!stored || stored.type !== vehicle.type) continue;
+    const worldPose = farm.worldPose(stored.pose);
+    const saved = worldPose ? { ...stored, position: worldPose.position, heading: worldPose.heading } : stored;
     const savedLoadout = saved.loadout || vehicle.definition.defaultLoadout;
     const requestedLoadout = savedLoadout.tool === 'windrower'
       ? { ...savedLoadout, tool: 'baler' }
@@ -621,12 +633,17 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
 }
 
 function initializeFarm(savedState) {
-  farm = generateFarm(scene, physics, savedState?.world?.seed, 0, scheduleSave);
+  farm = createArchipelagoRuntime(generateFarm(scene, physics, savedState?.world?.seed, 0, scheduleSave));
+  physics.setSupportResolver((x, z) => farm.islandAtWorld(x, z)?.id || null);
   buildings.setParent(farm.group);
   progression = createMilestoneProgression(savedState?.progression);
   syncProgressionUi();
   if (savedState) {
-    buildings.restorePersistentState(savedState.buildings);
+    const savedBuildings = savedState.buildings.map(building => {
+      const worldPose = farm.worldPose(building.pose);
+      return worldPose ? { ...building, x: worldPose.position.x, z: worldPose.position.z } : building;
+    });
+    buildings.restorePersistentState(savedBuildings);
     farm.restorePersistentState(savedState.world, elapsed, (x, z) =>
       buildings.isBuildingAt(x, z) || buildings.isPastureAt(x, z));
     ui.restorePersistentState(savedState.ui);

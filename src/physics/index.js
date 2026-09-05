@@ -30,6 +30,7 @@ class FarmPhysics {
     this.staticColliders = [];
     this.vehicles = new Map();
     this.bales = new Map();
+    this.supportResolver = () => null;
     this.activeVehicleId = null;
     this.characterController = this.world.createCharacterController(0.03);
     this.characterController.setApplyImpulsesToDynamicBodies(true);
@@ -52,6 +53,10 @@ class FarmPhysics {
     this.wallGrace = 0;
     this.grounded = false;
     this.touchingWall = false;
+  }
+
+  setSupportResolver(resolveIslandId) {
+    this.supportResolver = typeof resolveIslandId === 'function' ? resolveIslandId : () => null;
   }
 
   rebuildStaticColliders(terrain, obstacles, lowerBlocks = [], bridgeBlocks = []) {
@@ -270,6 +275,7 @@ class FarmPhysics {
       position: { x: position.x, y: position.y, z: position.z },
       rotation: { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w },
       sleeping: bale.body.isSleeping(),
+      supportIslandId: bale.body.isSleeping() ? this.supportResolver(position.x, position.z) : null,
     };
   }
 
@@ -399,6 +405,9 @@ class FarmPhysics {
       verticalSpeed: active ? this.measuredVelocity.y : 0,
       grounded: active ? this.grounded : vehicle.grounded,
       touchingWall: active ? this.touchingWall : vehicle.touchingWall,
+      supportIslandId: (active ? this.grounded : vehicle.grounded)
+        ? this.supportResolver(position.x, position.z)
+        : null,
     };
   }
 }

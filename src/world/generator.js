@@ -3,10 +3,11 @@ import { crops } from '../gameplay/catalog/crops.js';
 import { cargoDeckContains, createCargoPort } from '../gameplay/logistics/cargo-port.js';
 import { createForageSystem } from './forage/index.js';
 import { createWildlifeSystem } from './wildlife/index.js';
-import { NORTH_ISLAND_ID, STARTER_ISLAND_ID, WORKSHOP_YAW } from './config.js';
+import { BASE_ISLAND_LAYOUT, ISLAND_CONNECTION_PAIRS, NORTH_ISLAND_ID, STARTER_ISLAND_ID, WORKSHOP_YAW } from './config.js';
 import { createOcclusionSystem, disposeObjectResources } from './occlusion.js';
 import { findCargoSite, findVehicleSpawns, findWorkshopSite, reserveCargoApproach, reserveWorkshopGround } from './sites.js';
 import { createOrganicCells, createPerlin, environmentalAxis, environmentProfile, plateauHeight, scaleIslandLayout, seededRandom } from './islands/procedural.js';
+import { createIslandConnections, createIslandRecords } from './islands/model.js';
 import { STATIC_LANTERN_LIGHT_RADIUS, addBridgeBetween, closestIslandGap, createStaticLanternLighting, reserveBridgeLandings } from './bridges.js';
 import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
@@ -15,8 +16,6 @@ import { createCropInstances, createFieldEffects, renderCropTile, tileAtLevel } 
 
 const PLATEAU_BLOCK_HEIGHT = LEVEL_HEIGHT;
 const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;
-const STARTER_HUB_RADIUS = 7.2;
-const SECOND_STARTER_RADIUS = 7.0;
 const PROP_SPREAD = TILE * .64;
 const TREE_CHANCE_CAP = .22;
 const ROCK_CHANCE_CAP = .12;
@@ -977,29 +976,9 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
     }
   };
 
-  const islandLayout = [
-    // Central hub: workshop, vehicles, starter field, cargo pad.
-    { cx: 0, cz: 0, h: 0, r: STARTER_HUB_RADIUS },
-
-    // Large northern farming island, with three terraces climbing northward.
-    { cx: 1, cz: -16, h: 1, r: SECOND_STARTER_RADIUS },
-
-    // Surrounding islands: deliberately mixed sizes.
-    { cx: 15, cz: -6, h: 2, r: 4.8 },
-    { cx: 14, cz: 10, h: 1, r: 3.5 },
-    { cx: 0, cz: 16, h: 2, r: 5.6 },
-    { cx: -14, cz: 10, h: 3, r: 3.8 },
-    { cx: -15, cz: -8, h: 1, r: 4.6 },
-  ].map(scaleIslandLayout);
+  const islandLayout = BASE_ISLAND_LAYOUT.map(scaleIslandLayout);
   const islands = islandLayout.map((island, id) => ({ ...island, id }));
-  const islandConnections = [
-    [0, 1],
-    [0, 2],
-    [0, 3],
-    [0, 4],
-    [4, 5],
-    [1, 6],
-  ];
+  const islandConnections = ISLAND_CONNECTION_PAIRS;
   let workshopSite;
   let cargoSite;
   let watercourseCount = 0;
@@ -1253,6 +1232,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   const wildlife = createWildlifeSystem(terrain, group, seed);
   const occlusion = createOcclusionSystem(group, cargoPort.occluders);
   physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
+  const islandRecords = createIslandRecords(islands, terrain, seed);
+  const connectionRecords = createIslandConnections(islandConnections, bridgeGaps, islandRecords);
   const starterIsland = islands[STARTER_ISLAND_ID];
   const start = terrain.get(gridKey(starterIsland.cx, starterIsland.cz)) || terrain.values().next().value;
   const vehicleSpawns = findVehicleSpawns(terrain, start, workshopArea);
@@ -1260,6 +1241,8 @@ export function generateFarm(scene, physics, seed = (Math.random() * 0xffffffff)
   return {
     group,
     terrain,
+    islands: islandRecords,
+    connections: connectionRecords,
     cargoPort,
     seed,
     spawn: vehicleSpawns[0],

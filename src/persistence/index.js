@@ -1,70 +1,22 @@
-const STORAGE_KEY = 'farmipelago.gameState';
-const SCHEMA_VERSION = 9;
-const DEFAULT_DAY_PHASE = 10 / 24;
-
-const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-
-function validState(state, schemaVersion = SCHEMA_VERSION) {
-  return isObject(state)
-    && state.schemaVersion === schemaVersion
-    && isObject(state.world)
-    && Number.isInteger(state.world.seed)
-    && state.world.seed >= 0
-    && state.world.seed <= 0xffffffff
-    && Array.isArray(state.world.tiles)
-    && Array.isArray(state.buildings)
-    && isObject(state.progression)
-    && Array.isArray(state.vehicles)
-    && typeof state.activeVehicleId === 'string'
-    && isObject(state.ui)
-    && (schemaVersion < 9 || (
-      isObject(state.environment)
-      && Number.isFinite(state.environment.phase)
-      && state.environment.phase >= 0
-      && state.environment.phase < 1
-    ));
-}
+import { migrateState } from './migrations.js';
+import { SCHEMA_VERSION, validState } from './schema.js';
+import { readStoredState, removeStoredState, writeStoredState } from './storage.js';
 
 export function loadGameState() {
   try {
-    const serialized = localStorage.getItem(STORAGE_KEY);
-    if (!serialized) return { state: null, invalid: false, unavailable: false };
-    let state = JSON.parse(serialized);
-    if (validState(state, 6)) {
-      // Schema 6 ended at the hay milestone. Preserve that completion by moving
-      // the player onto the new milk milestone, whose preceding gates unlock cattle.
-      const progression = { ...state.progression };
-      if (Math.floor(Number(progression.index)) === 2 && progression.collected) {
-        Object.assign(progression, { index: 3, collected: false, delivered: { milk: 0 }, selectedCropIds: [] });
-      }
-      state = { ...state, schemaVersion: 7, progression };
+    const storedState = readStoredState();
+    if (!storedState) return { state: null, invalid: false, unavailable: false };
+    const state = migrateState(storedState);
+    if (validState(state)) {
+      if (state !== storedState) writeStoredState({ ...state, savedAt: Date.now() });
+      return { state, invalid: false, unavailable: false };
     }
-    if (validState(state, 7)) {
-      const buildings = state.buildings.map(building => {
-        if (!isObject(building)) return building;
-        if (building.type === 'silo') return { ...building, constructionPhase: 'complete' };
-        if (building.type !== 'cattle-barn') return building;
-        const hasPen = Array.isArray(building.pen?.vertices) && building.pen.vertices.length >= 4;
-        const hasAnimals = Array.isArray(building.animals) && building.animals.length > 0;
-        return { ...building, constructionPhase: hasPen || hasAnimals ? 'complete' : 'draft' };
-      });
-      state = { ...state, schemaVersion: 8, buildings };
-    }
-    if (validState(state, 8)) {
-      state = {
-        ...state,
-        schemaVersion: SCHEMA_VERSION,
-        environment: { phase: DEFAULT_DAY_PHASE },
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
-    }
-    if (validState(state)) return { state, invalid: false, unavailable: false };
-    localStorage.removeItem(STORAGE_KEY);
+    removeStoredState();
     return { state: null, invalid: true, unavailable: false };
   }
   catch (error) {
     console.warn('Unable to load the Farmipelago save.', error);
-    try { localStorage.removeItem(STORAGE_KEY); }
+    try { removeStoredState(); }
     catch {}
     return { state: null, invalid: true, unavailable: error?.name === 'SecurityError' };
   }
@@ -72,11 +24,7 @@ export function loadGameState() {
 
 export function saveGameState(state) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      ...state,
-      schemaVersion: SCHEMA_VERSION,
-      savedAt: Date.now(),
-    }));
+    writeStoredState({ ...state, schemaVersion: SCHEMA_VERSION, savedAt: Date.now() });
     return true;
   }
   catch (error) {
@@ -87,7 +35,7 @@ export function saveGameState(state) {
 
 export function deleteGameState() {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    removeStoredState();
     return true;
   }
   catch (error) {

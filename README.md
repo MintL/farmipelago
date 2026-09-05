@@ -46,7 +46,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 
 - `src/app/` — rendering setup and the game-session entry point
 - `src/core/` — shared Three.js materials, dimensions, voxel helpers, and grid keys
-- `src/world/` — generated terrain, environment, forage, and wildlife
+- `src/world/` — generated terrain, environment, island-local coordinates, forage, and wildlife
 - `src/gameplay/` — catalogs, vehicles, construction, livestock, logistics, and progression
 - `src/physics/` — Rapier simulation, terrain colliders, vehicles, and bales
 - `src/ui/` — touch and keyboard controls, HUD, workshop, construction controls, and menus

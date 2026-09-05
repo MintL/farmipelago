@@ -80,6 +80,8 @@ the GDD as well:
 - `index.html` contains the HUD markup; `src/styles/` contains its styles.
 - `src/app/` owns renderer/scene setup and game-session orchestration.
 - `src/world/` owns generated terrain, environment, forage, and wildlife.
+- `src/world/archipelago/` owns stable island records, connections, and
+  local/world coordinate boundaries. See `docs/Architecture.md`.
 - `src/gameplay/` owns vehicles, construction, livestock, logistics, catalogs,
   and progression.
 - `src/physics/` owns Rapier simulation and collider construction.

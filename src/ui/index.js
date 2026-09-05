@@ -1,7 +1,10 @@
 import { cropIds, crops } from '../gameplay/catalog/crops.js';
 import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from '../gameplay/catalog/equipment.js';
-import { dayPhaseLabel, DEFAULT_DAY_PHASE } from '../world/environment/index.js';
+import { DEFAULT_DAY_PHASE } from '../world/environment/index.js';
 import { queryUiDom } from './dom.js';
+import { cropIcon, createCropMeterRenderer, formatLitres, formatRequirementAmount, formatRequirementProgress } from './format.js';
+import { renderMilestoneCelebration } from './celebration-view.js';
+import { createDebugView } from './debug-view.js';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', emptyLabel: 'No rear tool', icon: 'plough' },
@@ -112,116 +115,20 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   const setInputMode = mode => { document.body.dataset.inputMode = mode; };
   setInputMode(matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
 
-  const cropIcon = (cropId, label, className = 'icon') => {
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-    icon.setAttribute('class', className);
-    icon.setAttribute('role', 'img');
-    icon.setAttribute('aria-label', label);
-    use.setAttribute('href', `#icon-${cropId}`);
-    icon.append(use);
-    return icon;
-  };
+  const debugView = createDebugView({
+    cameraPresets: debugCameraPresets,
+    timeSlider: debugTimeSlider,
+    timeValue: debugTimeValue,
+    unlockList: debugUnlockList,
+    milestoneList: debugMilestoneList,
+    clearOverrides: clearUnlockOverrides,
+  });
+  const renderDebugCameraPresets = () => debugView.renderCameraPresets(debugCameraFov);
+  const renderDebugTimeOfDay = () => debugView.renderTimeOfDay(debugDayPhase);
+  const renderDebugUnlockables = () => debugView.renderUnlockables(debugUnlockables);
+  const renderDebugMilestones = () => debugView.renderMilestones(debugMilestones);
 
-  const renderDebugCameraPresets = () => {
-    for (const button of debugCameraPresets) {
-      const selected = Number(button.dataset.cameraFov) === debugCameraFov;
-      const state = button.querySelector('.debugUnlockState');
-      button.setAttribute('aria-pressed', String(selected));
-      button.setAttribute('aria-label', `${button.dataset.cameraLabel}: ${selected ? 'Active' : 'Select preset'}`);
-      state.textContent = selected ? 'Active' : 'Select';
-    }
-  };
-
-  const renderDebugTimeOfDay = () => {
-    const totalMinutes = Math.round(debugDayPhase * 24 * 60) % (24 * 60);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const clock = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    const phaseLabel = dayPhaseLabel(debugDayPhase);
-    debugTimeSlider.value = String(totalMinutes);
-    debugTimeSlider.setAttribute('aria-valuetext', `${clock}, ${phaseLabel}`);
-    debugTimeValue.value = `${clock} · ${phaseLabel}`;
-    debugTimeValue.textContent = debugTimeValue.value;
-  };
-
-  const renderDebugUnlockables = () => {
-    debugUnlockList.replaceChildren();
-    for (const unlockable of debugUnlockables) {
-      const button = document.createElement('button');
-      const details = document.createElement('span');
-      const name = document.createElement('strong');
-      const category = document.createElement('small');
-      const state = document.createElement('small');
-      const canOverride = Boolean(unlockable.canOverride);
-      const overridden = Boolean(unlockable.overridden);
-      name.textContent = unlockable.name;
-      category.textContent = unlockable.category;
-      state.className = 'debugUnlockState';
-      state.textContent = overridden ? 'Override on' : unlockable.unlocked ? 'Unlocked' : 'Locked';
-      details.append(name, category);
-      button.className = 'debugUnlock';
-      button.type = 'button';
-      button.dataset.unlockId = unlockable.id;
-      button.setAttribute('aria-pressed', String(overridden));
-      button.setAttribute('aria-label', `${unlockable.name}: ${state.textContent}${canOverride ? '. Toggle override' : '. Unlocked by progression'}`);
-      button.disabled = !canOverride;
-      button.append(details, state);
-      debugUnlockList.append(button);
-    }
-    clearUnlockOverrides.hidden = !debugUnlockables.some(unlockable => unlockable.overridden);
-  };
-
-  const renderDebugMilestones = () => {
-    debugMilestoneList.replaceChildren();
-    for (const milestone of debugMilestones) {
-      const button = document.createElement('button');
-      const details = document.createElement('span');
-      const name = document.createElement('strong');
-      const category = document.createElement('small');
-      const state = document.createElement('small');
-      name.textContent = milestone.title;
-      category.textContent = 'Milestone';
-      state.className = 'debugUnlockState';
-      state.textContent = milestone.active ? 'Active' : 'Switch';
-      details.append(name, category);
-      button.className = 'debugUnlock debugMilestone';
-      button.type = 'button';
-      button.dataset.milestoneId = milestone.id;
-      button.setAttribute('aria-pressed', String(milestone.active));
-      button.setAttribute('aria-label', `${milestone.title}: ${milestone.active ? 'Active milestone' : 'Switch to this milestone and clear its progress'}`);
-      button.disabled = milestone.active;
-      button.append(details, state);
-      debugMilestoneList.append(button);
-    }
-  };
-
-  const cropMeters = new WeakMap();
-
-  const renderCropMeter = (container, { cropId, label, value, percent, ariaLabel, ariaValueText }) => {
-    let meter = cropMeters.get(container);
-    if (!meter) {
-      const heading = document.createElement('div');
-      const track = document.createElement('div');
-      const fill = document.createElement('span');
-      heading.className = 'cropMeterHeading';
-      track.className = 'cropMeterTrack';
-      track.setAttribute('role', 'progressbar');
-      track.append(fill);
-      container.replaceChildren(heading, track);
-      meter = { heading, track, fill };
-      cropMeters.set(container, meter);
-    }
-    const amount = document.createElement('strong');
-    amount.textContent = value;
-    meter.heading.replaceChildren(cropIcon(cropId || 'silo', label, 'icon cropMeterIcon'), amount);
-    meter.track.setAttribute('aria-label', ariaLabel);
-    meter.track.setAttribute('aria-valuemin', '0');
-    meter.track.setAttribute('aria-valuemax', '100');
-    meter.track.setAttribute('aria-valuenow', String(percent));
-    meter.track.setAttribute('aria-valuetext', ariaValueText);
-    meter.fill.style.width = `${percent}%`;
-  };
+  const renderCropMeter = createCropMeterRenderer();
 
   const showSeedCropToast = cropId => {
     const icon = cropIcon(cropId, '', 'icon');
@@ -236,18 +143,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     clearTimeout(seedCropToastTimer);
     seedCropToastTimer = setTimeout(() => seedCropToast.classList.remove('show'), 1000);
   };
-
-  const formatLitres = amount => `${Math.max(0, Number(amount) || 0).toLocaleString(undefined, {
-    maximumFractionDigits: 0,
-  })} L`;
-
-  const formatRequirementAmount = (amount, unit = 'litres') => unit === 'bales'
-    ? `${Math.max(0, Math.floor(Number(amount) || 0))} ${Math.floor(Number(amount) || 0) === 1 ? 'bale' : 'bales'}`
-    : formatLitres(amount);
-
-  const formatRequirementProgress = (amount, target, unit = 'litres') => unit === 'bales'
-    ? `${Math.max(0, Math.floor(Number(amount) || 0))} / ${Math.max(0, Math.floor(Number(target) || 0))} bales`
-    : `${formatLitres(amount)} / ${formatLitres(target)}`;
 
   const availableCropIds = () => cropIds.filter(cropId => unlockedGates.has(`crop:${cropId}`));
   const selectedSeedCropId = () => availableCropIds()[seedIndex] || 'wheat';
@@ -1073,57 +968,15 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   renderLoadoutBays();
 
   const showMilestoneCelebration = milestone => {
-    const completeGame = Boolean(milestone?.completeGame);
-    celebrationEyebrow.textContent = completeGame ? 'Current prototype complete' : 'Shipment complete';
-    celebrationHeading.textContent = completeGame ? 'Farmipelago complete' : 'Milestone complete';
-    celebrationTitle.textContent = milestone?.title || 'Milestone';
-    celebrationCopy.replaceChildren(
-      celebrationTitle,
-      document.createTextNode(completeGame
-        ? ' was the final available delivery. You have unlocked every current farming capability.'
-        : ' has expanded what this Farmipelago can do.')
-    );
-    celebrationContinueLabel.textContent = completeGame ? 'Keep farming' : 'Continue farming';
-    celebrationUnlocks.replaceChildren();
-    const unlocks = Array.isArray(milestone?.unlocks) ? milestone.unlocks : [];
-    celebrationUnlocksLabel.hidden = unlocks.length === 0;
-    celebrationUnlocks.hidden = unlocks.length === 0;
-    for (const gate of unlocks) {
-      const cropId = typeof gate === 'string' && gate.startsWith('crop:') ? gate.slice(5) : null;
-      const item = document.createElement('li');
-      item.className = 'unlockItem';
-      if (cropId && crops[cropId]) {
-        const icon = cropIcon(cropId, '', 'icon unlockIcon');
-        icon.setAttribute('aria-hidden', 'true');
-        const label = document.createElement('strong');
-        label.textContent = crops[cropId].name;
-        item.append(icon, label);
-      }
-      else if (gate === 'equipment:hay') {
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-        const label = document.createElement('strong');
-        icon.setAttribute('class', 'icon unlockIcon');
-        icon.setAttribute('aria-hidden', 'true');
-        use.setAttribute('href', '#icon-baler');
-        icon.append(use);
-        label.textContent = 'Hay equipment';
-        item.append(icon, label);
-      }
-      else if (gate === 'equipment:livestock' || gate === 'building:cattle-barn') {
-        const icon = cropIcon(gate === 'equipment:livestock' ? 'milk-tank' : 'cattle-barn', '', 'icon unlockIcon');
-        const label = document.createElement('strong');
-        icon.setAttribute('aria-hidden', 'true');
-        label.textContent = gate === 'equipment:livestock' ? 'Livestock equipment' : 'Cattle barn';
-        item.append(icon, label);
-      }
-      else {
-        const label = document.createElement('strong');
-        label.textContent = gate;
-        item.append(label);
-      }
-      celebrationUnlocks.append(item);
-    }
+    renderMilestoneCelebration({
+      eyebrow: celebrationEyebrow,
+      heading: celebrationHeading,
+      title: celebrationTitle,
+      copy: celebrationCopy,
+      unlocksLabel: celebrationUnlocksLabel,
+      unlocks: celebrationUnlocks,
+      continueLabel: celebrationContinueLabel,
+    }, milestone);
     showOverlay('celebration', celebrationDialog);
   };
 

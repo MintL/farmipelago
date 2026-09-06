@@ -267,6 +267,27 @@ subtle speed, lift, and lateral variation without affecting physics, crops, or
 input. Night lowers their palette brightness, while reduced motion halves the
 visible populations and removes gust lift and leaf tumble.
 
+A vast saturated surface also passes northeast far below the cloud layers. One
+periodic top-down tile map supplies dense square cells of green grass, plain
+blue water, brown soil, and darker forest ground with stepped shore and biome
+edges but no drawn grid lines. A palette-preserving mip chain keeps those
+saturated terrain classes distinct at distance instead of averaging them toward
+gray. A coarser periodic height grid gives the surface
+broad distant relief through a few discrete one-unit plateau levels:
+raised cells have flat green tops and expose brown vertical walls only toward
+lower neighbors. These merged plateau meshes and a dense field of tiny
+single-draw instanced voxel trees share a fixed, horizon-biased detail footprint
+inside a broader diffuse plane. The extreme horizon may become texture-only,
+while the base-plane edge remains beyond the camera frustum. Together they
+preserve the voxel-world silhouette from every camera
+orientation. It derives all motion from the shared travel distance, remains
+fixed to the stable Farmipelago travel frame rather than any camera or vehicle,
+and has no gameplay terrain, collision, interaction, persistence, independent
+clock, or shadow work. Its materials deliberately opt out of scene fog because
+fog erased the accepted terrain colors; physical separation, coverage, exposure,
+and global lighting keep it remote and subordinate to the playable islands.
+Reduced motion automatically slows it with the rest of the travel presentation.
+
 Ambient reindeer and foxes are temporarily absent from the two-island opening.
 Their implementation remains available for a later island slice, but the
 current Farmipelago owns no ambient wildlife scene or simulation. Cattle and
@@ -351,6 +372,14 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 
 Both vehicles remain parked in the world when not controlled. Their positions, loadouts and compatible stored cargo are saved.
 The tractor and combine each have their own generated Settlement Island spawn point with reserved turnaround space. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
+
+The Grain Trailer, Baler and Water / Milk Tank are articulated tow-behind
+equipment. Each follows its own hitch-to-axle geometry, keeps its joint angle
+while parked and across refreshes, and uses that pose for visible wheels,
+working areas, cargo flow and bale ejection. Reversing permits a readable swing
+but softly resists extreme jackknifing. Mounted rear and front tools remain
+rigidly aligned with the tractor. Tow articulation is intentionally kinematic
+and does not add separate equipment collision bodies.
 
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 
@@ -652,6 +681,7 @@ The playable prototype currently proves the following major systems together:
 - persistent procedurally generated Farm Island + Settlement Island pair
 - persistent visual day/night cycle with a Debug time scrubber
 - world-owned southwest travel presentation with wrapped distant/near voxel-cloud parallax and terrain-aware dust/leaf airflow
+- a deterministic periodic green/blue/brown planetary surface far below the clouds, with fog-muted cliffs and dense tiny trees scrolling northeast from the same travel distance
 - vehicle driving and jumping
 - tractor attachments
 - ploughing and seeding

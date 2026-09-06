@@ -1,5 +1,6 @@
 import { mats, THREE } from '../../core/shared.js';
 import { createCloudSystem } from './clouds.js';
+import { createDistantSurfaceSystem } from './distant-surface.js';
 import { createWindParticleSystem } from './wind-particles.js';
 
 export const DAY_CYCLE_SECONDS = 10 * 60;
@@ -133,9 +134,12 @@ export function createEnvironment({
 
   const lowFog = createLowFog();
   scene.add(lowFog.group);
+  const distantSurface = createDistantSurfaceSystem({
+    anisotropy: Math.min(4, renderer.capabilities.getMaxAnisotropy()),
+  });
   const cloudLayer = createCloudSystem({ reducedMotion });
   const windParticles = createWindParticleSystem({ reducedMotion });
-  scene.add(cloudLayer.group, windParticles.group);
+  scene.add(distantSurface.group, cloudLayer.group, windParticles.group);
 
   const apply = (nextFocus = focus) => {
     focus.copy(nextFocus);
@@ -192,12 +196,14 @@ export function createEnvironment({
     update(dt, nextFocus, travelState) {
       phase = clampPhase(phase + Math.max(0, Number(dt) || 0) / DAY_CYCLE_SECONDS);
       environmentElapsed += Math.max(0, Number(dt) || 0);
+      distantSurface.update(travelState);
       cloudLayer.update(environmentElapsed, travelState);
       windParticles.update(environmentElapsed, travelState);
       return apply(nextFocus || focus);
     },
-    setTravelFrame(frame, travelState) {
+    setTravelFrame(frame, seed, travelState) {
       cloudLayer.setTravelFrame(frame, environmentElapsed, travelState);
+      distantSurface.setWorld(frame, ((Number(seed) || 0) ^ 0xa511e9b3) >>> 0, travelState);
     },
     setWindSources(sources, travelState) {
       windParticles.setSources(sources, travelState);

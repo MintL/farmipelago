@@ -57,7 +57,7 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const transferEffects = createTransferEffects(scene, { reducedMotion });
-const camera = new THREE.PerspectiveCamera(defaultDriveCameraFov, innerWidth / innerHeight, .1, 200);
+const camera = new THREE.PerspectiveCamera(defaultDriveCameraFov, innerWidth / innerHeight, .1, 400);
 const cinematicCameraFov = 44;
 const baseDriveCameraOffset = new THREE.Vector3(12, 20, 28);
 const cameraUp = new THREE.Vector3(0, 1, 0);
@@ -754,7 +754,11 @@ function initializeFarm(savedState) {
     scheduleSave,
     { attachmentComplete, reducedMotion },
   ));
-  environment.setTravelFrame(travelFrameForIslands(farm.islands.values()), travel.snapshot());
+  environment.setTravelFrame({
+    ...travelFrameForIslands(farm.islands.values()),
+    horizonX: cameraForward.x,
+    horizonZ: cameraForward.y,
+  }, farm.seed, travel.snapshot());
   physics.setSupportResolver((x, z) => farm.islandAtWorld(x, z)?.id || null);
   buildings.setParent(farm.group);
   progression = createMilestoneProgression(savedState?.progression);

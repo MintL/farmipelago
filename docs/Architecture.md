@@ -124,6 +124,76 @@ surface, while wind-caught chips rise and progressively shrink away; both paths
 reach zero scale before recycling and require no opacity sorting or terrain
 lookups during animation.
 
+`src/world/environment/distant-surface.js` owns the unreachable planetary
+backdrop behind the same environment facade. World initialization derives its
+seed from the generated Farmipelago seed and supplies the stable travel-frame
+center. The module generates one periodic 512×512 RGBA top-down map over a
+160-unit cell as 128×128 explicit square terrain tiles (four texels and 1.25
+world units per tile), places its fixed 720-unit plane at `y = -54`, and repeats
+one 64×64 quantized plateau cell plus up to 1,000 tree records across a 3×3
+coverage grid. The plane and detail field share a fixed 80-unit horizontal bias
+toward the default drive-view horizon, derived once from the initial camera
+forward axis rather than following later camera rotation. The result adds four
+draws: one mapped plane, one instanced
+merged plateau top, one instanced merged plateau side, and one instanced draw
+for combined trunk-and-canopy trees. Build 0.271 classifies and colors the generated map only at
+logical tile centers, fills each tile with one discrete palette step based on
+the shared grass, raised-grass, soil, water, and woodland colors, and uses
+nearest texel sampling with linear mip-level blending so shore and biome edges
+stay grid-stepped without a line overlay or severe oblique shimmer. Build 0.274
+strengthens the separation of those terrain colors and supplies a deterministic
+ten-level mip chain that selects the dominant terrain class in each 2×2 block
+and requantizes its variation instead of averaging unlike classes toward gray.
+The chain, bounded anisotropy, and base image remain one texture allocation.
+Build 0.273
+replaces the superseded smooth GPU height map and arbitrary cliff footprints
+with five discrete one-unit plateau levels on a 64×64 grid aligned to 2×2
+diffuse cells. Water-adjacent height cells stay at zero. Raised cells contribute
+one flat grass/forest-colored top; only the higher side of a transition emits
+one flat dirt wall, with periodic neighbor lookup suppressing equal-height,
+reverse, internal, and bottom faces. The complete source top and side meshes are
+instanced nine times rather than creating per-cell objects, and tree bases cache
+the matching plateau level. Build 0.274 retains the seamless periodic forest
+field, combines its continuous density with deterministic per-tile occupancy,
+sub-cell jitter, scale, and quarter-turn yaw, and accepts trees only on grass
+tiles. Each tree is one tiny saturated brown trunk box plus one tiny saturated
+green canopy box
+merged into a fixed 24-triangle vertex-colored geometry. Seed 99173 produces
+878 source records and 7,902 repeated instances in one draw. Together with
+1,516 source plateau tops and 841 source sides, this produces 232,076 effective
+triangles. Frame updates change only the
+diffuse map offset and one shared landmark-root transform, both calculated from
+the same wrapped northeast offset
+at a `.34` travel-distance multiplier. The plane never follows the camera, and
+the module owns no gameplay records, raycasts, colliders, shadows, persistence,
+or fixed-step work. Reinitialization disposes its previous texture, materials,
+and geometries before rebuilding, leaving one direct environment scene child
+and no duplicate roots. The production design uses existing exposure and global
+lighting for its day/night response without a second lighting rig. Through
+build 0.277 it required no camera projection change. Build 0.275 restores the
+original `y = -48` distant
+elevation for both the plane and shared plateau/tree root. Build 0.276 restores
+fog participation on all four distant materials and reduces only the expensive
+plateau/tree repetition from 5×5 to a centered 3×3 field, then biases the whole
+backdrop horizontally toward the default horizon; the two-triangle 480-unit
+diffuse plane remains unchanged in size and at `y = -48`. The plateau tops,
+sides, and trees share the identical nine transforms and no runtime culling,
+LOD, or greedy meshing was added. Global scene fog and every other material
+remain unchanged. Visual review found that fog erased the separated terrain
+colors, so build 0.277 opts those four distant materials back out of fog while
+retaining every footprint reduction. The 80-unit horizon bias and fixed plane
+and detail bounds place their finite edges beyond the camera frustum rather than
+depending on material fog to hide them; global fog itself is still unchanged.
+Build 0.278 fixes the remaining top-of-screen far clipping by increasing only
+the main camera far plane from 200 to 400 while retaining its `0.1` near plane,
+and enlarging the still-two-triangle diffuse plane from 480 to 720 units. The
+four draws and 3×3 detail budget do not change. The extreme newly visible band
+may intentionally contain only the periodic diffuse map; no 5×5 restoration,
+greedy meshing, LOD, chunking, or additional scene object accompanies it.
+Build 0.279 lowers both the base plane and shared plateau/tree root by exactly
+six units from `y = -48` to `y = -54`. Their horizontal origin, texture phase,
+3×3 transforms, four draws, and all geometry and instance budgets are unchanged.
+
 Terrain tiles carry their owner's stable string ID from creation. Field and
 forage mutations, construction-site selection, and restoration resolve the
 owner through the island record and enforce its capability flags. `reserved`

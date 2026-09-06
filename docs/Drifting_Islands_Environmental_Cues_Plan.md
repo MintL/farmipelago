@@ -1,6 +1,6 @@
 # Drifting Islands — Environmental Cues Implementation Plan
 
-**Status:** In progress; Steps 1–2 accepted, Step 3 planned
+**Status:** In progress; Steps 1–2 accepted, Step 3 implementation complete with manual visual/performance acceptance pending
 **Scope:** Improve the fixed Farmipelago's illusion of southwest travel without
 moving playable islands or gameplay state  
 **Execution rule:** Complete, build, manually verify, and record each numbered
@@ -443,7 +443,7 @@ gameplay-affecting wind.
 
 Add the impression of a vast, unreachable planetary surface far below the
 Farmipelago. It should use the same broad terrain language as the playable
-islands—green grass, blue water, brown dirt, blocky cliffs, and sparse trees—but
+islands—green grass, blue water, brown dirt, blocky cliffs, and dense tiny trees—but
 with much lower detail, contrast, and runtime cost. Heavy fog should make it
 feel remote while its slow northeast passage strengthens the existing illusion
 that the attached islands travel southwest.
@@ -484,8 +484,8 @@ Create a focused module such as
 It should own only:
 
 - deterministic backdrop-map generation derived from the world seed;
-- the generated color texture and horizontal surface plane;
-- bounded cliff and tree presentation records and geometry;
+- the generated tile-color texture and horizontal base plane;
+- bounded quantized plateau and tree presentation records and geometry;
 - travel-offset synchronization, wrapping, palette response, and disposal.
 
 Reuse pure generation helpers from `src/world/islands/procedural.js` where they
@@ -511,6 +511,21 @@ layers must be derived from the same periodic coordinate domain:
 - sparse forest regions and individual tree positions restricted to grass;
 - stable local heights so trees remain on top of elevated terrain.
 
+Render the accepted classification into explicit square logical tiles rather
+than evaluating a smooth color field per texture pixel. Tile colors should use
+discrete variants of the playable grass-top, raised-grass, water, soil, and
+woodland palette; shore and biome boundaries must step along the tile grid with
+no drawn grid-line overlay. Cliff footprints and tree anchors use the same tile
+centers and edges. Preserve those cells through mip filtering at the oblique
+phone camera while avoiding severe shimmer.
+
+Automatic color-averaging mipmaps can wash terrain classes toward gray because
+each source tile occupies only four texels per axis. Build a deterministic mip
+chain that selects the dominant terrain class in every 2×2 downsample block,
+then carries a quantized variation of that class forward. Nearest texel sampling
+with restrained linear blending only between these palette-preserving mip
+levels should retain class identity without the shimmer of an unmipmapped map.
+
 Favor large readable regions over high-frequency noise. The distant world is
 not another playable Farmipelago and does not need fields, buildings, roads,
 vehicles, crops, waterfalls, island undersides, or simulated water. Avoid an
@@ -522,10 +537,17 @@ with a `CanvasTexture` or equivalently small generated pixel buffer. Use texture
 wrapping and mip filtering that prevent shimmer at the camera's shallow viewing
 angle. Do not render a temporary 3D scene merely to obtain this texture.
 
+Pair it with one substantially lower-resolution periodic height grid derived
+from the same tile classifications and broad deterministic relief field. Water
+stays at the base level and land quantizes into a few discrete plateau levels.
+Build those levels as merged top and exposed-side geometry with flat normals;
+do not displace the base plane, create smooth slopes, or create gameplay height
+records.
+
 ### 3.4 Scroll UVs from the shared travel state
 
-The generated texture must move through UV transformation rather than moving or
-regenerating the large plane. Derive its displacement from the same shared
+The generated texture must move through UV transformation rather than moving
+or regenerating the large plane. Derive its displacement from the same shared
 travel state used by clouds:
 
 - use `-travelState.direction` so the distant surface passes northeast while
@@ -537,43 +559,50 @@ travel state used by clouds:
   active-vehicle dependency;
 - let the existing reduced-motion travel speed slow this layer automatically.
 
-The plane, cliffs, and trees must all consume one calculated backdrop travel
-offset. Do not update three loosely equivalent motion implementations.
+The plane texture, plateau root, and trees must all consume one calculated
+backdrop travel offset. Do not update three loosely equivalent motion
+implementations.
 
 ### 3.5 Add only major cliffs as real geometry
 
-After the flat surface passes, add a limited number of large cliff and plateau
-landmarks derived from the same periodic map coordinates. These supply genuine
-vertical silhouettes and camera parallax without constructing a second full
-world.
+After the flat surface passes, convert the lower-resolution periodic height grid
+into a bounded field of stepped plateaus. These supply genuine vertical
+silhouettes and camera parallax without constructing a second full world.
 
-- Build coarse stepped top footprints with green top faces and brown vertical
-  faces. Small or distant elevation changes can remain painted into the texture.
+- Emit one grass/forest-colored top face for every raised height cell and one
+  brown vertical wall only where its periodic neighbor is lower.
 - Include only visible tops and vertical sides. Omit deep undersides, collision,
   shadow casting, high-frequency edge damage, and decorative strata.
-- Merge the repeated cliff tops and sides into a bounded mesh or material-group
-  pair rather than one scene object per block.
+- Do not emit bottoms, equal-height internal walls, or a wall from the lower side
+  of a height transition. A multi-level difference remains one clean wall.
+- Merge one repeat cell's plateau tops and sides into two meshes, then instance
+  those complete cells for bounded coverage rather than creating one object per
+  height cell.
 - Repeat enough neighboring copies of the periodic cell that the visible fog
   region remains covered while the shared backdrop root translates and wraps.
 - Move that root by the world-space equivalent of the UV offset, modulo the same
   repeat span. A modulo reset must be visually identical because the data is
   periodic and the reset occurs outside the useful fog radius.
 
-Begin with approximately 10–20 major cliff footprints per repeat cell. Treat
-that as a prototype range, then record the accepted count rather than allowing
-art tuning to grow it without a budget.
+Choose and record the height-grid resolution, level count, top-face count, and
+exposed-side count. Treat those as the fixed geometry budget rather than adding
+separate arbitrary cliff footprints.
 
-### 3.6 Add sparse instanced trees
+### 3.6 Add dense tiny instanced trees
 
 Do not bake individual trees into the horizontal texture. At the gameplay
 camera angle they would flatten into ground marks rather than reading as a
 distant forest.
 
 - Paint only broad forest-color regions into the texture.
-- Add simple 3D trees above those regions using one instanced trunk mesh and one
-  instanced blocky-canopy mesh.
-- Place every tree from the same periodic records used by the texture and set
-  its Y position from the matching surface or cliff-top height.
+- Retain the seamless periodic forest field and combine its continuous density
+  with deterministic per-tile hash occupancy, sub-cell jitter, scale, and yaw.
+  This keeps grove interiors dense, feathers their edges, and prevents the
+  logical tile grid from visibly stamping the silhouettes.
+- Add tiny 3D trees above those regions using one combined vertex-colored
+  trunk-and-canopy geometry and one instanced mesh/material draw.
+- Place trees only on grass-compatible texture tiles and set each cached Y
+  position from the matching quantized plateau level.
 - Move and wrap the tree root with exactly the same world-space backdrop offset
   as the cliff root so trees never slide across the terrain.
 - Disable shadow casting, animation, physics, interaction, and per-frame
@@ -581,40 +610,129 @@ distant forest.
 - Keep colors muted toward the current fog palette and judge density by forest
   silhouette at phone scale, not by close inspection.
 
-Choose and record a hard instance cap before final tuning. If the cap cannot
-produce readable forest shapes, prefer fewer larger canopy clusters rather than
-increasing detail or draw calls.
+Choose and record a hard source-record cap before final tuning. Prefer density
+controlled by the forest mask rather than filling that cap indiscriminately,
+and increase distant population without increasing tree draw calls.
 
 ### 3.7 Keep water, fog, and lighting simple
 
 Water in the distant surface is plain blue. It needs no existing water shader,
 reflection, transparency, scrolling normal, foam, waterfall, or separate
 animation. Grass remains green and exposed soil and cliff faces remain brown.
+Use a saturated but coherent extension of the playable grass, raised-grass,
+forest, water, soil, trunk, and canopy palette so the classes remain distinct
+under distant sampling. Do not use emissive color, transparency, or opacity to
+recover contrast.
 
-Use the existing scene fog and stacked low-fog planes to integrate the backdrop.
-All backdrop materials must support fog and remain clearly lower contrast than
-the playable islands. Apply only a restrained environment tint or small palette
-swap across dawn, day, dusk, and night; do not recreate the playable world's
+Visual review found that scene fog erased the backdrop's separated terrain
+colors. Keep `fog: false` on only the four distant-surface materials and leave
+global scene fog and every other material unchanged. Physical separation,
+horizon-biased coverage beyond the camera frustum, exposure, and global lighting
+must keep the backdrop subordinate. Do not recreate the playable world's
 lighting rig, shadow map, or local lights below.
 
-Fit the system inside the existing camera far plane if possible. First adjust
-the plane's elevation, visible span, and fog integration; increase the far plane
-only if a measured composition requires the smallest safe change.
+Fit the system inside the existing camera far plane if possible. Static camera
+analysis later confirmed that top-screen intersections at `y = -48` exceeded
+the original 200-unit far plane, so build 0.278 uses the smallest robust round
+increase to 400 while retaining `near = 0.1` and expanding only the cheap base
+plane for coverage.
 
 ### 3.8 Enforce a small fixed runtime budget
 
 The intended steady-state budget is approximately:
 
-- one generated 512×512 texture, with 1024×1024 allowed only after comparison;
-- one horizontal plane draw;
-- at most two cliff draws for top and side treatment;
-- one instanced trunk draw and one instanced canopy draw;
+- one generated 512×512 tile-color texture;
+- one two-triangle horizontal base-plane draw;
+- two instanced plateau draws for merged tops and exposed sides;
+- one instanced tree draw using combined trunk-and-canopy geometry;
 - no shadow-map draws, render targets, per-frame geometry changes, or scene
   object creation.
 
 Only the texture offset and shared presentation-root position should change per
-frame. Record accepted texture size, triangle count, instance count, draw-call
-change, and scene-child change in the verification record.
+frame. Record accepted texture size, triangle count, instance
+count, draw-call change, and scene-child change in the verification record.
+
+### 3.9 Reduce the fixed detailed footprint before adding complexity
+
+The build 0.275 configuration repeats the complete plateau and tree cell over a
+fixed 5×5 area. For verification seed 99173 this submits 644,652 effective
+triangles and 21,950 trees even though much of that detail lies outside the
+useful phone view. The 512×512 diffuse texture is not the main waste: unseen
+texels consume fixed memory, but they do not generate off-screen fragments.
+
+Use the following fixed reduction before considering greedy meshing, dynamic
+chunk selection, or runtime LOD. Complete and verify each phase before starting
+the next.
+
+#### 3.9.1 Hide the terminal boundary through fixed coverage
+
+- Keep fog disabled on the four distant-surface materials so the accepted
+  saturated terrain classes remain visible. Preserve global fog unchanged and
+  place the finite backdrop edges beyond the camera frustum through fixed
+  coverage rather than color convergence.
+- Keep the inexpensive two-triangle diffuse plane large enough to cover every
+  drive, rotation, construction, and cinematic composition. Enlarging this
+  plane is acceptable because it does not meaningfully increase geometry cost.
+- Keep the accepted `y = -54` elevation unchanged. Bias the fixed coverage
+  horizontally toward the default-view horizon instead of lowering it;
+  vertical distance does not reduce submission cost. If static frustum analysis
+  proves the camera clips that accepted geometry, expand the far plane and
+  inexpensive base plane together without changing detailed repetition.
+- Verify the four camera headings, the full rotation transition, phone and wide
+  aspect ratios, construction panning, opening, vehicle handoff, and milestone
+  cinematics before reducing detailed coverage.
+
+#### 3.9.2 Shrink only the expensive plateau/tree repetition
+
+- Reduce the repeated plateau and tree field from 5×5 cells to a centered 3×3
+  field without tying that expensive footprint to the diffuse-plane size.
+- Keep the plateau tops, plateau sides, and trees on the same 3×3 transform set
+  so their periodic phases cannot separate.
+- Do not add camera-following, runtime chunk updates, per-frame frustum tests, or
+  another LOD draw in this pass. The smaller field may transition to a
+  diffuse-texture-only extreme band but must not reveal the base-plane edge.
+- For verification seed 99173, the expected fixed cost falls from 21,950 to
+  7,902 tree instances and from approximately 644,652 to 232,076 total effective
+  triangles, a reduction of about 64%, while retaining four draw calls.
+- Confirm that rotation and maximum wrap offset do not make the transition from
+  3D detail to the accepted diffuse-only extreme band read as a hard cutoff.
+
+#### 3.9.3 Bias coverage toward the horizon at the accepted distance
+
+Keep the complete distant surface at the accepted `y = -54`. Build 0.279 makes
+this exact six-unit visual adjustment from the prior `y = -48`; it does not
+change submitted geometry, draw calls, or texture cost. Continue to shift the
+fixed plane and shared plateau/tree footprint 80 units horizontally
+toward the default drive-view horizon. Derive that direction once from the
+initial camera-forward axis; do not follow camera rotation or add runtime view
+selection. This reallocates fixed coverage from the lower, behind-camera region
+toward the upper visible region while keeping the diffuse, plateau, and tree
+phases aligned. The plane and shared plateau/tree root must retain the exact
+`y = -54` elevation through initialization, travel, wrapping, and regeneration.
+
+#### 3.9.4 Fixed-footprint optimization gate
+
+Before accepting this simpler optimization:
+
+- no base-plane or camera far-clip edge is visible in any supported camera
+  composition or during rotation and wrapping; the detail transition into the
+  diffuse-only extreme band is acceptable only if it does not read as a cutoff;
+- diffuse tiles, plateaus, and trees remain phase-locked;
+- the expected 3×3 triangle and tree-instance reduction is confirmed in the
+  recorded runtime budget;
+- distant-surface draw calls remain at four and no per-frame allocation,
+  geometry rebuild, frustum calculation, or instance-buffer rewrite is added;
+- the lower world still reads at phone scale with the accepted no-fog material
+  treatment and `y = -54` distance;
+- the 15-minute phone test and complete `AGENTS.md` manual regression checklist
+  pass before Step 3 is accepted and Step 4 begins.
+
+Only if the 3×3 field still fails performance or exposes detail edges should a
+second optimization pass add greedy plateau meshing or view-aware LOD/chunking.
+Those mechanisms add implementation and pop-management complexity and require a
+new measured plan rather than being included preemptively. The user explicitly
+rejected greedy meshing, dynamic chunks, camera-aware culling, and LOD for this
+pass.
 
 ### Step 3 completion criteria
 
@@ -623,9 +741,9 @@ change, and scene-child change in the verification record.
 - Grass is plainly green, water plainly blue, and soil and cliff faces plainly
   brown without a complex water or terrain shader.
 - Major cliffs have real vertical silhouettes from all supported camera views.
-- Sparse trees read as distant forest and stay correctly planted on flat and
+- Dense tiny trees read as distant forest and stay correctly planted on flat and
   elevated terrain.
-- Texture UVs, cliffs, and trees remain synchronized through continuous travel
+- Diffuse UVs, plateaus, and trees remain synchronized through continuous travel
   and wrapping, with no swimming, popping, seams, or direction disagreement.
 - The surface remains subordinate to gameplay and the playable island
   silhouette through drive view, construction view, cinematics, and the full
@@ -671,16 +789,27 @@ change, and scene-child change in the verification record.
 
 ### Step 3 verification record
 
-- Status: **Blocked by Step 2 acceptance**
-- Date/build:
-- Tester and device/browser:
-- Plane elevation / repeat span / accepted texture size:
-- Cliff footprint count / triangles / draws:
-- Tree instance cap / accepted instances / draws:
-- Step 5 FPS / accepted FPS:
-- Direction, distance, and reachability notes:
-- Wrap and synchronization notes:
-- Accepted limitations:
+- Status: **Implementation complete; manual visual/performance acceptance pending**
+- Date/build: 2026-09-06 / 0.279
+- Tester and device/browser: Static/resource verification only; human visual test pending
+- Plane elevation / size / repeat span / accepted texture: `y = -54` / 720×720 world units / 160 world units / one 512×512 RGBA diffuse containing 128×128 logical tiles (four texels / 1.25 world units each), using ten deterministic dominant-terrain-class mip levels, nearest texel sampling, linear mip-level blending, and anisotropy capped at 4
+- Plateau grid / levels / visible faces / triangles / draws: 64×64 cells at 2.5 world units, five one-unit levels (`0–4`); verification seed 99173 has level counts `2,580 / 409 / 296 / 240 / 571`, 1,516 source top faces and 841 source exposed-side faces. Across fixed 3×3 coverage that is 13,644 tops / 7,569 sides, 27,288 top triangles / 15,138 side triangles, and two draws.
+- Tree instance cap / accepted instances / draws: hard cap 1,000 records per repeat cell; the seamless forest-density mask plus deterministic per-tile occupancy yields 878 records for seed 99173, repeated as 7,902 combined trees across 3×3 coverage in one instanced draw. The combined brown-trunk/green-canopy source geometry is 24 triangles and approximately one unit wide, with restrained scale and quarter-turn yaw variation.
+- Step 2 FPS / accepted FPS: Step 2 FPS was not recorded; Step 3 human FPS and frame-pacing comparison pending
+- Direction, distance, and reachability notes: Code inspection confirms a `.34` multiplier on `-travelState.direction`, the adjusted distant plane elevation 54 units below terrain, and one fixed 80-unit horizontal bias toward the initial default-view horizon. The bias is derived once and does not follow camera rotation, vehicles, or later focus changes. There is no gameplay, physics, raycast, or persistence integration; human perception and reachability judgment remains pending.
+- Wrap and synchronization notes: One modulo-wrapped world offset drives the shared plateau/tree root and its exact negative divided by the 160-unit span drives the diffuse texture. One hundred deterministic seed/reinitialization checks retained the quantized height counts, density-controlled tree placements, two module children, four draws, four intentionally fog-disabled distant materials, and clean disposal. Tree populations ranged from 802 to 980 records for seeds 0–99, all remained on grass-compatible diffuse tiles, all cached a matching quantized plateau height, and the nine repeated transforms and tree instance buffers stayed fixed through travel updates. Focused checks confirm periodic neighbor lookup, tile-aligned plateau edges, jittered tree anchors, invariant geometry/instance buffers, and matching diffuse/root phases across wrap boundaries; the required long visual wrap check remains manual.
+- Debug readability tuning: The supplied build 0.269 phone screenshot showed one or two enormous pale geometric regions and no useful cliff/tree scale cues. Build 0.270 raises the periodic terrain harmonics from continent-scale one-to-three-cycle fields to roughly three-to-eight-cycle fields, strengthens the raw green/blue/brown/forest colors, changes the plane material tint to white, shrinks cliff footprints from 12–20 to 6–12 units while raising them from 3–5.5 to 4–7 units, and arranges the unchanged 36-tree cap into nine deterministic groves with larger `3.2 × 2.1 × 2.6` block canopies. A 100-seed resource check retained all counts and the same five draws.
+- Tile-rendered texture correction: The user clarified that the generated-texture plane should remain, but its map must read like Farmipelago terrain rather than smooth procedural color blobs. Build 0.271 supersedes the build 0.270 map treatment with 16,384 explicit periodic tile records. Every logical tile fills one exact 4×4-texel square with a discrete color step derived from the playable grass, raised-grass, soil, water, or woodland palette. Shore and biome transitions are grid-stepped without visible grid lines, and all cliff edges and tree anchors snap to the same 1.25-unit tile domain. Verification seed 99173 contains 6,771 water, 6,963 grass/forest, and 2,650 dirt cells. The second supplied phone reference is the target for tile density, palette separation, forest massing, and eventual fog-softened depth.
+- Superseded height-relief pass: Build 0.272 briefly used a smooth 32×32 GPU displacement/bump map. The clarified terrain model rejects smooth slopes, so build 0.273 removes that texture, the subdivided plane, and the separate 14 arbitrary cliff footprints.
+- Quantized plateau pass: Build 0.273 derives a periodic 64×64 height grid from the same tile domain and broad one-to-two-cycle relief. Any cell touching water stays at level 0; dry land quantizes to levels `0–4`. One merged top mesh contains only raised cells with discrete grass/forest vertex colors. One merged side mesh contains only higher-to-lower periodic boundaries, using single flat dirt walls even across multiple levels. There are no bottoms, equal-height walls, hidden reverse walls, smooth slopes, or per-cell objects. Trees cache the matching plateau level.
+- Dense-tree pass: Build 0.274 replaces the 36 oversized two-draw trees with a density-controlled field capped at 1,000 source records. It uses the existing seamless forest harmonics plus deterministic tile occupancy and jitter rather than a new noise dependency. Each record instances one combined 24-triangle tree geometry with vertex-colored trunk and canopy in a single draw; seed 99173 produces 878 source / 21,950 repeated trees.
+- Palette/mipmap correction: The same build increases saturation and separation across water, grass, raised grass, forest, dirt sides, trunks, and canopies without emissive or transparency. Blandness came from both the previously restrained source colors and automatic mip averaging across terrain classes. One manually supplied ten-level mip chain now selects a deterministic dominant terrain class per 2×2 downsample block and snaps its restrained variation back to the source variation steps. The texture remains one GPU allocation with nearest texels, linear mip-level blending, and anisotropy capped at 4.
+- Distance restoration: Build 0.275 moves the fixed plane and the complete synchronized plateau/tree root from the temporary `y = -24` inspection position back to the original `y = -48`. No density, palette, mip, geometry, motion, camera, gameplay, or Step 4 behavior changes with it.
+- Fixed-footprint optimization: Build 0.276 restores fog participation on all four distant materials and reduces the common plateau/tree transform set from 25 to nine centered repeats. The 480-unit plane remains at `y = -48`; lowering it was rejected because elevation does not change submission cost. Instead, the entire backdrop receives a fixed 80-unit horizontal bias toward the initial default-view horizon, keeping plane UVs and detail geometry phase-locked while reallocating coverage away from the behind-camera region. A 3×3 square cell has 334.3 units of projected half-coverage along the diagonal default view. Including the bias and worst synchronized wrap, the horizon-side detail boundary remains at least 222.9 units from the travel-frame center across all four quarter-turn headings, beyond the unchanged 200-unit camera far plane and maximum 134.14-unit fog far distance before bounded island-focus displacement. The biased 480-unit plane retains at least 254.3 units of projected horizon coverage before focus displacement. Human rotation, panning, cinematic, aspect-ratio, and long-wrap confirmation remains required.
+- No-fog visibility correction: Build 0.277 retains the complete build 0.276 footprint reduction but disables fog again on the diffuse plane, plateau tops, plateau sides, and combined trees. Visual feedback established that fog made the saturated terrain colors disappear. Global fog is unchanged; fixed horizon-biased coverage beyond the camera frustum hides finite backdrop edges instead.
+- Draw-distance correction: Build 0.278 changes the main gameplay camera from `near = 0.1 / far = 200` to `near = 0.1 / far = 400` and enlarges the still-two-triangle diffuse plane from 480 to 720 units. Static analysis found top-screen intersection depths of 207.9–252.9 in the drive presets, 232.6 in construction, up to 239.7 in the opening goals, 302.6 in the stable milestone framing, and 365.5 during the widest milestone-entry transition. The 400-unit far plane covers those cases with margin. A 720-unit square retains at least 421.7 units of projected horizon coverage across the four quarter-turn headings before bounded focus displacement. The 3×3 detailed field deliberately remains unchanged, so the extreme newly visible band may use only the periodic diffuse texture. Increasing the far plane adds no scene objects or draw calls; it exposes more fragments of already-submitted distant meshes and therefore still requires phone fill-rate verification. Keeping `near = 0.1` avoids close-object clipping, and the resulting 4,000:1 ratio remains modest for the existing depth buffer.
+- Six-unit depth adjustment: Build 0.279 lowers the complete distant surface from `y = -48` to `y = -54`, keeping plane and landmark root phase-locked. Recalculated top-screen depths are 224.1–275.9 across drive presets, 250.5 in construction, up to 260.0 in the opening goals, 334.1 in the stable milestone framing, and 394.0 during the widest milestone-entry transition. The unchanged `far = 400` retains a 6.0-unit camera-depth margin in the modeled worst case. The 720-unit plane still supplies at least 421.7 units of projected horizon coverage; its maximum modeled top-ray intersection extends 372.3 horizontal units beyond the target. The 3×3 detail boundary remains unchanged and the expanded extreme band is intentionally diffuse-only.
+- Accepted limitations: One 512×512 RGBA diffuse texture with a palette-preserving manual mip chain, one 720-unit two-triangle base plane at `y = -54`, four draws, one direct scene child (six module nodes), and 232,076 effective triangles for verification seed 99173: two base-plane, 27,288 plateau-top, 15,138 plateau-side, and 189,648 instanced-tree triangles. The 3×3 field reduces repeated tree instances to 7,902 and total effective triangles by 64.0% from build 0.275. The main camera uses `near = 0.1 / far = 400`; global fog remains unchanged and all four distant materials intentionally use `fog: false`. Manual phone, cinematic, day/night, reduced-motion, worst-case far-margin, texture-only transition, edge-coverage, fill-rate, 15-minute FPS, and full gameplay regression checks remain outstanding, so Step 4 stays blocked.
 
 ## Step 4 — Trail the Waterfall and Mist Backward
 
@@ -940,7 +1069,7 @@ Keep each hard gate reversible and reviewable:
 4. `feat: add directional dust and leaf particles`
 5. **Run and record Step 2 gate.**
 6. `feat: add a scrolling distant terrain backdrop`
-7. **Run and record Step 3 gate.**
+7. **Run and record the Step 3 manual visual/performance acceptance gate.**
 8. `feat: trail waterfall spray with farm travel`
 9. **Run and record Step 4 gate.**
 10. `feat: add distant atmospheric debris`

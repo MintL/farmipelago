@@ -259,6 +259,14 @@ vehicle. A shared world-owned gust subtly biases tree sway. Reduced motion keeps
 the directional translation at a slower steady pace and removes cloud bob and
 gust pulse.
 
+Small opaque voxel dust motes and loose leaf chips also skim northeast through
+a shallow band above the playable land. Their deterministic sources are cached
+from dry open terrain and generated trees or vegetation respectively, including
+the Farm's presentation offset during its opening arrival. The shared gust adds
+subtle speed, lift, and lateral variation without affecting physics, crops, or
+input. Night lowers their palette brightness, while reduced motion halves the
+visible populations and removes gust lift and leaf tumble.
+
 Ambient reindeer and foxes are temporarily absent from the two-island opening.
 Their implementation remains available for a later island slice, but the
 current Farmipelago owns no ambient wildlife scene or simulation. Cattle and
@@ -643,7 +651,7 @@ The playable prototype currently proves the following major systems together:
 
 - persistent procedurally generated Farm Island + Settlement Island pair
 - persistent visual day/night cycle with a Debug time scrubber
-- world-owned southwest travel presentation with wrapped distant/near voxel-cloud parallax
+- world-owned southwest travel presentation with wrapped distant/near voxel-cloud parallax and terrain-aware dust/leaf airflow
 - vehicle driving and jumping
 - tractor attachments
 - ploughing and seeding

@@ -1,5 +1,6 @@
 import { mats, THREE } from '../../core/shared.js';
 import { createCloudSystem } from './clouds.js';
+import { createWindParticleSystem } from './wind-particles.js';
 
 export const DAY_CYCLE_SECONDS = 10 * 60;
 export const DEFAULT_DAY_PHASE = 10 / 24;
@@ -99,7 +100,7 @@ export function createEnvironment({
   reducedMotion = false,
 }) {
   let phase = clampPhase(initialPhase);
-  let cloudElapsed = 0;
+  let environmentElapsed = 0;
   const focus = new THREE.Vector3();
   const skyHorizon = new THREE.Color();
   const fogColor = new THREE.Color();
@@ -133,7 +134,8 @@ export function createEnvironment({
   const lowFog = createLowFog();
   scene.add(lowFog.group);
   const cloudLayer = createCloudSystem({ reducedMotion });
-  scene.add(cloudLayer.group);
+  const windParticles = createWindParticleSystem({ reducedMotion });
+  scene.add(cloudLayer.group, windParticles.group);
 
   const apply = (nextFocus = focus) => {
     focus.copy(nextFocus);
@@ -144,11 +146,13 @@ export function createEnvironment({
     sample(hour, 'hemiSky', hemiSky);
     sample(hour, 'hemiGround', hemiGround);
     sample(hour, 'fill', fillColor);
+    const nightAmount = nightAmountAt(hour);
 
     scene.background.copy(skyHorizon);
     scene.fog.color.copy(fogColor);
     lowFog.material.color.copy(fogColor);
     cloudLayer.applyPalette(skyHorizon, cloudWhite);
+    windParticles.applyPalette(fogColor, nightAmount);
     renderer.toneMappingExposure = sample(hour, 'exposure');
 
     hemisphere.color.copy(hemiSky);
@@ -177,7 +181,6 @@ export function createEnvironment({
     fill.position.set(focus.x + 22, focus.y + 14, focus.z - 26);
     fill.target.position.copy(focus);
 
-    const nightAmount = nightAmountAt(hour);
     const lanternAmount = lanternAmountAt(hour);
     mats.water.uniforms.nightAmount.value = nightAmount;
     mats.waterSplash.color.lerpColors(waterSplashDayColor, waterSplashNightColor, nightAmount);
@@ -188,12 +191,16 @@ export function createEnvironment({
   return {
     update(dt, nextFocus, travelState) {
       phase = clampPhase(phase + Math.max(0, Number(dt) || 0) / DAY_CYCLE_SECONDS);
-      cloudElapsed += Math.max(0, Number(dt) || 0);
-      cloudLayer.update(cloudElapsed, travelState);
+      environmentElapsed += Math.max(0, Number(dt) || 0);
+      cloudLayer.update(environmentElapsed, travelState);
+      windParticles.update(environmentElapsed, travelState);
       return apply(nextFocus || focus);
     },
     setTravelFrame(frame, travelState) {
-      cloudLayer.setTravelFrame(frame, cloudElapsed, travelState);
+      cloudLayer.setTravelFrame(frame, environmentElapsed, travelState);
+    },
+    setWindSources(sources, travelState) {
+      windParticles.setSources(sources, travelState);
     },
     setPhase(nextPhase, nextFocus) {
       phase = clampPhase(nextPhase);

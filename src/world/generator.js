@@ -174,7 +174,7 @@ export function generateFarm(
       environment, normalGrassColor: null, bareSoil: 0,
       surfaceBatch: null, surfaceInstance: -1,
       surfaceTopBatch: null, surfaceTopColorOffset: -1, surfaceTopColorCount: 0,
-      tallGrass: null, groundCover: [], stones: [], hasTree: false, nearWater: 0,
+      tallGrass: null, groundCover: [], stones: [], hasTree: false, hasVegetation: false, nearWater: 0,
       ploughed: false, water: false, reserved: false, noDecoration: false, crop: null,
       looseGrassLitres: 0,
     });
@@ -318,6 +318,7 @@ export function generateFarm(
     groundCoverPlacements.push(placement);
     const soilTolerant = type === 'dryScrub' || type === 'yellowGrass';
     const visible = tile.bareSoil <= .7 && (tile.bareSoil <= .42 || soilTolerant);
+    tile.hasVegetation ||= visible;
     if (visible && soilTolerant) {
       addPropDirt(tile, tile.x + placement.offsetX, tile.z + placement.offsetZ, scale);
     }
@@ -1463,6 +1464,10 @@ export function generateFarm(
           z: (bridgeGap.from.z + bridgeGap.to.z) * .5,
         },
       };
+    },
+    presentationOffsetForIsland(islandId) {
+      if (islandId === FARM_ISLAND_ID && !arrivalComplete) return farmArrivalVisual.position;
+      return null;
     },
     setNightAmount(amount, lanternAmount = amount) {
       setWorkshopNightAmount(lanternAmount);

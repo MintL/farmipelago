@@ -771,6 +771,12 @@ function initializeFarm(savedState) {
     restoreFleet(savedState.vehicles, savedState.activeVehicleId);
   }
   else resetFleet();
+  environment.setWindSources({
+    terrain: farm.terrain,
+    seed: farm.seed,
+    presentationOffsetForIsland: farm.presentationOffsetForIsland,
+    isBlockedAt: (x, z) => buildings.isBuildingAt(x, z) || buildings.isPastureAt(x, z),
+  }, travel.snapshot());
   syncActiveVehicleUi();
   syncProgressionUi();
   syncInventoryUi();

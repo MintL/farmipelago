@@ -102,6 +102,28 @@ Lighting retains its independently moving camera/gameplay focus, so camera
 rotation, vehicle switching, construction, and cinematics cannot shift the wrap
 boundary. The original broad untextured low-fog planes remain stationary.
 
+`src/world/environment/wind-particles.js` owns two additional fixed opaque
+instance pools: 48 dust motes and 24 loose leaf chips in normal motion, reduced
+to visible subsets of 24 and 12 without changing pool capacity when reduced
+motion is requested. On Farmipelago initialization, the environment caches a
+bounded deterministic set of dry/open dust anchors and tree/vegetation leaf
+anchors from generated terrain metadata, excluding reserved land and restored
+building or pasture footprints. Each anchor retains its island presentation
+offset reference so the Farm's particles accompany its opening approach. Frame
+updates rewrite only the two fixed instance matrices from the shared travel
+direction, distance, and gust; they allocate no scene objects and perform no
+terrain, physics, camera, or vehicle queries. Day/night tinting is applied at
+the environment facade. Each record carries seed-stable harmonic frequencies,
+amplitudes, and phases: dust follows a restrained broad lateral meander, while
+leaves use wider overlapping lateral waves and subtler vertical flutter. The
+harmonics return to their starting offsets at recycle boundaries, where a
+smooth size envelope hides the downstream-to-source reset without transparency.
+Leaf records also deterministically divide into falling and wind-caught
+lifecycles. Falling chips ease toward a cached clearance above their source
+surface, while wind-caught chips rise and progressively shrink away; both paths
+reach zero scale before recycling and require no opacity sorting or terrain
+lookups during animation.
+
 Terrain tiles carry their owner's stable string ID from creation. Field and
 forage mutations, construction-site selection, and restoration resolve the
 owner through the island record and enforce its capability flags. `reserved`

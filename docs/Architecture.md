@@ -80,6 +80,28 @@ clears held input, makes the HUD inert and invisible, and suppresses driving,
 jumping, tools, construction, vehicle switching, camera gestures, transfers,
 and contextual popups until the camera is back at its exact drive framing.
 
+`src/world/travel.js` owns the presentation-only southwest travel direction,
+accumulated visual distance, speed, and deterministic gust signal. The app
+advances it once per clamped render update and passes the same read-only
+snapshot to environment and vegetation presentation; island transforms,
+physics, saves, and encounter policy do not depend on it. On world
+initialization or regeneration, the app derives one stable travel frame from
+the union of the two island records' transformed bounds.
+`src/world/environment/clouds.js` owns the cloud presentation behind the
+environment facade: 216 smaller distant clusters and 24 substantially larger
+near clusters use irregular layered silhouettes assembled from stepped runs.
+Both bands share one box geometry and use one fixed `InstancedMesh` and material
+each, for two bounded cloud draw calls and 1,648 total instances. Their spacing,
+lateral offsets, heights, aspect, silhouettes, and bob parameters are
+deterministically generated once; every formation remains aligned to the world
+grid and render updates only rewrite the fixed instance matrices. The distant
+field wraps northeast at a `.78`
+travel-distance multiplier, while the sparse near pass uses `1.9`; reduced
+motion removes bob, lowers near contrast, and reduces its multiplier to `1.02`.
+Lighting retains its independently moving camera/gameplay focus, so camera
+rotation, vehicle switching, construction, and cinematics cannot shift the wrap
+boundary. The original broad untextured low-fog planes remain stationary.
+
 Terrain tiles carry their owner's stable string ID from creation. Field and
 forage mutations, construction-site selection, and restoration resolve the
 owner through the island record and enforce its capability flags. `reserved`

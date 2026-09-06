@@ -1,4 +1,5 @@
 import { mats, THREE } from '../../core/shared.js';
+import { createCloudSystem } from './clouds.js';
 
 export const DAY_CYCLE_SECONDS = 10 * 60;
 export const DEFAULT_DAY_PHASE = 10 / 24;
@@ -16,8 +17,8 @@ const keyframes = [
   { hour: 2, horizon: color(0x496984), fog: color(0x405c72), key: color(0x9dbde8), keyIntensity: .58, hemiSky: color(0x7896c7), hemiGround: color(0x202b3d), hemiIntensity: .48, fill: color(0x7998c4), fillIntensity: .13, exposure: .96 },
   { hour: 3, horizon: color(0xc18a99), fog: color(0x7b8392), key: color(0xb7cff5), keyIntensity: .9, hemiSky: color(0xa5b8d2), hemiGround: color(0x514f5d), hemiIntensity: .76, fill: color(0xa0b7d5), fillIntensity: .3, exposure: 1.08 },
   { hour: 3.5, horizon: color(0xffad73), fog: color(0xb99a86), key: color(0xffb56d), keyIntensity: 1.45, hemiSky: color(0xb8c7d5), hemiGround: color(0x6a665d), hemiIntensity: .8, fill: color(0x9fb6d2), fillIntensity: .3, exposure: 1.04 },
-  { hour: 4, horizon: color(0xe2eee7), fog: color(0xc7dce0), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xe8f0ef), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
-  { hour: 20, horizon: color(0xe2eee7), fog: color(0xc7dce0), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xe8f0ef), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
+  { hour: 4, horizon: color(0x78bfe8), fog: color(0xb7d9e8), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xc8e7f5), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
+  { hour: 20, horizon: color(0x78bfe8), fog: color(0xb7d9e8), key: color(0xffe0ad), keyIntensity: 2.15, hemiSky: color(0xc8e7f5), hemiGround: color(0x657069), hemiIntensity: .68, fill: color(0xa9c4dc), fillIntensity: .2, exposure: .9 },
   { hour: 20.5, horizon: color(0xf59b6e), fog: color(0xb6847a), key: color(0xffa45e), keyIntensity: 1.5, hemiSky: color(0xc5b6bc), hemiGround: color(0x62534e), hemiIntensity: .78, fill: color(0x9da9c8), fillIntensity: .3, exposure: 1.04 },
   { hour: 21.25, horizon: color(0xb27e91), fog: color(0x7a7889), key: color(0xbdd3f7), keyIntensity: .9, hemiSky: color(0xa4b9d8), hemiGround: color(0x504e5d), hemiIntensity: .76, fill: color(0x9db7d8), fillIntensity: .3, exposure: 1.08 },
   { hour: 22, horizon: color(0x55738d), fog: color(0x49657a), key: color(0x96b5e2), keyIntensity: .45, hemiSky: color(0x7896c7), hemiGround: color(0x253146), hemiIntensity: .5, fill: color(0x7998c4), fillIntensity: .15, exposure: .98 },
@@ -89,37 +90,14 @@ function createLowFog() {
   return { group, material };
 }
 
-function createClouds() {
-  const group = new THREE.Group();
-  const material = new THREE.MeshLambertMaterial({ color: 0xf7fbfa, transparent: true, opacity: .88, fog: false, depthWrite: false });
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
-  const definitions = [
-    { x: -13, y: -7, z: 18, width: 6.8, height: 2.4, depth: 3.2, phase: 0 },
-    { x: -11.5, y: -6.2, z: 19, width: 3.8, height: 3.1, depth: 3.5, phase: .9 },
-    { x: 13, y: -7.2, z: 13, width: 7.1, height: 2.6, depth: 3.3, phase: 1.7 },
-    { x: 11.5, y: -6.3, z: 12, width: 3.5, height: 3.2, depth: 3.6, phase: 2.5 },
-    { x: 5, y: -6, z: 2, width: 6.5, height: 2.5, depth: 3.1, phase: 3.3 },
-    { x: -7, y: -5.8, z: -15, width: 7.2, height: 2.7, depth: 3.4, phase: 4.1 },
-    { x: -6, y: -5.1, z: -16, width: 3.5, height: 3.2, depth: 3.7, phase: 5 },
-    { x: 11.5, y: -6.4, z: -30, width: 6.5, height: 2.8, depth: 3.5, phase: 5.8 },
-    { x: 7.5, y: -5.5, z: -31, width: 3.5, height: 3.4, depth: 3.7, phase: 6.6 },
-    { x: -7, y: -5.4, z: -47, width: 6.8, height: 2.6, depth: 3.2, phase: 7.4 },
-    { x: 9, y: -5.9, z: -61, width: 7.1, height: 2.7, depth: 3.4, phase: 8.2 },
-    { x: 7, y: -5.1, z: -62, width: 3, height: 3.3, depth: 3.5, phase: 9 },
-  ];
-  const clouds = definitions.map(definition => {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(definition.x, definition.y, definition.z);
-    mesh.scale.set(definition.width, definition.height, definition.depth);
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    group.add(mesh);
-    return { mesh, ...definition };
-  });
-  return { group, material, clouds };
-}
-
-export function createEnvironment({ scene, renderer, initialPhase = DEFAULT_DAY_PHASE, fogNear = 30, fogFar = 92 }) {
+export function createEnvironment({
+  scene,
+  renderer,
+  initialPhase = DEFAULT_DAY_PHASE,
+  fogNear = 30,
+  fogFar = 92,
+  reducedMotion = false,
+}) {
   let phase = clampPhase(initialPhase);
   let cloudElapsed = 0;
   const focus = new THREE.Vector3();
@@ -154,7 +132,7 @@ export function createEnvironment({ scene, renderer, initialPhase = DEFAULT_DAY_
 
   const lowFog = createLowFog();
   scene.add(lowFog.group);
-  const cloudLayer = createClouds();
+  const cloudLayer = createCloudSystem({ reducedMotion });
   scene.add(cloudLayer.group);
 
   const apply = (nextFocus = focus) => {
@@ -170,7 +148,7 @@ export function createEnvironment({ scene, renderer, initialPhase = DEFAULT_DAY_
     scene.background.copy(skyHorizon);
     scene.fog.color.copy(fogColor);
     lowFog.material.color.copy(fogColor);
-    cloudLayer.material.color.copy(skyHorizon).lerp(cloudWhite, .48);
+    cloudLayer.applyPalette(skyHorizon, cloudWhite);
     renderer.toneMappingExposure = sample(hour, 'exposure');
 
     hemisphere.color.copy(hemiSky);
@@ -208,11 +186,14 @@ export function createEnvironment({ scene, renderer, initialPhase = DEFAULT_DAY_
 
   const initialState = apply(focus);
   return {
-    update(dt, nextFocus) {
+    update(dt, nextFocus, travelState) {
       phase = clampPhase(phase + Math.max(0, Number(dt) || 0) / DAY_CYCLE_SECONDS);
       cloudElapsed += Math.max(0, Number(dt) || 0);
-      for (const cloud of cloudLayer.clouds) cloud.mesh.position.y = cloud.y + Math.sin(cloudElapsed * .3 + cloud.phase) * .12;
+      cloudLayer.update(cloudElapsed, travelState);
       return apply(nextFocus || focus);
+    },
+    setTravelFrame(frame, travelState) {
+      cloudLayer.setTravelFrame(frame, cloudElapsed, travelState);
     },
     setPhase(nextPhase, nextFocus) {
       phase = clampPhase(nextPhase);

@@ -1479,7 +1479,7 @@ export function generateFarm(
       Object.values(grainSplashMaterials).forEach(material => material.dispose());
       disposeObjectResources(group);
     },
-    animate(elapsed, delta = 0, isWildlifeBlockedAt = () => false) {
+    animate(elapsed, delta = 0, isWildlifeBlockedAt = () => false, travelState = null) {
       let persistentChange = false;
       if (!arrivalComplete) {
         arrivalElapsed = Math.min(farmApproachSeconds, arrivalElapsed + delta);
@@ -1492,10 +1492,14 @@ export function generateFarm(
       waterElapsed = elapsed;
       effectElapsed = elapsed;
       mats.water.uniforms.time.value = elapsed;
+      const windDirection = travelState?.direction;
+      const sharedGust = reducedMotion ? 0 : (Number(travelState?.gust) || 0);
       for (const tree of trees) {
         const gust = Math.sin(elapsed * .55 + tree.phase) * .35 + Math.sin(elapsed * 1.3 + tree.phase * 1.7) * .12;
-        tree.sway.rotation.z = Math.sin(elapsed * 1.15 + tree.phase) * tree.strength + gust * .018;
-        tree.sway.rotation.x = Math.cos(elapsed * .9 + tree.phase * .73) * tree.strength * .62 + gust * .012;
+        tree.sway.rotation.z = Math.sin(elapsed * 1.15 + tree.phase) * tree.strength + gust * .018
+          + (windDirection?.x || 0) * sharedGust * .018;
+        tree.sway.rotation.x = Math.cos(elapsed * .9 + tree.phase * .73) * tree.strength * .62 + gust * .012
+          + (windDirection?.z || 0) * sharedGust * .018;
       }
       for (const current of waterMotion) {
         const travel = ((elapsed * .72 + current.phase) % 1 - .5) * .54;

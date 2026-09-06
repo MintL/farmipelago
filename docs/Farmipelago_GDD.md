@@ -1,7 +1,7 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-05
+**Updated from implementation:** 2026-09-06
 
 ## 1. Game Concept
 
@@ -242,9 +242,22 @@ These values are procedurally generated and visibly affect the world. Damp/cool 
 
 Moisture and sunlight do not score farmland or modify crop growth, crop yield or grass yield. Crops therefore perform consistently wherever there is usable prepared land. There is no crop-planning overlay or separate crop-inspection camera mode.
 
-The world also runs a persistent ten-minute visual day/night cycle in which every clock hour passes at the same speed. Day runs from 04:00 to 20:00, dawn and dusk each last two hours, and night runs from 22:00 to 02:00. The backdrop uses a flat color that follows the same time-of-day palette without a full-screen sky shader or visible celestial discs. Sun and moon directions continue to drive the global key lighting and animated shadows. Dawn and dusk shift through bright, readable peach and lavender, while the brief night is distinctly darker than dusk but remains playable through cool blue key, ambient and water lighting plus local fixtures. Fog, water and local fixture lighting follow the same cycle. This illumination is separate from each tile's generated sunlight value and does not affect crops, livestock, yield or progression.
+The world also runs a persistent ten-minute visual day/night cycle in which every clock hour passes at the same speed. Day runs from 04:00 to 20:00, dawn and dusk each last two hours, and night runs from 22:00 to 02:00. The backdrop uses a clear medium blue during full day and follows the rest of the time-of-day palette without a full-screen sky shader or visible celestial discs. Sun and moon directions continue to drive the global key lighting and animated shadows. Dawn and dusk shift through bright, readable peach and lavender, while the brief night is distinctly darker than dusk but remains playable through cool blue key, ambient and water lighting plus local fixtures. Fog, water and local fixture lighting follow the same cycle. This illumination is separate from each tile's generated sunlight value and does not affect crops, livestock, yield or progression.
 
 The Farm Tractor's paired front lamps follow the same late-afternoon-through-sunrise timing as other local fixtures and cast warm, focused beams ahead across the terrain.
+
+The attached starter pair reads as continuously travelling southwest through
+the sky even though its gameplay coordinates remain fixed. Many small, compact
+voxel clouds stream northeast slowly below and around the distant silhouette,
+while a much smaller population of substantially larger opaque clouds passes at
+island-edge and underside height at about two and a half times the speed. Even the
+highest crown of a near cloud remains at or below the playable terrain plane.
+Both bands use deterministic irregular spacing, lanes, heights, scales, and
+stepped voxel silhouettes, wrap around a stable frame derived once from the two
+islands, stay aligned to the world grid, and do not follow the camera or either
+vehicle. A shared world-owned gust subtly biases tree sway. Reduced motion keeps
+the directional translation at a slower steady pace and removes cloud bob and
+gust pulse.
 
 Ambient reindeer and foxes are temporarily absent from the two-island opening.
 Their implementation remains available for a later island slice, but the
@@ -630,6 +643,7 @@ The playable prototype currently proves the following major systems together:
 
 - persistent procedurally generated Farm Island + Settlement Island pair
 - persistent visual day/night cycle with a Debug time scrubber
+- world-owned southwest travel presentation with wrapped distant/near voxel-cloud parallax
 - vehicle driving and jumping
 - tractor attachments
 - ploughing and seeding

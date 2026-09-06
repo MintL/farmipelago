@@ -125,7 +125,9 @@ the GDD as well:
 - Keep rendering work out of the fixed physics step. Clamp frame deltas before
   passing them into gameplay as `main.js` does.
 - Increment the `0.x` `#buildVersion` displayed in `index.html` for every
-  change set, so a refreshed game always shows a higher version after an edit.
+  change set that modifies the game or tooling, so a refreshed game always
+  shows a higher version after an edit. Do not increment it for
+  documentation-only changes.
 - Update `README.md` when player-visible controls, setup, dependencies, or
   major game features change.
 

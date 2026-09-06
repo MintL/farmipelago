@@ -14,6 +14,7 @@ import { OWNED_VEHICLES, vehicleType } from '../gameplay/catalog/vehicles.js';
 import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from '../gameplay/catalog/equipment.js';
 import { HAY_BALE_LITRES } from '../gameplay/livestock/index.js';
 import { createEnvironment, DEFAULT_DAY_PHASE } from '../world/environment/index.js';
+import { createTravelModel, travelFrameForIslands } from '../world/travel.js';
 import { createTransferEffects } from '../gameplay/logistics/transfer-effects.js';
 import { createTransferController } from '../gameplay/logistics/transfer-controller.js';
 
@@ -77,7 +78,9 @@ const environment = createEnvironment({
   initialPhase: loadResult.state?.environment?.phase ?? DEFAULT_DAY_PHASE,
   fogNear: baseFogNear * initialDriveCameraScale,
   fogFar: baseFogFar * initialDriveCameraScale,
+  reducedMotion,
 });
+const travel = createTravelModel({ reducedMotion });
 
 const physics = await createPhysics();
 const fleet = OWNED_VEHICLES.map(owned => {
@@ -751,6 +754,7 @@ function initializeFarm(savedState) {
     scheduleSave,
     { attachmentComplete, reducedMotion },
   ));
+  environment.setTravelFrame(travelFrameForIslands(farm.islands.values()), travel.snapshot());
   physics.setSupportResolver((x, z) => farm.islandAtWorld(x, z)?.id || null);
   buildings.setParent(farm.group);
   progression = createMilestoneProgression(savedState?.progression);
@@ -1439,11 +1443,12 @@ function update(dt) {
   if (cargoEvent?.shipmentPickedUp) collectMilestoneShipment();
   if (cargoEvent?.departed) finishMilestoneCinematic();
   syncFleetVisuals(dt);
-  const environmentState = environment.update(dt, currentEnvironmentFocus());
+  const travelState = travel.update(dt);
+  const environmentState = environment.update(dt, currentEnvironmentFocus(), travelState);
   applyNightLighting(environmentState);
   ui.setDebugTimeOfDay(environmentState.phase);
   farm?.animate(elapsed, dt, (x, z) =>
-    buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z));
+    buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z), travelState);
   if (openingCinematic) updateOpeningCamera(dt);
   buildings?.animate(elapsed, dt);
   transferEffects.animate(elapsed);

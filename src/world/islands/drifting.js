@@ -416,6 +416,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       for (const saved of savedPopulation?.islands || []) {
         if (!DECORATIVE_ISLANDS_ENABLED && saved.encounter === false) continue;
         const island = createIsland(saved.seed, saved.settings);
+        if (saved.fields) island.restoreFields(saved.fields);
         island.id = saved.id;
         island.terrain.forEach(tile => { tile.islandId = saved.id; });
         island.group.position.copy(saved.position);
@@ -445,6 +446,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       sinceEncounter, elapsed, decorationElapsed, retryAt, sequence, lastArrival, initialized: populationInitialized,
       islands: active.map(island => ({
         id: island.id, seed: island.seed, settings: { ...island.settings },
+        fields: island.persistentFields(),
         position: copy(physics.movingIslandPosition(island.body)), status: island.status,
         encounter: Boolean(island.encounter), arrived: Boolean(island.arrived),
         route: island.route.map(copy), routeIndex: island.routeIndex, routeComplete: Boolean(island.routeComplete),

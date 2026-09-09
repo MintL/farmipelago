@@ -505,7 +505,8 @@ Keep implementation status, build versions, approvals, migration assumptions and
 
 ### Implementation record
 
-Steps 0–3 are approved. Step 4 is next and has not started. Steps 1–2 were
+Steps 0–4 are approved. Step 5 is next and has not started. Weed damage and
+sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
 committed as `17e9dcd` on `feature/drifting-islands`.
 
 This record owns build versions, approval history, migration assumptions and
@@ -629,6 +630,24 @@ while unrelated overrides clear; enabling Debug alone must not advance Tier 1.
 Confirm no specialist building appears. Check desktop and portrait interaction
 and the contributor regression checklist. Stop for approval before Step 4.
 
+**Step 4 — Growth timing implemented in build 0.368, approved by the user.**
+
+- Crop catalog now owns normal/fast durations. Wheat, Barley, Canola and Soybeans
+  use 180/9 seconds from planting to maturity. Corn retains 9 seconds and grass
+  30 seconds in both modes pending later balance work.
+- Debug Fast growth defaults on, persists in `ui.fastGrowth`, and remaps current
+  stage progress when switched. Mature crops remain mature.
+- Saves use fractional `stageProgress`; older `stageElapsed` seconds migrate
+  against the original fast durations. Save schema remains 0.
+- Released islands freeze crop progress, carry field snapshots while drifting
+  or reconnecting, and resume at the selected speed on attachment. These snapshots
+  also restore crop and ploughed-field visuals after reload.
+- The user paused weed design during implementation. Partial yield/spray-color
+  changes were removed; existing weed generation, removal and yields remain intact.
+- Both production builds and the diff whitespace check pass. The existing bundle
+  size warning remains. Gameplay verification is manual, with no automated input
+  or synthetic save tests. Use the Step 4 manual gate below before Step 5.
+
 ### Step 0 — Establish a clean baseline
 
 **Goal:** make sure later progression changes can be judged against a known-good drifting-islands build.
@@ -723,24 +742,45 @@ and the contributor regression checklist. Stop for approval before Step 4.
 
 ### Step 4 — Introduce crop-specific real growth times
 
-**Goal:** replace debug-speed crops with the intended farm/island rhythm independently of later production complexity.
+**Goal:** introduce intended crop growth timing while keeping fast iteration available.
 
 **Implementation:**
 
 - Put growth duration in crop catalog data rather than one global magic number.
 - Set Wheat, Barley, Canola and Soybeans to approximately **3 minutes** initially.
 - Keep later target bands documented but do not add crops merely to test them.
-- Persist enough crop timing state that refresh does not restart mature crops or accidentally grant offline growth unless explicitly designed.
+- Persist crop timing so refresh preserves growth and mature crops without offline growth.
 - Keep unlimited seeds once a crop gate is earned.
+- Add a **Fast growth** toggle in Debug, **on by default**. On retains today's
+  timing: 3 seconds per ordinary crop stage and 10 seconds per grass stage.
+  Off uses normal catalog durations. Corn and grass retain their existing timing
+  until their later balancing steps.
+- Persist the setting; missing settings default to on. Switching modes preserves
+  the current stage and its fractional progress.
 
 **User verification gate:**
 
-- Early crops take roughly three active gameplay minutes to mature.
-- The player naturally has time to transport, inspect islands or work another field while waiting.
-- Growth survives save/reload correctly.
-- Three minutes feels playable rather than like waiting.
+- Fast growth off: early crops take roughly three active minutes to mature.
+- Fast growth on: early crops retain today's nine-second full cycle; default is on.
+- Toggle preference survives reload; switching mid-growth preserves stage progress.
+- Refresh and island release/reconnection preserve crop stage and progress;
+  mature crops stay mature, with no offline growth or travel-time catch-up.
+- The player has time to work elsewhere while crops grow, and three minutes feels playable.
 
 **Stop here until the user approves the growth rhythm.**
+
+**On hold — weed design, excluded from this implementation at the user's request:**
+
+- Weeds remaining when a non-grass crop enters stage 3 would permanently reduce
+  that planting's harvest to **75% of normal rolled yield** (a 25% loss), rounded
+  to the nearest whole litre. Earlier removal would avoid damage; later removal
+  would not undo it. Damage would persist through reload and island movement,
+  reset for a new planting, and apply in both growth modes.
+- Every sprayed tile would get darker ground, including weed-free tiles, to show
+  coverage. Treatment would persist through reload and reset when preparing a
+  new planting. Treatment appearance would be separate from weed damage.
+- These ideas require further design review. Do not implement them as part of
+  Step 4 unless the user explicitly resumes them.
 
 ### Step 5 — Increase relevant island cadence to ~30 seconds
 

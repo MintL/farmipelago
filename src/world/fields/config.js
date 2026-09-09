@@ -1,5 +1,3 @@
-export const CROP_STAGE_SECONDS = 3;
-export const GRASS_STAGE_SECONDS = 10;
 export const GRASS_TILE_YIELD_LITRES = 200;
 export const CROP_TILE_YIELD_MIN_LITRES = 70;
 export const CROP_TILE_YIELD_MAX_LITRES = 110;

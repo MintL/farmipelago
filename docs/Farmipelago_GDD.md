@@ -523,7 +523,7 @@ The player selects seed while using the seeder. Only crops unlocked by progressi
 
 Planted crops visibly sprout and grow. Harvest-ready crops pulse in synchronized world time every 3.2 seconds, gently expanding up to 18% in height and 7% in width from their rooted base before settling back with a short rest. Reduced motion disables the pulse.
 
-The current fast prototype/debug growth timing should be replaced by crop-specific gameplay timings. A first balancing target is:
+Crop durations are catalog-driven. Wheat, Barley, Canola and Soybeans take **3 active minutes** from planting through three timed stage transitions to maturity when Fast growth is off. Corn and grass retain their prototype durations pending later balancing. Longer-term targets are:
 
 | Crop type | Target growth time |
 | --- | ---: |
@@ -535,6 +535,20 @@ The current fast prototype/debug growth timing should be replaced by crop-specif
 These are design targets rather than final balance values. Later crops should not automatically grow more slowly only because they belong to a higher tier. A crop that already has a complex multi-step harvest may need less additional waiting. Growth time should encourage the player to leave a planted field and inspect islands, transport goods or work elsewhere rather than wait beside it.
 
 With a relevant passing-island target near 30 seconds, a three-minute starter crop creates room for roughly six island encounters during one growth cycle.
+
+The **Fast growth** Debug toggle is **on by default**, retaining the prototype
+speed: 3 seconds per ordinary crop stage (9 seconds to maturity) and 10 seconds
+per grass stage (30 seconds per cycle). Turning it off selects normal catalog
+durations. Its saved setting defaults on when absent. Switching modes preserves
+the current stage and its fractional progress; mature crops stay mature. Growth
+pauses while the game is paused or hidden, and there is no offline catch-up.
+Released islands freeze field growth until they are reattached, preserving
+fractional progress across mode changes and reloads.
+
+**Weed design on hold:** a proposed stage-3 deadline would leave affected crops
+at 75% of normal yield, and sprayed tiles would darken to show treatment coverage.
+These mechanics are not implemented and await further design review. Existing
+weeds can still be removed with the sprayer and do not affect yield or ground color.
 
 Each ready crop tile yields a random whole-litre amount from **70–110 L**, rolled when harvested. The **90 L** average fills the combine's **3,600 L** tank in approximately **40 tiles**. Each ready grass tile produces a fixed **200 L** of loose grass when mown.
 
@@ -876,7 +890,7 @@ The current save includes:
 - world seed
 - current time-of-day phase
 - generated world tiles
-- field and crop state
+- field and crop state, including fractional stage progress
 - placed buildings and silo contents
 - cattle pens, individual cow movement/growth state, shared hay, milk and birth progress
 - active settlement tier, permanent requirement histories for each tier, retained earned capabilities and separate Debug unlock overrides
@@ -884,7 +898,7 @@ The current save includes:
 - vehicle loadouts
 - vehicle storage
 - active vehicle
-- relevant UI state
+- relevant UI state, including the default-on Fast growth Debug preference
 
 Progression saves `kind: settlement`, the active `tier`, a `tiers` map containing each tier’s `requirements` (`delivered` and `complete`), and separate `earnedGates` / `overrideGates`. The outer schema remains 0. Previous flat Tier 1 requirement saves migrate into tier history, and already-completed Tier 1 saves immediately open Tier 2 on load. Older village stock or recorded deliveries become Tier 1 progress capped at its targets; legacy milestone capability unlocks are retained. Earned gates survive regardless of remaining stock. Debug overrides alone never advance tiers or become earned gates; opening a tier independently earns its specified gates and clears only their now-redundant overrides. Tier eligibility for specialist islands is derived from opened tier definitions. Old consumed deliveries cannot be reconstructed because the reserve prototype did not save their history. Saved completed requirements restore at their target even if their amount is lower. No offline growth or production occurs.
 

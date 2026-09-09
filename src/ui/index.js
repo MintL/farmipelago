@@ -47,6 +47,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     clearUnlockOverrides: onClearUnlockOverrides = () => {},
     changeCameraPreset: onCameraPresetChange = () => true,
     changeTimeOfDay: onTimeOfDayChange = () => true,
+    changeFastGrowth: onFastGrowthChange = () => {},
     rotateCameraStep: onCameraRotateStep = () => true,
     zoomCamera: onCameraZoom = () => {},
     persistentStateChange: onPersistentStateChange = () => {},
@@ -98,7 +99,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   const {
     topBar, overlay, barnDialog, pauseDialog, pauseBody,
     confirmBody, pauseTitle, controlsList, showControls, hideHud, showDebug, debugPanel,
-    debugTimeSlider, debugTimeValue, debugCameraPresets, debugUnlockList,
+    debugTimeSlider, debugTimeValue, debugFastGrowth, debugCameraPresets, debugUnlockList,
     clearUnlockOverrides, stickZone, stickBase, stickKnob,
     actionCluster, cycleVehicleButton, desktopHints, secondaryHint, secondaryHintLabel,
     frontToolToggle, rearToolToggle, seedCycleControl, seedCropToast, unloadButton,
@@ -1037,6 +1038,10 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     showDebug.setAttribute('aria-expanded', String(!expanded));
     debugPanel.hidden = expanded;
   });
+  debugFastGrowth.addEventListener('change', () => {
+    onFastGrowthChange(debugFastGrowth.checked);
+    onPersistentStateChange();
+  });
   debugTimeSlider.addEventListener('input', () => {
     const nextPhase = Math.min(1 - Number.EPSILON, Math.max(0, Number(debugTimeSlider.value) / (24 * 60)));
     if (onTimeOfDayChange(nextPhase) === false) return;
@@ -1120,8 +1125,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     },
     activeLoadout: () => ({ ...activeLoadout, vehicle: activeVehicle.type }),
     activeSeedId: selectedSeedCropId,
-    persistentState: () => ({ seedCropId: selectedSeedCropId() }),
+    persistentState: () => ({ seedCropId: selectedSeedCropId(), fastGrowth: debugFastGrowth.checked }),
     restorePersistentState(savedState) {
+      debugFastGrowth.checked = savedState?.fastGrowth !== false;
       const savedSeedIndex = availableCropIds().indexOf(savedState?.seedCropId);
       if (savedSeedIndex !== -1) seedIndex = savedSeedIndex;
       renderSecondaryAction();

@@ -52,6 +52,8 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - confirming a silo or finishing a barn and pen automatically returns to play mode; Draw pen keeps construction mode open for pasture editing. Any other unconfirmed drafts are discarded when construction mode closes
 - the first Demolish tap shows an inline warning listing what will be lost before the second tap confirms removal
 
+In Pause → Debug, **Fast growth** defaults on and keeps the current 9-second crop cycle (30 seconds for grass). Turn it off for 3-minute Wheat, Barley, Canola and Soybeans; Corn and Grass retain their current timings. The preference and fractional growth progress persist across reloads and mode changes. Released fields pause until reattached, without travel-time or offline catch-up. Weed damage and sprayed-ground coloring are on hold; existing weed behavior is unchanged.
+
 Permanent Tier 1 requirements replace draining village stocks. Existing saves retain earned capabilities and separate Debug overrides; recorded stock/deliveries become permanent progress capped at 3,600 L per crop. Previously consumed stock has no saved history to recover. Progress never decays during play or while closed, and tier history survives refresh. Completed Tier 1 saves open Tier 2 when loaded. Tier 2 island-category eligibility is recorded for later specialist content; no buildings are granted. Hay and other Tier 2 deliveries are still unavailable. Use Tab and Space/Enter to activate Deliver on desktop; it automatically uses the carried crop.
 
 ## Code layout

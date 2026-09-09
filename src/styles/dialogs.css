@@ -259,3 +259,6 @@
   line-height: 1.55;
 }
 .confirmActions { display: flex; justify-content: flex-end; gap: 9px; padding: 0 6px; }
+
+.debugGrowthControl { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 252, 239, .45); }
+#debugFastGrowth { width: 20px; height: 20px; margin: 0; accent-color: var(--accent-strong); }

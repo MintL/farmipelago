@@ -1,3 +1,4 @@
+import { cropProgress, paintFieldTile, restoreCrop, saveFieldTiles } from './fields/state.js';
 import { finishPreparation } from '../core/preparation.js';
 import { FARM_GENERATION, SETTLEMENT_GENERATION, resolveIslandSettings } from './islands/generation-settings.js';
 import { batchIslandPropSteps } from './islands/batching.js';
@@ -7,7 +8,7 @@ import { createAttachedContent } from './islands/attached-content.js';
 import { createDriftingIslands } from './islands/drifting.js';
 import { createConnectionChains } from './connection-chains.js';
 import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, gridKey, THREE } from '../core/shared.js';
-import { crops } from '../gameplay/catalog/crops.js';
+import { crops, cropStageSeconds } from '../gameplay/catalog/crops.js';
 import { createSettlementStorehouse } from '../gameplay/logistics/settlement-storehouse.js';
 import { createForageSystem } from './forage/index.js';
 import {
@@ -43,7 +44,7 @@ import {
 import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
 import { createWaterfallEffects } from './water/waterfall.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
-import { CROP_STAGE_SECONDS, GRASS_STAGE_SECONDS, GRASS_TILE_YIELD_LITRES, CROP_TILE_YIELD_MIN_LITRES, CROP_TILE_YIELD_MAX_LITRES, WEED_CHANCE } from './fields/config.js';
+import { GRASS_TILE_YIELD_LITRES, CROP_TILE_YIELD_MIN_LITRES, CROP_TILE_YIELD_MAX_LITRES, WEED_CHANCE } from './fields/config.js';
 import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
 import { createSettlementVisual } from './settlement/visual.js';
 
@@ -108,6 +109,7 @@ function* generateFarmSteps(
   onChange = () => {},
   options = {},
 ) {
+  let fastGrowth = options.fastGrowth !== false;
   const random = seededRandom(seed);
   const terrainNoise = createPerlin(seed ^ 0x9e3779b9);
   const moistureNoise = createPerlin(seed ^ 0x243f6a88);
@@ -620,15 +622,6 @@ function* generateFarmSteps(
     return color.lerp(PROP_DIRT_COLOR, propDirt);
   };
 
-  const setTileTopColor = (tile, color) => {
-    const attribute = tile?.surfaceTopBatch?.geometry.getAttribute('color');
-    if (!attribute || tile.surfaceTopColorOffset < 0) return;
-    for (let index = 0; index < tile.surfaceTopColorCount; index++) {
-      attribute.setXYZ(tile.surfaceTopColorOffset + index, color.r, color.g, color.b);
-    }
-    attribute.needsUpdate = true;
-  };
-
   const addTerrainInstances = function* () {
     const surfaceGeometry = new THREE.BoxGeometry(TILE, GRASS_TOP, TILE);
     const soilGeometry = new THREE.BoxGeometry(TILE, 1, TILE);
@@ -1082,6 +1075,39 @@ function* generateFarmSteps(
       obstacles,
       settings,
       radius,
+      persistentFields: () => saveFieldTiles(terrain, 0, true),
+      restoreFields(savedTiles) {
+        for (const saved of Array.isArray(savedTiles) ? savedTiles : []) {
+          const tile = terrain.get(saved?.key);
+          if (!tile || tile.water || tile.hasTree) continue;
+          tile.ploughed = Boolean(saved.ploughed);
+          tile.crop = restoreCrop(saved.crop, 0, true);
+          if (tile.crop) tile.crop.frozenProgress = cropProgress(tile.crop, 0, true);
+          if (tile.ploughed) paintFieldTile(tile);
+          if (tile.ploughed) {
+            if (tile.tallGrass) tile.tallGrass.visible = false;
+            for (const decoration of tile.groundCover) {
+              decoration.mesh.setMatrixAt(decoration.index, decoration.hidden);
+              decoration.mesh.instanceMatrix.needsUpdate = true;
+            }
+            for (const stone of tile.stones) {
+              const batch = stone.userData.batchedInstance;
+              if (batch) {
+                batch.mesh.setMatrixAt(batch.index, new THREE.Matrix4().makeScale(0, 0, 0));
+                batch.mesh.instanceMatrix.needsUpdate = true;
+              }
+              else stone.removeFromParent();
+            }
+            tile.stones.length = 0;
+          }
+        }
+        const display = createCropInstances(terrain.size, group);
+        display.begin();
+        for (const tile of terrain.values()) if (tile.crop) { display.setCrop(tile); renderCropTile(display, tile); }
+        display.finish();
+        display.refreshFurrows([...terrain.values()].filter(tile => tile.ploughed));
+        this.departureFields = display;
+      },
       animate(elapsed, travelState) {
         water.userData.waterPatternOffset.x = group.position.x;
         water.userData.waterPatternOffset.z = group.position.z;
@@ -1312,9 +1338,7 @@ function* generateFarmSteps(
   const ploughTile = (tile, heading = 0, showEffect = true) => {
     if (!tile || !islandAllows(tile, 'farming') || tile.ploughed || tile.water || tile.hasTree || tile.reserved) return false;
     tile.ploughed = true;
-    tile.surfaceBatch.setColorAt(tile.surfaceInstance, mats.ploughed.color);
-    tile.surfaceBatch.instanceColor.needsUpdate = true;
-    setTileTopColor(tile, mats.ploughed.color);
+    paintFieldTile(tile);
     if (tile.tallGrass) tile.tallGrass.visible = false;
     for (const decoration of tile.groundCover) {
       decoration.mesh.setMatrixAt(decoration.index, decoration.hidden);
@@ -1427,8 +1451,18 @@ function* generateFarmSteps(
       if (tile.crop.weeds) weedCount++;
       if (tile.crop.stage === 4) readyCount++; else growingCrops.add(tile);
     }
-    if (adding) forage.resumeIsland(island);
+    if (adding) {
+      for (const tile of island.worldTiles.values()) {
+        if (tile.crop?.frozenProgress == null) continue;
+        tile.crop.stageStarted = effectElapsed - tile.crop.frozenProgress * cropStageSeconds(tile.crop.cropId, fastGrowth);
+        delete tile.crop.frozenProgress;
+      }
+      forage.resumeIsland(island);
+    }
     else {
+      for (const tile of island.terrain.values()) {
+        if (tile.crop) tile.crop.frozenProgress = cropProgress(tile.crop, effectElapsed, fastGrowth);
+      }
       forage.suspendIsland(island);
       const display = createCropInstances(island.terrain.size, island.group);
       display.begin();
@@ -1483,6 +1517,7 @@ function* generateFarmSteps(
     const island = generateIsland(saved.seed, saved.settings);
     island.id = saved.id;
     island.terrain.forEach(tile => { tile.islandId = saved.id; });
+    if (saved.fields) island.restoreFields(saved.fields);
     attachments.restorePending(island, saved);
   }
   driftingIslands.restore();
@@ -1515,6 +1550,14 @@ function* generateFarmSteps(
     driftingIslands,
     attachments,
     cargoPort,
+    setFastGrowth(enabled, elapsed) {
+      if (fastGrowth === enabled) return;
+      for (const tile of growingCrops) {
+        const progress = cropProgress(tile.crop, elapsed, fastGrowth);
+        tile.crop.stageStarted = elapsed - progress * cropStageSeconds(tile.crop.cropId, enabled);
+      }
+      fastGrowth = enabled;
+    },
     seed,
     spawn: vehicleSpawnPositions.tractor,
     vehicleSpawnPoints,
@@ -1602,7 +1645,7 @@ function* generateFarmSteps(
         particle.mesh.rotation.z = age * particle.spinZ;
       }
       for (const tile of growingCrops) {
-        const stageSeconds = tile.crop.cropId === 'grass' ? GRASS_STAGE_SECONDS : CROP_STAGE_SECONDS;
+        const stageSeconds = cropStageSeconds(tile.crop.cropId, fastGrowth);
         if (elapsed - tile.crop.stageStarted < stageSeconds) continue;
         tile.crop.stageStarted += stageSeconds;
         tile.crop.stage++;
@@ -1768,22 +1811,7 @@ function* generateFarmSteps(
       return { cropId, yieldAmount, x: tile.x, y: tile.topY, z: tile.z };
     },
     persistentState(elapsed) {
-      const tiles = [];
-      for (const [key, tile] of terrain) {
-        if (!tile.ploughed && !tile.crop) continue;
-        const savedTile = { key, ploughed: tile.ploughed };
-        if (tile.crop) {
-          savedTile.crop = {
-            cropId: tile.crop.cropId,
-            stage: tile.crop.stage,
-            stageElapsed: tile.crop.stage < 4
-              ? THREE.MathUtils.clamp(elapsed - tile.crop.stageStarted, 0, tile.crop.cropId === 'grass' ? GRASS_STAGE_SECONDS : CROP_STAGE_SECONDS)
-              : 0,
-            weeds: tile.crop.weeds,
-          };
-        }
-        tiles.push(savedTile);
-      }
+      const tiles = saveFieldTiles(terrain, elapsed, fastGrowth);
       return { seed, tiles, forage: forage.persistentState(), pendingAttachment: attachments.pendingState() };
     },
     restorePersistentState(savedState, elapsed, isBlockedAt = () => false) {
@@ -1795,17 +1823,10 @@ function* generateFarmSteps(
         if (!tile || !islandAllows(tile, 'farming') || tile.water || tile.hasTree || tile.reserved || isBlockedAt(tile.x, tile.z)) continue;
         restoredKeys.add(savedTile.key);
         if (savedTile.ploughed || savedTile.crop) ploughTile(tile, 0, false);
-        const savedCrop = savedTile.crop;
-        const stage = Math.floor(Number(savedCrop?.stage));
-        if (!tile.ploughed || !crops[savedCrop?.cropId] || stage < 1 || stage > 4) continue;
-        const stageSeconds = savedCrop.cropId === 'grass' ? GRASS_STAGE_SECONDS : CROP_STAGE_SECONDS;
-        const stageElapsed = THREE.MathUtils.clamp(Number(savedCrop.stageElapsed) || 0, 0, stageSeconds);
-        tile.crop = {
-          cropId: savedCrop.cropId,
-          stage,
-          stageStarted: elapsed - stageElapsed,
-          weeds: savedCrop.cropId !== 'grass' && Boolean(savedCrop.weeds) && stage >= 2,
-        };
+        const restoredCrop = restoreCrop(savedTile.crop, elapsed, fastGrowth);
+        if (!tile.ploughed || !restoredCrop) continue;
+        tile.crop = restoredCrop;
+        const stage = tile.crop.stage;
         plantedCount++;
         if (tile.crop.weeds) weedCount++;
         if (stage === 4) readyCount++;

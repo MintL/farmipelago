@@ -16,6 +16,7 @@ export function queryUiDom() {
     showDebug: query('#showDebug'),
     debugPanel: query('#debugPanel'),
     debugTimeSlider: query('#debugTimeSlider'),
+    debugFastGrowth: query('#debugFastGrowth'),
     debugTimeValue: query('#debugTimeValue'),
     debugCameraPresets: queryAll('.debugCameraPreset'),
     debugUnlockList: query('#debugUnlockList'),

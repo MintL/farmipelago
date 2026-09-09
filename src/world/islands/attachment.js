@@ -171,7 +171,7 @@ export function createIslandAttachments({ group, terrain, islands, connections, 
       if (!motion || motion.complete) return null;
       const { island, placement, from } = motion;
       const point = tile => ({ gx: tile.gx, gz: tile.gz, x: tile.x, z: tile.z, topY: tile.topY, islandId: tile.islandId });
-      return { id: island.id, seed: island.seed, settings: { ...island.settings }, from: { x: from.x, y: from.y, z: from.z },
+      return { id: island.id, seed: island.seed, settings: { ...island.settings }, fields: island.persistentFields(), from: { x: from.x, y: from.y, z: from.z },
         placement: { gx: placement.gx, gz: placement.gz, x: placement.x, z: placement.z, route: placement.route, pull: placement.pull,
           gaps: placement.gaps.map(gap => ({ from: point(gap.from), to: point(gap.to), distance: gap.distance, centerDistance: gap.centerDistance })) } };
     },

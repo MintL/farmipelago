@@ -1,7 +1,8 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-08
+**Updated from implementation:** 2026-09-08  
+**Design direction updated:** 2026-09-09
 
 ## 1. Game Concept
 
@@ -55,13 +56,13 @@ The player should regularly have to think:
 
 The player keeps developing the same generated Farmipelago.
 
-The game is not structured around completing disposable farming levels. The farm accumulates history through ploughed fields, planted crops, placed silos, stored produce, vehicle locations and village supply reserves.
+The game is not structured around completing disposable farming levels. The farm accumulates history through ploughed fields, planted crops, placed silos, stored produce, vehicle locations, attached islands and settlement progression.
 
 ### Progression Adds Possibilities
 
 Progression should primarily introduce new ways to farm rather than simply increasing numerical efficiency.
 
-The current prototype starts with three crop types. Future islands should introduce animals, machinery, infrastructure and additional agricultural systems.
+The current prototype starts with three crop types. The intended progression opens new crops, essential machinery and categories of drifting-island infrastructure while optional mastery milestones improve already-established systems.
 
 ### Compact and Playful
 
@@ -75,13 +76,13 @@ Systems can have meaningful consequences without requiring realistic complexity.
 
 The implemented crop-farming loop is:
 
-**Inspect land → plough → choose seed → plant → grow → harvest with combine → unload into silo → load trailer → transport to Settlement Storehouse → replenish village needs → repeat**
+**Inspect land → plough → choose seed → plant → grow → harvest with combine → unload into silo → load trailer → transport to Settlement Storehouse → deliver agricultural goods → repeat**
 
 The first implemented livestock extension adds:
 
 **Grow grass → mow → bale hay → carry a bale to a Cattle Barn → feed cattle → produce milk → load a Water / Milk Tank → store milk in a Water / Milk Tank**
 
-The player can also ignore village needs and continue farming freely. Livestock is available through retained unlocks or Debug; tier 1 does not consume hay or milk.
+The player can also ignore progression and continue farming freely. Livestock is available through retained unlocks or Debug; the current implemented tier 1 does not consume hay or milk.
 
 Moment-to-moment play revolves around driving and operating machinery.
 
@@ -89,15 +90,106 @@ Long-term play revolves around making the persistent Farmipelago capable of prod
 
 ---
 
-## 5. Village Needs and Progression
+## 5. Settlement Progression
 
-The village has ongoing resident needs inspired by Anno. Tier 1 requests **Wheat, Barley and Canola**, all unlocked from the start. Each crop has a desired reserve of **3,600 L** and independently consumes **60 L per active gameplay minute**. This is one hour of supply, not a delivery cap: surplus deliveries create a larger buffer.
+The current prototype still implements an earlier Anno-inspired experiment: Tier 1 requests **Wheat, Barley and Canola**, each with a 3,600 L reserve that drains during active gameplay. This implementation is useful for testing the storehouse and delivery UI, but the intended progression direction now supersedes the draining-needs model.
 
-A need is supplied while its stock is above zero and unsupplied at zero; these statuses are not printed on the cards. The green card fill shows the fraction of the desired reserve, capped visually at 100%, while the numeric stock continues above the target. Consumption stops at zero. It pauses when gameplay is blocked, the tab is hidden, the game is closed, or the opening cinematic runs; it continues in construction mode. Shortages carry no penalties or lost capabilities.
+### Permanent 3-of-4 tiers
 
-Tier 1 remains fixed even when all reserves are full. Population growth, happiness, later tiers and rewards are deferred. There is no milestone tracker, delivery completion cinematic or final completion state.
+The settlement should progress as one entity rather than through individually simulated houses or hidden satisfaction thresholds.
 
-Other existing capabilities are available through Debug unlocks for now. Previously earned capabilities survive save migration. Future islands should introduce new crops, machinery and agricultural systems through normal play, with village needs giving those capabilities continuing purpose. Island-based unlock progression is not yet implemented.
+Each settlement tier presents **four explicit agricultural requirements**. The player permanently completes **any three of the four** to advance. Completed requirements never drain, regress or become unsatisfied later.
+
+The settlement UI should always make the rule and exact quantities visible:
+
+```text
+SETTLEMENT TIER 2
+
+Complete any 3 of 4
+
+Hay       COMPLETE
+Flour     2,400 / 3,600
+Oil       COMPLETE
+Eggs      0 / 24
+
+Progress: 2 / 3
+```
+
+There should be no continuously draining food meters tied to settlement progression. Old goods should remain useful through later recipes, animal feed, temporary opportunities and future requirements rather than through maintenance pressure.
+
+### What progression unlocks
+
+The intended split is:
+
+- **Settlement tiers provide guaranteed progression.** Opening a tier makes its core crops/seeds and essential farming equipment available and adds relevant specialist-island categories to the encounter pool.
+- **Drifting islands provide physical infrastructure and opportunities.** Specialist buildings such as windmills, oil presses, bakeries, cattle farms, chicken farms, dairies and food kitchens should generally arrive on islands rather than being bought from a construction menu.
+- **Optional mastery milestones provide improvements and convenience.** Examples include larger trailers, wider equipment or combination tools that improve systems the player has already demonstrated.
+
+Required equipment should not depend entirely on random island generation. Randomness should primarily shape which permanent infrastructure, geography and production routes the player obtains.
+
+### Example five-tier shape
+
+The exact products and quantities remain balancing targets, but the current proposal is:
+
+| Tier | Complete any 3 of 4 | Main new farming complexity |
+| --- | --- | --- |
+| **1 — Basic crops** | Wheat, Barley, Canola, Soybeans | Standard plough → seed → combine loop |
+| **2 — Bales and first processing** | Hay, Eggs, Flour, Vegetable Oil | Multi-step hay work, simple animals, first processors |
+| **3 — Dairy and specialized harvests** | Milk, Potatoes, Bread, Mayonnaise | Livestock support, root crops, longer production chains |
+| **4 — Permanent/different harvest handling** | Apples, Cotton, Cheese, Potato Crisps | Orchards, physical cotton handling, reused processors |
+| **5 — Specialist land use and integration** | Rice, Grapes, Fabric, Apple Pies | Paddy/vineyard work and integrated earlier systems |
+
+Progression should not become **processor → processor → processor**. Later tiers should mix production-chain depth with genuinely different field work, harvesting, livestock, handling and land-use patterns.
+
+### Opportunities as a bad-RNG fallback
+
+Small farms and other passing-island opportunities can offer one-shot or batch-limited exchanges with a **one-of-two input choice**. These opportunities can bridge a missing progression step without replacing the permanent infrastructure.
+
+Example:
+
+```text
+OLD MILLER
+
+Supply one:
+1,800 L Wheat
+or
+1,800 L Barley
+
+Receive:
+Enough Flour for the current settlement requirement
+```
+
+This allows a player who has not found a Windmill island to complete a Flour requirement and keep moving. Later, Bread still benefits from owning a dependable Windmill feeding a Bakery. Similar opportunities can temporarily provide Oil, Milk, Eggs or another missing product.
+
+This creates three responses to unlucky island generation:
+
+1. find and keep the proper infrastructure
+2. use a temporary opportunity to bridge the missing step
+3. complete the other three requirements and ignore that route for the tier
+
+The goal is for RNG to **change the player's route through progression, not make the player wait for progression**.
+
+### Game-length target
+
+The current first-completion target is approximately **five hours** for a new player who explores passing islands, reorganizes the Farmipelago and experiments rather than optimizing only for progression.
+
+A first pacing target is:
+
+| Tier | Approximate first-play time |
+| --- | ---: |
+| Tier 1 | 15–25 min |
+| Tier 2 | 30–45 min |
+| Tier 3 | 45–60 min |
+| Tier 4 | 60–90 min |
+| Tier 5 | 60–90 min |
+
+The explicit tier objectives account for roughly 3.5–5 hours depending on play style. Exploration, island decisions and reorganization should naturally put a typical first completion near five hours. An experienced player with good system knowledge and favorable island opportunities may finish in roughly **2.5–3.5 hours**.
+
+Later tiers should take longer because the operations and logistics are more involved, not because every quantity simply grows dramatically. Early progression proves the player can produce something; later progression increasingly proves that the Farmipelago can sustain a small chain.
+
+The final settlement tier should not require seeing every crop, building, island type or optional mastery reward. Free farming and further Farmipelago development should remain available after completion.
+
+See `Settlement_Progression_Proposal.md` for the working detailed proposal.
 
 ---
 
@@ -164,7 +256,7 @@ Storage, access between islands and potentially other ways of adapting difficult
 
 These do not need to form a large visible skill tree.
 
-Main progression should introduce capabilities through new islands, with increasingly varied village needs giving production a continuing purpose. Optional progression should primarily reward breadth, experimentation and development of the Farmipelago.
+Main progression should combine guaranteed settlement-tier capability unlocks with random physical infrastructure arriving on drifting islands. Optional progression should primarily reward breadth, experimentation and mastery of systems the player already has.
 
 ---
 
@@ -198,8 +290,10 @@ one shared cruise of 180% of the travel speed for encounters and decorations
 upstream side after roughly five minutes. The farm and its camera do not rotate.
 All environmental travel cues follow this same changing direction.
 
-An encounter scheduler targets one suitable shore arrival every 60 seconds,
-accounting for off-screen approach time. It prefers valid connection sites near
+The current implemented encounter scheduler targets one suitable shore arrival every **60 seconds**,
+accounting for off-screen approach time. The current design target is to prototype a much more frequent cadence of roughly **one relevant island every 30 seconds**, with random variation, so RNG produces regular choices rather than long waiting periods. The rare event should be seeing an island worth permanently keeping, not seeing an island at all.
+
+The scheduler prefers valid connection sites near
 the active vehicle, within the normal 12-tile interaction range, or the nearest
 valid shore when none is in reach. Among nearby sites, compact layouts and
 multiple neighboring connections retain strong preference. Generated candidates
@@ -210,8 +304,7 @@ Encounter routes validate a straight passage through a nearby shore waypoint,
 with the same incoming and outgoing heading. Both types use the current heading
 when planning; encounters allow up to 30 degrees of bias to find a clear passage.
 Encounter timing holds a prepared candidate off-scene until its launch time,
-using up to two reserved approaches in flight and targeting arrivals at least a
-minute apart. Entry stays near the current camera edge instead of being pushed
+using up to two reserved approaches in flight. Entry stays near the current camera edge instead of being pushed
 farther upstream to fill the schedule. Individual islands never
 speed up or slow down to meet the schedule. A longer or occupied approach may
 delay an arrival; collision clearance takes priority. The waypoint marks the encounter; the island
@@ -420,11 +513,26 @@ The current prototype contains five crops:
 
 The player selects seed while using the seeder. Only crops unlocked by progression should be available for normal progression play.
 
+**Seed quantity is not intended to be an inventory constraint.** Once a crop is unlocked, the seeder has unlimited access to that seed. Crop unlocks are about gaining a new farming capability rather than maintaining bags or litres of seed.
+
 Planted crops visibly sprout and grow. Harvest-ready crops pulse in synchronized world time every 3.2 seconds, gently expanding up to 18% in height and 7% in width from their rooted base before settling back with a short rest. Reduced motion disables the pulse.
+
+The current fast prototype/debug growth timing should be replaced by crop-specific gameplay timings. A first balancing target is:
+
+| Crop type | Target growth time |
+| --- | ---: |
+| Early grains and oilseeds | **~3 min** |
+| Corn, grass and root crops | **~4–5 min** |
+| Cotton, rice and other later annual crops | **~5–6 min** |
+| Persistent orchards and vineyards | **~6–8 min between harvests** |
+
+These are design targets rather than final balance values. Later crops should not automatically grow more slowly only because they belong to a higher tier. A crop that already has a complex multi-step harvest may need less additional waiting. Growth time should encourage the player to leave a planted field and inspect islands, transport goods or work elsewhere rather than wait beside it.
+
+With a relevant passing-island target near 30 seconds, a three-minute starter crop creates room for roughly six island encounters during one growth cycle.
 
 Each ready crop tile yields a random whole-litre amount from **70–110 L**, rolled when harvested. The **90 L** average fills the combine's **3,600 L** tank in approximately **40 tiles**. Each ready grass tile produces a fixed **200 L** of loose grass when mown.
 
-Crop choice matters through progression requirements, visual identity and the need to keep harvested types separate in machine storage, rather than through environmental yield differences.
+Crop choice matters through progression requirements, visual identity, farming method and the need to keep harvested types separate in machine storage, rather than through environmental yield differences.
 
 ---
 
@@ -464,7 +572,7 @@ Final barn confirmation grants two adult cows. Newly granted cows and newborn ca
 
 Existing physical 3,600 L hay bales are deposited at the barn and converted to shared herd feed. Hay supports full milk production and automatic herd growth. Without hay, cattle continue grazing without depleting terrain and produce at 20% of the fed rate; herd growth pauses and cattle never starve or die.
 
-Milk accumulates in the barn up to 10,000 L. The tractor's livestock-gated 6,000 L Water / Milk Tank loads milk from a nearby barn in rapid 10 L steps for transport. Milk is not accepted by the current tier 1 village.
+Milk accumulates in the barn up to 10,000 L. The tractor's livestock-gated 6,000 L Water / Milk Tank loads milk from a nearby barn in rapid 10 L steps for transport. Milk is not accepted by the current implemented tier 1 village prototype.
 
 ---
 
@@ -512,6 +620,8 @@ The player drives into it and receives a live 3D preview of the active vehicle a
 
 Long-term equipment design should preserve meaningful tradeoffs. Larger or more capable vehicles should not automatically invalidate smaller machinery if terrain, maneuverability or specialization can keep both useful.
 
+Essential equipment needed to perform a newly opened settlement tier should be made available predictably when that tier opens. Optional mastery rewards can then improve established equipment or reduce repeated work without gating the activity itself.
+
 ---
 
 ## 14. Storage and Logistics
@@ -553,7 +663,9 @@ The game now has an implemented construction mode rather than buildings being en
 
 A round build button opens a dedicated elevated, pannable construction view. Available buildings appear as a single-row tray centered along the bottom of the screen. Selecting a type immediately creates a draft at the nearest suitable clear site around the current view, after which the player can reposition it before confirmation or remove it with a contextual Cancel action. The tray stays visually compact and does not carry barn-placement instructional copy.
 
-The player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn**.
+The player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn** in the current prototype.
+
+The long-term drifting-island direction should avoid turning specialist agricultural production buildings into a conventional purchase/build menu. Processors and distinctive farm infrastructure should generally arrive as part of passing islands, making attachment decisions part of progression. Basic support infrastructure may remain player-placeable where needed.
 
 The pending demolition confirmation includes a compact inline warning: a silo loses all stored crops; a barn loses its pen, cattle, stored hay and milk. It explicitly states that demolition cannot be undone.
 
@@ -591,11 +703,17 @@ The design should continue to require buildings to have clear gameplay functions
 
 The progression receiver is a permanent **Settlement Storehouse** on the smaller northern Settlement Island, replacing its decorative receiving house. It is built on solid ground with cream walls, recessed side windows, a stepped red roof, a broad open receiving bay and a warm hanging lantern. A clear approach connects it to the settlement paths.
 
-The player brings wheat, barley or canola to the front yard. A contextual **Village · Tier 1** popup presents three selectable square crop cards, each with its icon, name and current litres against the 3,600 L desired reserve. Green fills each card from the bottom, capped at its full height. The popup omits status labels and bottom help text.
+### Current prototype
 
-Select a card and use the existing **Deliver** button. Matching carried cargo is selected automatically on arrival. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries can exceed the reserve. Visible crates reflect current stocks with bounded visual density; reaching a target does not trigger a shipment handoff. The popup is clamped to phone safe areas above driving controls, and its cards and Deliver button support keyboard activation.
+The current implementation lets the player bring wheat, barley or canola to the front yard. A contextual **Village · Tier 1** popup presents three selectable square crop cards, each with its icon, name and current litres against the 3,600 L desired reserve. Green fills each card from the bottom, capped at its full height. The current prototype still treats these as draining reserve stocks.
 
-Hay, milk and other crop types are not requested in tier 1. Later needs and island-based capability introductions remain future work.
+Select a card and use the existing **Deliver** button. Matching carried cargo is selected automatically on arrival. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries can exceed the reserve. Visible crates reflect current stocks with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its cards and Deliver button support keyboard activation.
+
+### Intended progression UI
+
+The storehouse should evolve into the permanent settlement-tier interface described in Section 5. It should show four explicit requirements, exact delivered/required quantities, permanent completion state, the **complete any 3 of 4** rule and a clear preview of what the next tier opens.
+
+There should be no hidden population threshold or decaying settlement-progress meter.
 
 ---
 
@@ -662,7 +780,7 @@ Current implementation follows these principles through:
 - round action buttons
 - compact crop icons and inventory readouts
 - contextual silo, cattle-barn and cargo popups
-- a contextual three-card village needs grid
+- a contextual village crop grid
 - live 3D vehicle/equipment previews in the workshop
 - temporary labels for actions such as seed cycling
 - input-aware desktop control hints
@@ -670,6 +788,8 @@ Current implementation follows these principles through:
 Large decorative panels should be avoided where possible.
 
 Important actions should generally use recognizable iconography with text where the action would otherwise be ambiguous.
+
+Settlement progression should remain unusually transparent for a farming/city-adjacent system: show exact product requirements, permanent completion and the 3-of-4 rule rather than expecting the player to infer advancement from house states or hidden satisfaction.
 
 The game should avoid the visual language of free-to-play mobile farming games: excessive currencies, reward badges, storefront-like screens and decorative progression clutter.
 
@@ -753,12 +873,14 @@ The current save includes:
 - field and crop state
 - placed buildings and silo contents
 - cattle pens, individual cow movement/growth state, shared hay, milk and birth progress
-- village stocks (including fractional litres), retained earned capabilities and debug unlock overrides
+- current prototype village stocks, retained earned capabilities and debug unlock overrides
 - vehicle positions
 - vehicle loadouts
 - vehicle storage
 - active vehicle
 - relevant UI state
+
+Future settlement-tier completion and unlocked crop/equipment state must persist permanently once the new progression system replaces the current reserve prototype.
 
 Refreshing the page restores the same farm rather than generating a new level.
 
@@ -766,7 +888,7 @@ The pause menu includes a confirmed restart option that deletes the save and gen
 
 Progression objectives should never prevent players from simply enjoying their farm.
 
-There is no deadline for deliveries and no penalty for taking a long time. Village stocks only consume active simulation time, with no offline catch-up. Existing saves retain their world, earned capabilities and debug overrides; recorded wheat/barley/canola delivery amounts become initial village stock once. New saves mark this village state explicitly to prevent repeat migration. Free farming remains available at all times.
+There is no deadline for deliveries and no penalty for taking a long time. Free farming remains available at all times, including after the final settlement tier is completed.
 
 Progression provides direction rather than pressure.
 
@@ -820,7 +942,7 @@ The playable prototype currently proves the following major systems together:
 - hay-fed milk production with grazing fallback
 - Water / Milk Tank transport
 - storehouse deliveries
-- ongoing tier 1 village needs with uncapped supply reserves
+- the older ongoing tier 1 village-reserve prototype, pending replacement by permanent settlement tiers
 - multiple persistent vehicles
 - loadout workshop
 - construction overview mode
@@ -832,13 +954,13 @@ This prototype should be treated as the foundation for expansion rather than as 
 
 ## 24. Major Open Questions
 
-### What comes after village tier 1?
+### How should the five-tier proposal be tuned?
 
-Future islands should introduce new capabilities and products. Their relationship to later village tiers, population and happiness still needs to be designed.
+The current direction is permanent 3-of-4 settlement requirements, predictable essential equipment/crop access, random specialist islands and one-shot opportunities as fallback routes. Exact products, quantities, tier timing and unlock presentation still require playtesting.
 
 ### What should optional milestones unlock?
 
-The relationship between breadth-of-farm achievements and concrete capability rewards remains unresolved.
+The relationship between breadth-of-farm achievements and concrete convenience/mastery rewards needs concrete content even though their role is now distinct from core progression.
 
 ### Which livestock system should follow cattle?
 
@@ -852,13 +974,13 @@ The amount of persistent usable land strongly affects the pressure around crop a
 
 Current farming changes surface state but does not fundamentally reshape the generated islands. Future terrain modification must not erase the importance of generated geography.
 
-### What is the fiction behind the cargo network?
+### What is the fiction behind the wider drifting community?
 
-The settlement receives farm deliveries through its storehouse, but the residents’ wider needs and the broader setting remain open.
+The settlement receives farm deliveries through its storehouse, while small passing farms and opportunities can exchange goods. The identity of these other travellers and the broader world remain open.
 
-### How should vehicles and tools unlock?
+### How should guaranteed equipment arrive physically?
 
-Capability gates and Debug overrides are implemented; the village starts with wheat, barley and canola. The game still needs a coherent way to introduce future tractors, livestock machinery and specialized equipment without falling back into a simple money ladder.
+Essential equipment should be predictable when a tier opens, but the presentation still needs to be decided: workshop access, settlement delivery, visiting supply ship or another physical event.
 
 ---
 

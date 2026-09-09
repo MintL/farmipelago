@@ -22,6 +22,7 @@ export function createTransferController({
   storageItemId,
   syncInventoryUi,
   syncCargoPort,
+  syncProgressionUi,
   scheduleSave,
 }) {
   let activeTransfer = null;
@@ -141,11 +142,13 @@ export function createTransferController({
     }
     else {
       const available = Math.max(0, vehicle.storage.contents[transfer.itemId] || 0);
+      const previousTier = progression.state().tier;
       const accepted = progression.accept({ [transfer.itemId]: Math.min(amount, available) });
       moved = accepted[transfer.itemId] || 0;
       if (moved) {
         vehicle.storage.contents[transfer.itemId] -= moved;
         if (!vehicle.storage.contents[transfer.itemId]) delete vehicle.storage.contents[transfer.itemId];
+        if (progression.state().tier !== previousTier) syncProgressionUi();
       }
     }
     if (!moved) {
@@ -250,8 +253,8 @@ export function createTransferController({
       if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop' || !storageAmount()) return;
       const storage = vehicle.storage;
       const itemId = storageItemId(vehicle);
-      const requirement = village.needs.find(entry => entry.cropId === itemId);
-      const amount = requirement && !requirement.complete
+      const requirement = village.needs.find(entry => entry.itemId === itemId);
+      const amount = requirement?.accepting
         ? Math.min(storage.contents[itemId] || 0, requirement.target - requirement.amount)
         : 0;
       if (amount) start({

@@ -320,6 +320,7 @@ body[data-view-mode="build"] #viewHint { display: block; }
   height: auto;
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
   text-align: left;
   justify-items: start;
   min-width: 0;

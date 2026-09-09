@@ -92,7 +92,11 @@ Long-term play revolves around making the persistent Farmipelago capable of prod
 
 ## 5. Settlement Progression
 
-Step 1 implements permanent Tier 1 requirements for **Wheat, Barley, Canola and Soybeans**, all available from the start with unlimited seeds. Each requires **3,600 L**. Completing any three displays **Tier 1 complete**; the remaining crop is optional and can still be delivered. Completed requirements never drain and reject further deliveries, leaving surplus cargo in the vehicle. Tier 2 does not open yet.
+The game implements permanent Tier 1 requirements for **Wheat, Barley, Canola and Soybeans**, all available from the start with unlimited seeds. Each requires **3,600 L**. Completing any three immediately opens **Tier 2**. Tier 1 records remain saved; the storehouse moves to the new requirements and stops taking Tier 1 crops. Completed requirements never drain, and deliveries stop at the target, leaving surplus cargo in the vehicle.
+
+Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. Hay, Eggs, Flour and Vegetable oil appear as **Unavailable** requirements until their production/delivery routes are implemented; the current build cannot complete Tier 2. Targets are provisional: 3,600 L each for Hay, Flour and Vegetable oil, and 24 Eggs. The existing mow/bale loop is usable, but settlement hay delivery, a tedder and crate handling are not implemented.
+
+Opening Tier 2 also records eligibility for chicken-farm, windmill and oil-press islands. These categories are reserved for later content; ordinary island encounters remain unchanged and no specialist building is granted. Corn and livestock still require retained earned gates or Debug overrides. Tier opening earns only its defined capabilities, regardless of any other Debug settings.
 
 ### Permanent 3-of-4 tiers
 
@@ -189,91 +193,9 @@ Later tiers should take longer because the operations and logistics are more inv
 
 The final settlement tier should not require seeing every crop, building, island type or optional mastery reward. Free farming and further Farmipelago development should remain available after completion.
 
-See `Settlement_Progression_Proposal.md` for the working detailed proposal.
+See `Settlement_Progression_Proposal.md` for the detailed proposal, implementation
+steps, approval history and verification records.
 
-### Settlement implementation status
-
-Follow the proposal's numbered steps individually, updating this GDD after
-every step to distinguish implemented behavior from future direction. Each
-step requires the user's playtest approval before the next begins.
-
-**Step 0 — Baseline approved by the user (2026-09-09).**
-The baseline is `feature/drifting-islands` at commit `0795093`, displayed build
-`0.353`. Both production builds in `npm run build` pass; Vite reports a large
-bundle warning. This step changes documentation only, so the displayed version
-and gameplay remained unchanged at the baseline gate.
-
-Pre-Step-1 save assumptions recorded at the baseline:
-
-- Browser storage uses `farmipelago.gameState.v2`, with `schemaVersion: 0`.
-  The older `farmipelago.gameState` key is ignored and left untouched. The npm
-  package version and displayed build number are separate from the save schema.
-- Progression currently saves `{ kind: 'village', tier: 1, stock, earnedGates,
-  overrideGates }`. Wheat, Barley and Canola each target 3,600 L and consume
-  60 L per active minute. Stocks can exceed the target; no permanent requirement
-  completion or historical delivery total is recorded. Migration cannot infer
-  previously delivered-and-consumed quantities from stock alone.
-- Earned capability gates persist separately from Debug overrides. The loader
-  also recovers legacy milestone unlocks from `index` / `collected` and reads
-  legacy `delivered` amounts. Later migration must preserve earned capabilities
-  without promoting Debug overrides into earned unlocks.
-- Field saves retain tile keys, ploughed state and crop ID, stage,
-  `stageElapsed` and weeds. Reload reconstructs the active stage clock; mature
-  crops remain mature, with no offline growth catch-up.
-- Attached islands, their land content, bridges and pending attachments belong
-  to world state. Passing islands save scheduler clocks, identity, seed,
-  generation settings, position, route/progress, encounter role and collision
-  reservations under `environment.encounters`; travel state is saved separately.
-  Older saves without passing-island locations can start new approaches.
-
-The baseline gate was approved by the user. Its manual checklist covered: verify the Farm + Settlement opening;
-plant, harvest and deliver Wheat, Barley and Canola; connect and release passing
-islands; and exercise existing livestock and Debug capabilities. The contributor
-checklist also remains pending for driving/jumping/rescue, terrain and bridge
-collision, plough counting/reset and portrait touch controls. Build success does
-not establish that these gameplay checks pass.
-
-**Step 1 — Implemented in build 0.354, approved by the user.**
-Both production builds pass, with the existing large-bundle warning. Gameplay
-verification remains manual under the contributor guide.
-Permanent capped requirement totals and completion replace draining stocks in
-the existing progression module. Soybeans joins the starter unlocks. The existing
-popup was adapted for four crops and a Tier 1 completion/optional-route label;
-Step 2 below supersedes that initial presentation. No Tier 2
-transition, growth-time change or encounter-cadence change is included.
-
-Step 1 manual gate: plant all four crops, deliver exact totals, leave them through
-active play without decay, complete any three, check the optional fourth route,
-and refresh to confirm permanent progress and retained unlocks. Check that a
-near-complete requirement takes only its remaining litres, leaves surplus cargo
-in the vehicle and disables further delivery after completion. Repeat popup
-interaction with keyboard and a portrait touch viewport.
-
-**Step 2 — Implemented in build 0.365, approved by the user.**
-Both production builds pass, with the existing large-bundle warning; the diff
-whitespace check also passes. No automated gameplay verification was performed.
-The storehouse now presents a compact two-column requirement grid, with persistent
-exact delivered/target quantities beside a separate completion status. Completed
-cards use a checkmark, a muted green background and **Complete**, rather than a
-stock-fill meter. The regular-weight “Complete any 3 of 4” rule stays visible throughout;
-there is no redundant completed-count/optional-crop summary. A **Tier 1 complete**
-message appears only on completion, and the remaining unfinished crop name and
-quantity receive strikethrough instead of an Optional label, with the same green
-background as completed cards. Delivery to it remains
-available.
-
-The preview shows only **Unlocks: Hay farming & equipment**, a compact summary
-of the proposal’s direct guaranteed grass/hay and equipment capabilities. The
-copy comes from progression data. Per the user's UI direction,
-it omits the next tier title, requirements, island archetypes and availability copy.
-No Tier 2 transition or new capability is granted. Save data remains unchanged.
-
-Step 2 manual gate: confirm that requirements and the optional route are clear
-without explanation; completed cards look permanent and retain their quantities;
-the next-development preview is understandable; and automatic cargo detection/Deliver remain
-usable with keyboard and portrait touch controls. Check the popup near both
-screen edges and above driving controls. Gameplay checks are left manual under
-`AGENTS.md`; the broader contributor regression checklist remains applicable.
 
 ---
 
@@ -789,13 +711,13 @@ The progression receiver is a permanent **Settlement Storehouse** on the smaller
 
 ### Current prototype
 
-The player brings Wheat, Barley, Canola or Soybeans to the front yard. The contextual **Settlement · Tier 1** popup has four requirement cards in a two-column grid. Each keeps its crop icon, name and delivered/3,600 L quantity visible, with a separate **Not started**, **In progress** or **✓ Complete** status. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary; a **Tier 1 complete** message appears only when the tier is complete. When any three complete, the remaining unfinished crop name and quantity are struck through, its card uses the same muted green background as completed cards, and its status label is visually hidden while retaining its space so the card keeps the same height. It remains deliverable; its accessible label identifies it as optional. Cards are read-only and cannot be selected.
+The player brings Wheat, Barley, Canola or Soybeans to the front yard during Tier 1. The contextual **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with a separate **Not started**, **In progress**, **✓ Complete** or **Unavailable** status. Eggs are counted individually; the other current targets use litres. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s unavailable requirements. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement with its hidden status space preserved. Cards are read-only and cannot be selected. Each icon and crop name are vertically centered together in the card’s first row.
 
-Use the round **Deliver** icon button below the popup’s right edge, matching the silo’s transfer action. Its tooltip and accessible label identify delivery. Deliver identifies the current vehicle’s carried crop directly on every activation, independent of silo selection. It is disabled for empty or unsupported cargo and completed requirements. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries stop at the requirement target without removing surplus cargo. Visible crates reflect permanent delivered progress with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its Deliver button supports keyboard activation. Requirement cards are informational and do not receive keyboard focus.
+Use the round **Deliver** icon button below the popup’s right edge, matching the silo’s transfer action. Its tooltip and accessible label identify delivery. Deliver identifies the current vehicle’s carried crop directly on every activation, independent of silo selection. It is disabled for empty or unsupported cargo and completed requirements. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries stop at the requirement target without removing surplus cargo. Visible crates reflect the active tier’s delivered progress with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its Deliver button supports keyboard activation. Requirement cards are informational and do not receive keyboard focus.
 
 ### Next-development preview
 
-A compact **Unlocks: Hay farming & equipment** line below the cards summarizes the direct guaranteed capabilities from Section 4 of `Settlement_Progression_Proposal.md`. The content is maintained in progression data. It excludes island archetypes, future delivery requirements, tier headings and availability copy. Opening Tier 2 remains Step 3; this UI step does not grant the previewed capabilities. The popup is capped at 240 pixels wide. Safe-area fitting and avoidance of driving controls include the delivery button beneath it.
+A compact **Unlocks: Hay farming & equipment** line below the cards summarizes the direct guaranteed capabilities from Section 4 of `Settlement_Progression_Proposal.md`. The content is maintained in progression data. It excludes island archetypes, future delivery requirements, tier headings and availability copy. The line is shown during Tier 1; opening Tier 2 grants these capabilities and hides the preview until another tier is defined. The popup is capped at 240 pixels wide. Safe-area fitting and avoidance of driving controls include the delivery button beneath it.
 
 There should be no hidden population threshold or decaying settlement-progress meter.
 
@@ -957,14 +879,14 @@ The current save includes:
 - field and crop state
 - placed buildings and silo contents
 - cattle pens, individual cow movement/growth state, shared hay, milk and birth progress
-- permanent Tier 1 delivered amounts/completion, retained earned capabilities and separate Debug unlock overrides
+- active settlement tier, permanent requirement histories for each tier, retained earned capabilities and separate Debug unlock overrides
 - vehicle positions
 - vehicle loadouts
 - vehicle storage
 - active vehicle
 - relevant UI state
 
-Progression now saves `kind: settlement`, `tier: 1`, per-crop `requirements` containing `delivered` and `complete`, and separate `earnedGates` / `overrideGates`. The outer schema remains 0. Existing village stock becomes delivered progress capped at 3,600 L; legacy recorded deliveries and milestone capability unlocks are retained where available. Earned gates survive regardless of remaining stock, and Debug overrides are not promoted to earned gates. Old consumed deliveries cannot be reconstructed because the reserve prototype did not save their history. Saved completed requirements restore at the target even if their amount is lower; Tier 1 completion is derived from the permanent requirement records. No offline progression occurs.
+Progression saves `kind: settlement`, the active `tier`, a `tiers` map containing each tier’s `requirements` (`delivered` and `complete`), and separate `earnedGates` / `overrideGates`. The outer schema remains 0. Previous flat Tier 1 requirement saves migrate into tier history, and already-completed Tier 1 saves immediately open Tier 2 on load. Older village stock or recorded deliveries become Tier 1 progress capped at its targets; legacy milestone capability unlocks are retained. Earned gates survive regardless of remaining stock. Debug overrides alone never advance tiers or become earned gates; opening a tier independently earns its specified gates and clears only their now-redundant overrides. Tier eligibility for specialist islands is derived from opened tier definitions. Old consumed deliveries cannot be reconstructed because the reserve prototype did not save their history. Saved completed requirements restore at their target even if their amount is lower. No offline growth or production occurs.
 
 Refreshing the page restores the same farm rather than generating a new level.
 
@@ -1026,7 +948,7 @@ The playable prototype currently proves the following major systems together:
 - hay-fed milk production with grazing fallback
 - Water / Milk Tank transport
 - storehouse deliveries
-- permanent Tier 1 settlement progression: any three of four starter crops, with Tier 2 still gated
+- permanent settlement tiers: any three of four starter crops opens Tier 2 with guaranteed grass/hay access and unavailable delivery placeholders
 - multiple persistent vehicles
 - loadout workshop
 - construction overview mode

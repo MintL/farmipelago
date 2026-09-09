@@ -942,6 +942,7 @@ const transferController = createTransferController({
   storageItemId,
   syncInventoryUi,
   syncCargoPort,
+  syncProgressionUi,
   scheduleSave,
 });
 
@@ -1386,8 +1387,8 @@ function updateStoragePopup() {
         amount: requirement.amount,
         target: requirement.target,
         complete: requirement.complete,
-        accepting: !requirement.complete,
-        locked: false,
+        accepting: requirement.accepting,
+        locked: !requirement.available,
       })),
       machine,
       x: (siloPopupWorld.x * .5 + .5) * innerWidth,

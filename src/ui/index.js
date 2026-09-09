@@ -330,14 +330,14 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
         amount.className = 'villageNeedAmount';
         const status = document.createElement('span');
         status.className = 'settlementRequirementStatus';
-        element.append(cropIcon(need.id, need.name), name, amount, status);
+        element.append(cropIcon(need.icon, need.name), name, amount, status);
         villageNeedsGrid.append(element);
         card = { element, amount, status };
         villageCards.set(need.id, card);
       }
-      const amountText = `${need.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} / ${need.target.toLocaleString('en-US')} L`;
+      const amountText = `${need.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} / ${need.target.toLocaleString('en-US')}${need.unit === 'items' ? '' : ' L'}`;
       const optional = settlement.complete && !need.complete;
-      const statusText = need.complete ? '✓ Complete' : optional ? '' : need.amount > 0 ? 'In progress' : 'Not started';
+      const statusText = need.complete ? '✓ Complete' : optional ? '' : need.locked ? 'Unavailable' : need.amount > 0 ? 'In progress' : 'Not started';
       card.amount.textContent = amountText;
       card.status.style.visibility = optional ? 'hidden' : '';
       card.status.textContent = optional ? '\u00a0' : statusText;
@@ -1240,12 +1240,12 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
           const itemId = typeof item?.id === 'string' ? item.id : null;
           const amount = Math.max(0, Number(item?.amount) || 0);
           const target = Math.max(0, Math.floor(Number(item?.target) || 0));
-          if (!itemId || (!crops[itemId] && !['hay-bale', 'milk'].includes(itemId))) return [];
+          if (!itemId || (nextInventory.kind !== 'cargo' && !crops[itemId] && !['hay-bale', 'milk'].includes(itemId))) return [];
           return [{
             id: itemId,
             name: typeof item.name === 'string' ? item.name : crops[itemId]?.name || itemId,
             icon: typeof item.icon === 'string' ? item.icon : itemId,
-            unit: item.unit === 'bales' ? 'bales' : 'litres',
+            unit: ['bales', 'items'].includes(item.unit) ? item.unit : 'litres',
             amount,
             target,
             complete: item?.complete === true,

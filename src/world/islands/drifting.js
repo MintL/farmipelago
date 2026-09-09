@@ -5,8 +5,10 @@ import { createAttachmentRoutePlanner, routeLength } from './attachment-route.js
 import { TRAVEL_DIRECTION } from '../travel.js';
 import { createMotionSafety, envelopesIntersect, ORIGIN, translateBox, solidVisualBoxes, boxOfBridge } from './motion-safety.js';
 import { velocityOnRoute } from './approach-route.js';
+import { seededRandom } from './procedural.js';
 
-const ENCOUNTER_SECONDS = 60;
+const ENCOUNTER_SECONDS = 20;
+const ENCOUNTER_VARIATION_SECONDS = 4;
 // Temporarily paused: distant decoration is not useful on small screens.
 const DECORATIVE_ISLANDS_ENABLED = false;
 const DECORATION_SECONDS = 20;
@@ -43,12 +45,14 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
   let elapsed = savedPopulation?.elapsed ?? 0, decorationElapsed = savedPopulation?.decorationElapsed ?? 0;
   let retryAt = savedPopulation?.retryAt ?? 0, sequence = savedPopulation?.sequence ?? 0, initialized = false;
   let populationInitialized = savedPopulation?.initialized ?? false;
-  let sinceEncounter = savedPopulation?.sinceEncounter ?? Math.min(60, Math.max(0, Number(options.saved?.sinceEncounter) || 0));
+  let sinceEncounter = savedPopulation?.sinceEncounter ?? Math.min(ENCOUNTER_SECONDS + ENCOUNTER_VARIATION_SECONDS,
+    Math.max(0, Number(options.saved?.sinceEncounter) || 0));
   let lastArrival = savedPopulation?.lastArrival ?? null, encounterStatus = 'Preparing first approach';
   let travelState = { direction: TRAVEL_DIRECTION, speed: 1.15, phase: 0 };
   let preparation = null, decorationsQueued = 0, encounterAttempted = false;
   let running = false, attachmentStep = null, pendingEncounter = null, forecastAt = -Infinity, forecastCache = [];
-  const passingSpeed = () => travelState.speed * PASSING_SPEED_MULTIPLIER;
+  let fastIslands = options.fastIslands === true;
+  const passingSpeed = () => travelState.speed * PASSING_SPEED_MULTIPLIER * (fastIslands ? 10 : 1);
   const approaching = () => active.filter(island => island.plan && !island.arrived);
   const observer = () => options.getObserver?.() || physics.vehicleState() || { x: 0, z: 0 };
   const updateFrustum = () => {
@@ -156,21 +160,55 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     return null;
   };
   const outsideStart = (...args) => finishPreparation(outsideStartSteps(...args));
+  const extendDeparture = island => {
+    const route = island.route, end = route[route.length - 1];
+    if (!inView(island, end, VIEW_MARGIN + 4 * TILE)) return;
+    if (elapsed < (island.departureRetryAt || 0)) return;
+    island.departureRetryAt = elapsed + .5;
+    // Retain the published heading, including after a released island descends.
+    let previous = route.length - 2;
+    while (previous >= 0 && Math.hypot(end.x - route[previous].x, end.z - route[previous].z) < .025) previous--;
+    if (previous < 0) return;
+    const dx = end.x - route[previous].x, dz = end.z - route[previous].z;
+    const length = Math.hypot(dx, dz), target = copy(end);
+    for (let i = 0; i < 400; i++) {
+      target.x += dx / length * 2 * TILE;
+      target.z += dz / length * 2 * TILE;
+      if (inView(island, target, VIEW_MARGIN + 8 * TILE)) continue;
+      const extension = [end, target];
+      if (!safety.routeClear(island, extension, { margin: TILE, traffic: true })
+        || !safety.shoreClear(island, end, target) || !routeTrafficClear(island, extension)) return;
+      // Replace the straight final segment; retain a release's vertical descent.
+      const descending = Math.abs((route[route.length - 2].y || 0) - (end.y || 0)) > .025;
+      const extended = descending ? [...route, target] : [...route.slice(0, -1), target];
+      if (!safety.reserve(island, extended, [], island.reservationBounds || safety.envelope(island).bounds)) return;
+      island.routeIndex = Math.min(island.routeIndex, extended.length - 1);
+      island.route = extended;
+      if (island.plan) island.plan.route = extended;
+      island.routeComplete = false;
+      forecastAt = -Infinity;
+      return;
+    }
+  };
   const planEncounter = function* (island) {
     const near = copy(observer());
     const incoming = { ...travelState.direction };
     const speed = passingSpeed();
-    const due = Math.max(elapsed + Math.max(0, ENCOUNTER_SECONDS - sinceEncounter),
-      ...approaching().map(island => island.plan.due + ENCOUNTER_SECONDS));
+    // One seeded 16–24-second spacing per candidate, independent of generation
+    // randomness. Apply it to shore arrivals, then subtract the approach below.
+    const interval = ENCOUNTER_SECONDS
+      + (seededRandom(island.seed ^ 0x510e527f)() * 2 - 1) * ENCOUNTER_VARIATION_SECONDS;
+    const due = Math.max(elapsed + Math.max(0, interval - sinceEncounter),
+      ...approaching().map(island => island.plan.due + interval));
     const candidates = yield* attachmentCandidateSteps(island.terrain, terrain, bridges);
-    // Nearby sites form the first tier; compactness still strongly ranks within it.
+    // Prefer the closest shore to the active vehicle; compactness breaks ties.
     for (const p of candidates) {
       yield;
       p.observerDistance = shoreDistance(island, p, near);
     }
     const reachable = candidates.filter(p => p.observerDistance <= ATTACHMENT_RULES.range);
-    const choices = reachable.length ? reachable.sort((a, b) => b.score - a.score)
-      : candidates.sort((a, b) => a.observerDistance - b.observerDistance || b.score - a.score);
+    const choices = (reachable.length ? reachable : candidates)
+      .sort((a, b) => a.observerDistance - b.observerDistance || b.score - a.score);
     for (const placement of choices.slice(0, 48)) {
       for (const gap of placement.gaps) for (const offset of [1.6, 2.6, 4.6, 6.6]) {
         yield;
@@ -336,8 +374,8 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       island.routeIndex = next.index;
       island.routeComplete = next.complete;
       if (next.complete && island.status === 'releasing') island.status = 'drifting';
-      // Keep the complete reservation through retirement. No unplanned drift
-      // or corridor renewal can send an island into an existing passage.
+      // Keep the complete reservation, including camera-driven extensions,
+      // through retirement. Extensions are checked before entering them.
       return { island, position, velocity: next.velocity, priority: island.status === 'releasing' ? 0 : island.encounter ? 1 : 2 };
     });
     for (const record of safety.resolve(proposals, dt)) {
@@ -350,6 +388,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
   const routeTrafficClear = (island, route) => route.slice(1).every((to, i) => clearOfTraffic(island, route[i], to));
   const api = {
     active, safety,
+    setFastIslands(enabled) { fastIslands = Boolean(enabled); forecastAt = -Infinity; },
     setAttachmentStep(callback) { attachmentStep = callback; },
     restoreConnection(island, route, gaps) {
       if (!safety.reserve(island, route, gaps.map(boxOfBridge))) throw new Error('Saved island connection overlaps a reserved route.');
@@ -494,6 +533,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         }
       }
       for (const island of [...active]) if (island.routeComplete && !inView(island) && !physics.isReferenceIsland(island.body)) remove(island);
+      active.forEach(extendDeparture);
       launchEncounter();
       if (DECORATIVE_ISLANDS_ENABLED && decorationElapsed >= DECORATION_SECONDS) {
         decorationElapsed %= DECORATION_SECONDS;

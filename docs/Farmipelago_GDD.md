@@ -296,13 +296,17 @@ one shared cruise of 180% of the travel speed for encounters and decorations
 upstream side after roughly five minutes. The farm and its camera do not rotate.
 All environmental travel cues follow this same changing direction.
 
-The current implemented encounter scheduler targets one suitable shore arrival every **60 seconds**,
-accounting for off-screen approach time. The current design target is to prototype a much more frequent cadence of roughly **one relevant island every 30 seconds**, with random variation, so RNG produces regular choices rather than long waiting periods. The rare event should be seeing an island worth permanently keeping, not seeing an island at all.
+The encounter scheduler targets one suitable shore arrival roughly every **20 active seconds**,
+with a seeded **16–24-second** spacing for each candidate and off-screen approach
+time accounted for before launch. This is a target, not a guaranteed deadline:
+long approaches, occupied routes and population limits can delay arrivals.
+The rare event should be seeing an island worth permanently keeping, not seeing
+an island at all.
 
 The scheduler prefers valid connection sites near
 the active vehicle, within the normal 12-tile interaction range, or the nearest
-valid shore when none is in reach. Among nearby sites, compact layouts and
-multiple neighboring connections retain strong preference. Generated candidates
+valid shore when none is in reach. Encounter sites are searched nearest-first relative to the active vehicle, with
+compact layouts and multiple neighboring connections breaking distance ties. Generated candidates
 must have compatible bridge landings and a clear direct connection route. A
 small, flat island with clear landings is used as a generation fallback.
 
@@ -343,9 +347,18 @@ older island's future path. The first encounter has priority over initial
 decoration. Entry and exit use the current game camera and zoom, with a two-tile
 buffer around the complete visual bounds. There is no fixed distance margin
 around the whole farm. Full-route shore and collision checks still apply. Islands
-are removed only after reaching the planned exit outside the buffered view. There is no age-based
-removal, minute-by-minute route renewal, or unplanned drift after the route ends.
+are removed only after reaching an exit outside the current buffered view. If camera
+movement, rotation or zoom exposes the departure endpoint, its route extends along
+the same heading beyond the new view with extra clearance. Extensions must pass
+shore, swept collision and reservation checks before movement continues; genuine
+obstructions still take priority. Released islands retain their planned descent
+before continuing outward. There is no age-based removal or unreserved drift.
 The total passing population remains capped at 48, with encounters taking precedence.
+
+The saved **Island speed ×10** Debug toggle defaults off. It multiplies passing
+and released island cruise speed by ten while retaining swept collision checks.
+It does not accelerate crop growth, encounter clocks or environmental travel;
+turning it off restores normal island speed.
 
 All island motion uses swept solid-envelope checks against land, bridges, other
 moving islands and reserved connection/release routes. Solid envelopes include
@@ -534,7 +547,7 @@ Crop durations are catalog-driven. Wheat, Barley, Canola and Soybeans take **3 a
 
 These are design targets rather than final balance values. Later crops should not automatically grow more slowly only because they belong to a higher tier. A crop that already has a complex multi-step harvest may need less additional waiting. Growth time should encourage the player to leave a planted field and inspect islands, transport goods or work elsewhere rather than wait beside it.
 
-With a relevant passing-island target near 30 seconds, a three-minute starter crop creates room for roughly six island encounters during one growth cycle.
+With a relevant passing-island target near 20 seconds, a three-minute starter crop creates room for roughly nine island encounters during one growth cycle.
 
 The **Fast growth** Debug toggle is **on by default**, retaining the prototype
 speed: 3 seconds per ordinary crop stage (9 seconds to maturity) and 10 seconds

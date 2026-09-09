@@ -735,7 +735,7 @@ function initializeFarm(savedState) {
     savedState?.world?.seed,
     0,
     scheduleSave,
-    { attachmentComplete, reducedMotion, camera, fastGrowth: savedState?.ui?.fastGrowth !== false, savedWorld: savedState?.world,
+    { attachmentComplete, reducedMotion, camera, fastGrowth: savedState?.ui?.fastGrowth !== false, fastIslands: savedState?.ui?.fastIslands === true, savedWorld: savedState?.world,
       prepareIslandVisuals: island => {
         createIslandOutline(island);
         return renderer.compileAsync(island.group, camera, scene);
@@ -1032,6 +1032,7 @@ const transferController = createTransferController({
   changeCameraPreset: setDriveCameraPreset,
   changeTimeOfDay: setTimeOfDay,
   changeFastGrowth: enabled => farm.setFastGrowth(enabled, elapsed),
+  changeFastIslands: enabled => farm.driftingIslands.setFastIslands(enabled),
   rotateCameraStep: rotateDriveCamera,
   zoomCamera,
   persistentStateChange: scheduleSave,

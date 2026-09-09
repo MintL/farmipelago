@@ -505,8 +505,8 @@ Keep implementation status, build versions, approvals, migration assumptions and
 
 ### Implementation record
 
-Steps 0–4 are approved. Step 5 is next and has not started. Weed damage and
-sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
+Steps 0–5 are approved. Step 6 is next and has not started.
+Weed damage and sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
 committed as `17e9dcd` on `feature/drifting-islands`.
 
 This record owns build versions, approval history, migration assumptions and
@@ -647,6 +647,75 @@ and the contributor regression checklist. Stop for approval before Step 4.
 - Both production builds and the diff whitespace check pass. The existing bundle
   size warning remains. Gameplay verification is manual, with no automated input
   or synthetic save tests. Use the Step 4 manual gate below before Step 5.
+
+**Step 5 — Island cadence implemented in build 0.369; approved with refinements through 0.372.**
+
+- Changed the suitable-shore arrival target from 60 seconds to 30 active seconds,
+  with a seeded 24–36-second interval per candidate, independent of terrain
+  generation randomness. Existing approach-time subtraction and spacing after
+  already approaching islands remain in use; this is not a spawn interval.
+- Kept full-route reservation, shore/traffic clearance, off-screen launch checks,
+  common cruise speed, two approaching encounters and the 48-island active cap.
+  Blocked routes retain the existing delayed retry; generation and visual
+  preparation keep their existing sliced work budget. No forced arrivals.
+- Save schema stays 0 with no new fields. Published islands restore their saved
+  positions/routes/reservations; new candidates use the shorter target. Existing
+  active-time clocks, pause/hidden-tab behavior and no offline catch-up remain.
+- Implemented directly on `feature/drifting-islands` after approved commit
+  `3b5f0d3`. Preserved the pre-existing uncommitted storehouse roof correction.
+  Fast growth stays on by default and the compact read-only storehouse UI is
+  unchanged. No Step 6 goods, specialists, processors or held weed work included.
+- Verification: `npm run build` passed both game and standalone island-debug
+  production targets; the existing large-chunk warning remains. `git diff --check`
+  passed. The development server started for manual playtesting. No automated
+  gameplay verification, browser automation, scripted input, synthetic saves or
+  test-only hooks were used.
+
+**Step 5 playtest correction — build 0.370; approved.**
+
+- Fixed departures stopping at an old camera boundary after the camera moved.
+  Visible exit endpoints now extend along the same heading beyond the current
+  buffered view, with extra look-ahead clearance. Extensions preserve full route
+  reservations and check land, shore and moving traffic before admission.
+- Existing saved routes can extend too; released islands keep their descent.
+  Actual collision obstructions still cause a safety stop.
+- Verification: both production builds and `git diff --check` passed; the existing
+  bundle-size warning remains. Gameplay verification remains manual. Manual checks:
+  follow departures while driving, rotating, zooming and panning in build mode;
+  include released islands and reloads on desktop and phone-sized viewports.
+
+**Step 5 pacing refinement — build 0.371; approved.**
+
+- User requested faster encounters after noticing islands on the far side.
+  Arrival target is now 20 active seconds, varying 16–24 seconds.
+- Search encounter placements nearest to the active vehicle first; compactness
+  breaks distance ties. Current-view checks, straight routes, departure extension,
+  shared speed, population limits and collision reservations remain in place.
+  Movement after launch can still leave an island behind; blocked routes delay arrivals.
+- Verification: both production builds and `git diff --check` pass (existing
+  bundle-size warning). Manual playtest: assess
+  visible nearby encounter frequency from both sides of the Farmipelago, moving
+  between fields, route clearance and performance on desktop and mobile.
+
+**Step 5 Debug control — build 0.372; approved.**
+
+User approved Step 5 and requested commit and advancement on 2026-09-09.
+Build and whitespace checks passed; no automated gameplay verification was run.
+
+- Added saved, default-off Island speed ×10 toggle for passing/released island
+  cruise. Encounter clocks, growth and environmental travel remain unchanged.
+- Both production builds and `git diff --check` pass (existing bundle-size
+  warning). Manually check toggling, reload persistence,
+  departures and collision clearance at boosted speed on desktop/mobile.
+
+**Manual checks / approval gate:** during normal farming, assess encounter
+frequency, whether rejecting an island feels comfortable, and whether arrivals
+leave field work uninterrupted. Check collision clearance, route validity and
+performance through a full flow cycle, connections and releases; also check
+reloads, pause/hidden tabs and reduced motion. Run desktop and phone-sized
+regressions for initial spawn/regeneration, driving/jump/rescue, bridges/plateaus,
+plough counting/reset and reachable HUD/touch controls. Stop for Step 5 playtest
+approval; do not commit or begin Step 6.
 
 ### Step 0 — Establish a clean baseline
 

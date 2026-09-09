@@ -1430,7 +1430,7 @@ function* generateFarmSteps(
   const connectionRecords = createIslandConnections(islandConnections, bridgeGaps, islandRecords);
   const driftingIslands = createDriftingIslands(group, terrain, seed, generateIsland, physics, options.camera, {
     lowerBlocks, obstacles, bridgeBlocks, getObserver: options.getObserver,
-    saved: options.savedEncounters, getExtraIslandBoxes: options.getExtraIslandBoxes,
+    fastIslands: options.fastIslands, saved: options.savedEncounters, getExtraIslandBoxes: options.getExtraIslandBoxes,
     generateIslandSteps, prepareVisuals: options.prepareIslandVisuals,
   });
   const fieldsChanged = (island, adding) => {

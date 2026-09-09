@@ -490,3 +490,462 @@ With a passing-island target near 30 seconds, a three-minute starter crop create
 - How often should progression-bridging opportunities appear without making permanent processors unnecessary?
 - Which processing buildings should support several recipes so useful islands remain relevant across multiple tiers?
 - Which late-game farming operations are distinctive enough to justify their own equipment without creating machinery bloat?
+
+---
+
+## 13. Step-by-Step Implementation Plan
+
+This plan is intentionally **gated**. Implement only one numbered step at a time. After each step, stop and let the user play the current build and explicitly approve it before continuing. Do not combine later steps into the same change set merely because they are technically related.
+
+Every step should follow `AGENTS.md`: increment the displayed build version for player-visible changes, run `npm run build`, preserve existing saves where practical, update the GDD when an implemented decision materially differs from the documented direction, and leave the relevant manual verification checks for the user. Do not automate gameplay verification unless the user explicitly requests it.
+
+The implementation should build on the existing boundaries rather than create a second progression stack. In particular, evolve `src/gameplay/progression/index.js` for settlement progression, the catalogs under `src/gameplay/catalog/` for crops/equipment/goods, the current Settlement Storehouse delivery flow for progression submission, and the existing drifting-island runtime/scheduler for island opportunities.
+
+### Step 0 — Establish a clean baseline
+
+**Goal:** make sure later progression changes can be judged against a known-good drifting-islands build.
+
+**Implementation:**
+
+- Work only on `feature/drifting-islands`.
+- Run the existing build before changing gameplay.
+- Record the current save schema/version assumptions relevant to village stock, earned gates, crop state and passing islands.
+- Do not change gameplay in this step.
+
+**User verification gate:**
+
+- Existing Farm + Settlement opening works.
+- Wheat, Barley and Canola can still be planted, harvested and delivered.
+- Passing islands can still connect/release correctly.
+- Existing livestock/debug capability remains functional.
+
+**Stop here until the user approves the baseline.**
+
+### Step 1 — Replace draining Tier 1 needs with permanent 3-of-4 progression
+
+**Goal:** prove the new settlement progression rule using only existing crop farming before adding new production systems.
+
+**Implementation:**
+
+- Refactor `src/gameplay/progression/index.js` from continuously consumed village stock into permanent requirement progress.
+- Tier 1 requirements become Wheat, Barley, Canola and Soybeans.
+- Unlock Soybeans at the start so Tier 1 is fully solvable without RNG.
+- Require any three requirements to reach their target.
+- Once a requirement reaches its target, mark it permanently complete and stop accepting additional delivery toward that requirement unless free storage semantics require otherwise.
+- Remove active-time consumption from progression state.
+- Persist current tier, per-requirement delivered amount/completion and earned gates.
+- Migrate existing village-stock saves conservatively: existing stock becomes initial delivered progress capped at the new requirement target; no completed progression should be lost because the player did not happen to have stock at the moment of migration.
+- Do **not** advance to Tier 2 yet. Reaching 3-of-4 should show a temporary `Tier 1 complete` state only.
+
+**User verification gate:**
+
+- All four Tier 1 crops are plantable with unlimited seed access.
+- Delivering crops advances exact permanent totals.
+- Totals do not fall over time.
+- Any three completed requirements produce `Tier 1 complete`.
+- The fourth requirement is visibly optional.
+- Refreshing preserves progress and completion.
+
+**Stop here until the user approves the progression rule.**
+
+### Step 2 — Rebuild the Settlement Storehouse UI around tiers
+
+**Goal:** make progression fully understandable without hidden thresholds or Anno-style need meters.
+
+**Implementation:**
+
+- Replace the current draining-stock visual language with four requirement cards.
+- Show exact amount / target and a permanent `Complete` state.
+- Show `Complete any 3 of 4` prominently.
+- Show overall progress such as `2 / 3`.
+- Add a compact `Next development` area, initially populated with placeholder Tier 2 unlock text from the progression data rather than hard-coded UI copy.
+- Keep the popup compact, phone-safe and visually subordinate to the world.
+- Do not add population, happiness, decaying bars or currencies.
+
+**User verification gate:**
+
+- The player can understand what is required without prior explanation.
+- Completed cards read as final rather than temporarily supplied.
+- The optional fourth route is obvious.
+- The UI remains usable in portrait/mobile layout and does not become a large management screen.
+
+**Stop here until the user approves the settlement UI.**
+
+### Step 3 — Add tier definitions and guaranteed unlock transitions
+
+**Goal:** establish a data-driven progression spine before adding Tier 2 content.
+
+**Implementation:**
+
+- Replace Tier-1-specific constants with a tier definition/catalog structure containing requirement IDs, targets, completion count and unlock lists.
+- Implement transition from completed Tier 1 to open Tier 2.
+- Tier opening, not tier completion, grants the seeds and essential equipment needed to attempt that tier.
+- Keep specialist buildings out of guaranteed unlocks; tier opening only enables their island categories to appear later.
+- Preserve Debug overrides as an explicit developer tool layered on top of earned capabilities.
+- For now, Tier 2 may display unavailable placeholder requirements; do not implement its products yet.
+
+**User verification gate:**
+
+- Completing Tier 1 advances exactly once.
+- Tier 2 remains active after refresh.
+- Unlocks happen at the moment Tier 2 opens.
+- Debug overrides do not accidentally become permanent earned unlocks.
+- No specialist building is magically granted to the player.
+
+**Stop here until the user approves tier transition behavior.**
+
+### Step 4 — Introduce crop-specific real growth times
+
+**Goal:** replace debug-speed crops with the intended farm/island rhythm independently of later production complexity.
+
+**Implementation:**
+
+- Put growth duration in crop catalog data rather than one global magic number.
+- Set Wheat, Barley, Canola and Soybeans to approximately **3 minutes** initially.
+- Keep later target bands documented but do not add crops merely to test them.
+- Persist enough crop timing state that refresh does not restart mature crops or accidentally grant offline growth unless explicitly designed.
+- Keep unlimited seeds once a crop gate is earned.
+
+**User verification gate:**
+
+- Early crops take roughly three active gameplay minutes to mature.
+- The player naturally has time to transport, inspect islands or work another field while waiting.
+- Growth survives save/reload correctly.
+- Three minutes feels playable rather than like waiting.
+
+**Stop here until the user approves the growth rhythm.**
+
+### Step 5 — Increase relevant island cadence to ~30 seconds
+
+**Goal:** make RNG create frequent choices instead of long waits before production infrastructure exists.
+
+**Implementation:**
+
+- Change the encounter target from the current roughly 60-second spacing toward approximately **30 seconds**, with enough random variation that arrivals do not feel metronomic.
+- Preserve collision/path reservation rules; never force an arrival by overlapping islands or teleporting them.
+- Do not increase the number of simultaneously active islands beyond safe performance/collision limits merely to hit the target.
+- If geometry delays an encounter, prefer a delayed valid encounter over breaking the scheduler.
+
+**User verification gate:**
+
+- During normal farming, relevant islands feel frequent.
+- Saying `no` to an island feels safe because another opportunity will come soon.
+- Arrivals do not overwhelm field work or constantly steal attention.
+- No new island collisions, impossible routes or obvious performance regressions appear.
+
+**Stop here until the user approves the cadence.**
+
+### Step 6 — Generalize cargo from crops to agricultural goods
+
+**Goal:** prepare the logistics system for Flour, Oil, Eggs and later processed goods without implementing processors yet.
+
+**Implementation:**
+
+- Introduce a shared goods/catalog identity that can represent crops, animal products and processed products while preserving existing crop-specific behavior where needed.
+- Ensure vehicle/building inventories and transfer UI can represent a non-crop good without pretending it can be planted.
+- Add **Flour** as the first non-crop test good behind Debug only.
+- Do not create a Windmill yet.
+
+**User verification gate:**
+
+- Existing crop inventories and transfers behave exactly as before.
+- Debug Flour can be stored, transported and displayed with the correct identity.
+- Flour never appears in seed selection or combine harvesting.
+- Persistence handles mixed goods correctly.
+
+**Stop here until the user approves the generalized goods model.**
+
+### Step 7 — Add a reusable one-of-two island opportunity system
+
+**Goal:** prove the visible bad-RNG fallback before building many specialist islands.
+
+**Implementation:**
+
+- Give eligible passing islands an optional opportunity descriptor with two accepted inputs, required quantities, one output/reward, completion state and one-shot/batch limit.
+- Add a compact contextual opportunity UI near the selected island/building; do not create a global quest log.
+- First prototype: **Old Miller** accepts Wheat **or** Barley and gives a limited batch of Flour.
+- The output should be physical cargo or enter an appropriate nearby inventory; avoid abstract reward currency.
+- Completed opportunities persist while the island remains relevant and cannot be farmed repeatedly by reconnect/reload exploits.
+- Let the player complete the opportunity and still release/ignore the island.
+
+**User verification gate:**
+
+- The one-of-two choice is immediately understandable.
+- Giving either valid input produces the same limited Flour reward.
+- The opportunity cannot be repeated beyond its intended limit.
+- The island can drift away after the trade.
+- It feels like a small farm/service interaction rather than a quest menu.
+
+**Stop here until the user approves opportunities as a mechanic.**
+
+### Step 8 — Add specialist-island content descriptors and the first Windmill island
+
+**Goal:** prove that permanent infrastructure is something the player acquires by keeping land.
+
+**Implementation:**
+
+- Extend passing-island generation with tier-gated content descriptors separate from terrain generation.
+- Add the first specialist content type: a small Windmill/farm island.
+- The Windmill converts Wheat or Barley into Flour in batches.
+- It only functions while the island is connected as playable Farmipelago land.
+- Keep the Windmill and its interaction physically readable and compact; follow the building voxel construction standard.
+- Tier 2 enables Windmill islands in the encounter pool; Tier 1 does not need them.
+
+**User verification gate:**
+
+- A Windmill island can appear through normal Tier 2 RNG.
+- The player can reject it with no immediate soft lock.
+- Keeping it creates permanent repeatable Flour production.
+- The Old Miller opportunity still works as a temporary fallback, but owning the Windmill is clearly more useful for future production.
+
+**Stop here until the user approves permanent processor islands.**
+
+### Step 9 — Complete the Hay route for Tier 2
+
+**Goal:** make the first non-processor Tier 2 requirement about multi-step field work.
+
+**Implementation:**
+
+- Bring the existing grass/mower/baler prototype into the normal Tier 2 unlock path.
+- Add the intended **ted/dry** step only if it remains valuable after testing the current mow/bale loop; do not add a realism step automatically if it does not improve play.
+- Ensure Tier 2 opening grants the essential hay equipment rather than requiring RNG.
+- Settlement accepts physical hay/bales as the Hay requirement.
+- Set grass growth in the current ~4–5 minute target band only after the user has accepted the 3-minute crop rhythm.
+
+**User verification gate:**
+
+- Hay feels mechanically different from combine crops.
+- Required equipment is guaranteed and understandable.
+- The number of field passes feels playful rather than tedious.
+- Delivering the required hay completes one permanent Tier 2 card.
+
+**Stop here until the user approves the Hay route.**
+
+### Step 10 — Add Oil Press islands and the Oil route
+
+**Goal:** add the second short processing branch using an existing crop.
+
+**Implementation:**
+
+- Add an Oil Press specialist-island type, gated to Tier 2+.
+- Convert Canola into Vegetable Oil in readable batches.
+- Add a limited opportunity fallback that can provide enough Oil to bridge the Tier 2 requirement without giving permanent production.
+- Make Oil a normal transferable good and Tier 2 settlement requirement.
+
+**User verification gate:**
+
+- Oil Press islands appear and can be permanently kept or rejected.
+- Canola → Oil works through physical transport.
+- The opportunity fallback can bridge bad RNG.
+- Permanent Oil production is still clearly preferable for later recipes.
+
+**Stop here until the user approves the Oil route.**
+
+### Step 11 — Add Chicken Farm islands and the Eggs route
+
+**Goal:** add the first simple animal/feed branch without importing the full cattle simulation unnecessarily.
+
+**Implementation:**
+
+- Add a Chicken Farm specialist island gated to Tier 2+.
+- Keep chickens deliberately simpler than cattle if individual simulation adds no useful decision: feed an accepted grain input and produce Eggs in batches.
+- Make Eggs physical/transferable in whatever compact representation best fits the existing logistics system.
+- Add a limited opportunity fallback for Eggs.
+- Add Eggs as the fourth Tier 2 requirement.
+
+**User verification gate:**
+
+- Feeding chickens and collecting Eggs is understandable and distinct from a processor.
+- It does not create excessive animal micromanagement.
+- Eggs can complete their settlement requirement.
+- Players can still finish Tier 2 without ever keeping a Chicken Farm because only 3 of 4 are required.
+
+**Stop here until the user approves the Eggs route.**
+
+### Step 12 — Balance and approve Tier 2 as the first complete vertical slice
+
+**Goal:** validate the entire progression philosophy before producing Tier 3–5 content.
+
+**Implementation:**
+
+- Tune requirement quantities so Tier 2 takes roughly **30–45 minutes** on a first playthrough, primarily because of varied operations rather than inflated quotas.
+- Verify all three intended responses to RNG: keep infrastructure, bridge with an opportunity, or complete the other three requirements.
+- Check that Flour opportunities cannot make a future Windmill irrelevant.
+- Add the real Tier 3 transition only after Tier 2 pacing is approved.
+
+**User verification gate:**
+
+The user should complete Tier 2 from a fresh or controlled normal save and answer:
+
+- Did RNG change the route rather than stop progress?
+- Were islands frequent enough?
+- Did at least one rejection feel meaningful?
+- Did opportunities feel useful without becoming the main way to produce goods?
+- Did Hay, Eggs and processors feel like genuinely different work?
+- Was the tier in the intended 30–45 minute range without obvious grind?
+
+**Do not implement Tier 3 until the user explicitly approves the Tier 2 vertical slice.**
+
+### Step 13 — Tier 3A: integrate existing cattle and Milk into normal progression
+
+**Goal:** reuse the proven cattle prototype as the first Tier 3 route.
+
+**Implementation:**
+
+- Move Cattle Barn/livestock equipment from Debug/legacy gating into Tier 3 opening.
+- Prefer cattle arriving as specialist island content if that remains the chosen building-acquisition rule; if the current player-built Cattle Barn is retained, explicitly resolve that design conflict before implementation.
+- Connect Hay → cattle → Milk → tank transport to the Tier 3 Milk requirement.
+- Add a limited Milk opportunity fallback.
+
+**User verification gate:** complete and approve the normal Milk route before continuing.
+
+### Step 14 — Tier 3B: add Potatoes as specialized field work
+
+**Goal:** introduce a crop whose complexity comes from farming operations rather than processing depth.
+
+**Implementation:**
+
+- Add Potato crop catalog data and approximately 4–5 minute target growth time.
+- Unlock required potato planting/harvesting equipment at Tier 3 opening.
+- Prototype the smallest recognizable multi-step potato workflow; do not add redundant realism passes.
+- Add Potatoes to the settlement requirement set.
+
+**User verification gate:** approve the potato workflow and equipment burden before continuing.
+
+### Step 15 — Tier 3C: add Bakery islands and Bread
+
+**Goal:** make the earlier Flour shortcut intentionally insufficient for the deeper chain.
+
+**Implementation:**
+
+- Add Bakery specialist islands gated to Tier 3+.
+- Bread requires a repeatable Flour supply in meaningful batches.
+- Preserve the possibility of using leftover opportunity Flour, but do not make one-shot Old Miller trades an efficient long-term Bread source.
+- Add Bread as a Tier 3 requirement.
+
+**User verification gate:** confirm that finding/keeping a Windmill now has delayed value and Bread feels like a natural extension rather than just another arbitrary converter.
+
+### Step 16 — Tier 3D: add Food Kitchen and Mayonnaise
+
+**Goal:** test a processor that combines two previously established branches.
+
+**Implementation:**
+
+- Add a reusable Food Kitchen specialist island/building.
+- First recipe: Eggs + Oil → Mayonnaise.
+- The Kitchen should be designed to support later recipes such as potato crisps rather than creating one building per product.
+- Add Mayonnaise as the fourth Tier 3 requirement.
+
+**User verification gate:** approve the combined-input production interaction and the reuse-oriented Kitchen design.
+
+### Step 17 — Balance and approve Tier 3
+
+**Goal:** verify that the campaign is becoming broader rather than merely longer.
+
+**Implementation:**
+
+- Tune Tier 3 toward roughly **45–60 minutes** for a first playthrough.
+- Check that Milk, Potatoes, Bread and Mayonnaise produce meaningfully different decisions.
+- Keep 3-of-4 intact.
+- Measure whether required logistics are becoming repetitive before adding more complexity.
+
+**User verification gate:** complete Tier 3 and explicitly approve pacing and variety before any Tier 4 work.
+
+### Step 18 — Tier 4, one route at a time
+
+Do not implement Tier 4 as one large feature branch. Repeat the same gated pattern for each route:
+
+**18A — Apples / orchards**
+
+- Prototype permanent orchard land use and fruit collection.
+- Decide whether orchards arrive already established on islands or whether the player establishes them after unlock.
+- User verifies before 18B.
+
+**18B — Cotton**
+
+- Prototype cotton growth, specialized harvest and physical bale/module handling.
+- Target roughly 5–6 minute growth initially.
+- User verifies before 18C.
+
+**18C — Cheese**
+
+- Add Dairy specialist island using repeatable Milk → Cheese processing.
+- User verifies before 18D.
+
+**18D — Potato crisps**
+
+- Reuse the existing Food Kitchen with Potatoes + Oil rather than adding another dedicated factory.
+- User verifies before Tier 4 balancing.
+
+**Tier 4 balance gate:** tune the whole tier toward roughly **60–90 minutes**, then require explicit user approval before Tier 5.
+
+### Step 19 — Tier 5, one route at a time
+
+Again, each route is its own user-approved change set:
+
+**19A — Rice**
+
+- Prototype specialized paddy/land/water interaction first.
+- Only then add rice machinery and 5–6 minute initial growth timing.
+
+**19B — Grapes**
+
+- Prototype permanent vineyard rows and narrow-machine navigation.
+- Treat ~6–8 minutes as a starting interval only if vines persist between harvests.
+
+**19C — Fabric**
+
+- Add Textile Workshop specialist island using Cotton → Fabric.
+
+**19D — Apple pies**
+
+- Reuse Bakery with Flour + Apples + Eggs → Apple pies.
+
+**Tier 5 balance gate:** target roughly **60–90 minutes** and verify the final tier requires integration without requiring every possible island or route.
+
+### Step 20 — Add the settlement completion state and free play
+
+**Goal:** make finishing the five tiers feel like establishing the settlement, not exhausting the game.
+
+**Implementation:**
+
+- Completing any 3 of 4 Tier 5 requirements triggers a clear settlement-complete state.
+- Visibly develop the Settlement Island enough that completion has a physical payoff.
+- Keep the same Farmipelago playable afterward.
+- Do not lock remaining requirements, specialist islands, opportunities or farming systems.
+- No macro failure state is introduced.
+
+**User verification gate:** the ending feels conclusive enough to count as a win while still making free play attractive.
+
+### Step 21 — Implement mastery milestones separately from settlement progression
+
+**Goal:** preserve the earlier division between capability progression and efficiency rewards.
+
+**Implementation:**
+
+- Add only a small first set of mastery milestones after the core campaign works.
+- Rewards should improve established work: trailer capacity, wider/combined tools, handling convenience, information, etc.
+- Never make a milestone unlock the activity required to earn that milestone.
+- Keep milestone presentation secondary to the settlement tier UI.
+
+**User verification gate:** rewards feel useful but do not compete with settlement tiers as the main progression system.
+
+### Step 22 — Full campaign pacing pass toward the ~5-hour target
+
+**Goal:** tune the complete game only after all major loops exist.
+
+**Implementation:**
+
+- Play from a fresh seed without Debug shortcuts.
+- Measure actual time spent farming, waiting for growth, inspecting islands, transporting, processing and waiting on RNG.
+- Tune quantities before adding extra waiting time.
+- Tune growth times only where field rhythm needs adjustment.
+- Tune island cadence/opportunity frequency only where RNG is causing waiting or removing meaningful choice.
+- Do not force every tier to hit its estimate exactly; the **whole first completion** is the main target.
+- Preserve an experienced-player path around **2.5–3.5 hours** if skill, planning and favorable island choices allow it.
+
+**Final user verification gate:** a normal first-completion playthrough should land near **five hours**, with the time coming from varied farming and Farmipelago decisions rather than repeated quotas or idle waits.
+
+### Implementation rule for all future Codex sessions
+
+When using this plan, Codex should always identify the **single current step**, implement only that step, build it, describe exactly what changed, and provide the manual checks listed for that step. It must then stop. The next step begins only after the user reports that the current step is accepted or explicitly asks for revisions/progression to the next gate.

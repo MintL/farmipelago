@@ -1,4 +1,4 @@
-const INITIAL_GATES = ['crop:wheat', 'crop:barley', 'crop:canola'];
+const INITIAL_GATES = ['crop:wheat', 'crop:barley', 'crop:canola', 'crop:soybean'];
 
 const UNLOCKABLES = [
   { id: 'crop:wheat', name: 'Wheat', category: 'Crops' },
@@ -25,12 +25,20 @@ const NEEDS = [
   { cropId: 'wheat', name: 'Wheat' },
   { cropId: 'barley', name: 'Barley' },
   { cropId: 'canola', name: 'Canola' },
-].map(need => ({ ...need, target: 3600, consumptionPerMinute: 60 }));
+  { cropId: 'soybean', name: 'Soybeans' },
+].map(need => ({ ...need, target: 3600 }));
+const REQUIRED_COMPLETIONS = 3;
+// Source: docs/Settlement_Progression_Proposal.md, section 4, Tier 2.
+// Preview only: Tier 2 opening and its playable content belong to later steps.
+const NEXT_DEVELOPMENT = {
+  unlocks: ['Hay farming & equipment'],
+};
 
-export function createVillageNeeds(savedState = null) {
+export function createSettlementProgression(savedState = null) {
+  const isSettlement = savedState?.kind === 'settlement';
   const isVillage = savedState?.kind === 'village';
   const earnedGates = new Set(INITIAL_GATES);
-  if (isVillage) {
+  if (isSettlement || isVillage) {
     for (const gate of Array.isArray(savedState.earnedGates) ? savedState.earnedGates : []) {
       if (unlockableIds.has(gate)) earnedGates.add(gate);
     }
@@ -44,18 +52,28 @@ export function createVillageNeeds(savedState = null) {
   }
   const overrideGates = new Set((Array.isArray(savedState?.overrideGates) ? savedState.overrideGates : [])
     .filter(gate => unlockableIds.has(gate) && !earnedGates.has(gate)));
-  const stock = Object.fromEntries(NEEDS.map(need => {
-    const value = Number((isVillage ? savedState.stock : savedState?.delivered)?.[need.cropId]);
-    return [need.cropId, Number.isFinite(value) ? Math.max(0, value) : 0];
+  const requirements = Object.fromEntries(NEEDS.map(need => {
+    const saved = isSettlement ? savedState.requirements?.[need.cropId] : null;
+    const value = Number(isSettlement ? saved?.delivered
+      : (isVillage ? savedState.stock : savedState?.delivered)?.[need.cropId]);
+    const delivered = saved?.complete === true ? need.target
+      : Number.isFinite(value) ? Math.min(need.target, Math.max(0, value)) : 0;
+    return [need.cropId, { delivered, complete: delivered >= need.target }];
   }));
+  const completedCount = () => Object.values(requirements).filter(requirement => requirement.complete).length;
   const unlockedGates = () => [...new Set([...earnedGates, ...overrideGates])];
   return {
     isUnlocked: gate => earnedGates.has(gate) || overrideGates.has(gate),
     state() {
       return {
-        id: 'village-tier-1',
+        id: 'settlement-tier-1',
         tier: 1,
-        needs: NEEDS.map(need => ({ ...need, amount: stock[need.cropId], supplied: stock[need.cropId] > 0 })),
+        complete: completedCount() >= REQUIRED_COMPLETIONS,
+        completedCount: completedCount(),
+        requiredCompletions: REQUIRED_COMPLETIONS,
+        nextDevelopment: { unlocks: [...NEXT_DEVELOPMENT.unlocks] },
+        needs: NEEDS.map(need => ({ ...need, amount: requirements[need.cropId].delivered,
+          complete: requirements[need.cropId].complete })),
         unlockedGates: unlockedGates(),
         unlockables: UNLOCKABLES.map(unlockable => ({
           ...unlockable,
@@ -65,21 +83,14 @@ export function createVillageNeeds(savedState = null) {
         })),
       };
     },
-    update(dt) {
-      if (!Number.isFinite(dt) || dt <= 0) return false;
-      let changed = false;
-      for (const need of NEEDS) {
-        const previous = stock[need.cropId];
-        stock[need.cropId] = Math.max(0, previous - need.consumptionPerMinute / 60 * dt);
-        changed ||= previous !== stock[need.cropId];
-      }
-      return changed;
-    },
     accept(contents) {
       for (const need of NEEDS) {
-        const amount = contents[need.cropId];
-        if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(stock[need.cropId] + amount)) continue;
-        stock[need.cropId] += amount;
+        const requirement = requirements[need.cropId];
+        const offered = contents[need.cropId];
+        if (requirement.complete || !Number.isFinite(offered) || offered <= 0) continue;
+        const amount = Math.min(offered, need.target - requirement.delivered);
+        requirement.delivered += amount;
+        requirement.complete = requirement.delivered >= need.target;
         return { [need.cropId]: amount };
       }
       return {};
@@ -91,7 +102,9 @@ export function createVillageNeeds(savedState = null) {
       return true;
     },
     persistentState() {
-      return { kind: 'village', tier: 1, stock: { ...stock }, earnedGates: [...earnedGates], overrideGates: [...overrideGates] };
+      return { kind: 'settlement', tier: 1,
+        requirements: Object.fromEntries(Object.entries(requirements).map(([id, requirement]) => [id, { ...requirement }])),
+        earnedGates: [...earnedGates], overrideGates: [...overrideGates] };
     },
   };
 }

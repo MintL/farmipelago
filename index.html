@@ -9,7 +9,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.353</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.365</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
       </div>
@@ -33,12 +33,18 @@
     <div id="viewHint"></div>
     <aside id="siloInventory" hidden aria-live="polite">
       <div id="villageNeeds" hidden>
-        <strong class="villageTitle">Village · Tier 1</strong>
-        <div id="villageNeedsGrid" role="group" aria-label="Village needs"></div>
+        <strong class="villageTitle">Settlement · Tier 1</strong>
+        <div class="settlementRule"></div>
+        <div class="settlementProgress" role="status" aria-live="polite" hidden></div>
+        <div id="villageNeedsGrid" role="group" aria-label="Settlement requirements"></div>
+        <div class="settlementNext" hidden>
+          <strong class="settlementNextTitle">Unlocks:</strong>
+          <span class="settlementNextUnlocks"></span>
+        </div>
       </div>
       <div id="siloActions">
         <button id="siloLoad" type="button" aria-label="Load selected crop" title="Load selected crop"><svg class="icon" aria-hidden="true"><use href="#icon-load"></use></svg></button>
-        <button id="siloUnload" type="button" aria-label="Unload combine into silo" title="Unload combine into silo"><svg class="icon" aria-hidden="true"><use id="siloUnloadIconUse" href="#icon-silo-unload"></use></svg><span class="villageDeliverLabel">Deliver</span></button>
+        <button id="siloUnload" type="button" aria-label="Unload combine into silo" title="Unload combine into silo"><svg class="icon" aria-hidden="true"><use id="siloUnloadIconUse" href="#icon-silo-unload"></use></svg></button>
       </div>
       <button id="previousSiloCrop" type="button" aria-label="Previous stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
       <div class="siloInventoryCrop"><svg id="siloCropIcon" class="icon" role="img" aria-label="Corn"><use id="siloCropIconUse" href="#icon-corn"></use></svg><strong id="siloCropValue">0</strong></div>

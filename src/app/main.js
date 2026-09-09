@@ -11,7 +11,7 @@ import { generateFarm } from '../world/generator.js';
 import { createIslandOutline } from '../world/islands/selection-outline.js';
 import { createArchipelagoRuntime } from '../world/archipelago/runtime.js';
 import { createSaveCoordinator } from './save-coordinator.js';
-import { createVillageNeeds } from '../gameplay/progression/index.js';
+import { createSettlementProgression } from '../gameplay/progression/index.js';
 import { loadGameState } from '../persistence/index.js';
 import { OWNED_VEHICLES, vehicleType } from '../gameplay/catalog/vehicles.js';
 import { BALER_STORAGE_CAPACITY, equipmentDefinition, normalizeLoadout } from '../gameplay/catalog/equipment.js';
@@ -750,7 +750,7 @@ function initializeFarm(savedState) {
   }, farm.seed, travel.snapshot());
   physics.setSupportResolver((x, z) => farm.islandAtWorld(x, z)?.id || null);
   buildings.setParent(farm.group);
-  progression = createVillageNeeds(savedState?.progression);
+  progression = createSettlementProgression(savedState?.progression);
   syncProgressionUi();
   if (savedState) {
     const savedBuildings = savedState.buildings.map(building => {
@@ -1371,6 +1371,13 @@ function updateStoragePopup() {
     ui.setStoragePopup({
       kind: 'cargo',
       id: village.id,
+      settlement: {
+        tier: village.tier,
+        complete: village.complete,
+        completedCount: village.completedCount,
+        requiredCompletions: village.requiredCompletions,
+        nextDevelopment: village.nextDevelopment,
+      },
       items: village.needs.map(requirement => ({
         id: requirement.itemId || requirement.cropId,
         name: requirement.name,
@@ -1378,7 +1385,8 @@ function updateStoragePopup() {
         unit: requirement.unit || 'litres',
         amount: requirement.amount,
         target: requirement.target,
-        accepting: true,
+        complete: requirement.complete,
+        accepting: !requirement.complete,
         locked: false,
       })),
       machine,
@@ -1440,7 +1448,6 @@ function update(dt) {
   }
   else updateDrive(dt);
   if (!openingCinematic) transferController.update(dt);
-  if (!openingCinematic && !document.hidden && progression.update(dt)) syncCargoPort();
   farm?.cargoPort.update(dt);
   syncFleetVisuals(dt);
   const travelState = travel.update(dt);

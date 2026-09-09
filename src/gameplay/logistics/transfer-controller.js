@@ -239,7 +239,7 @@ export function createTransferController({
       const amount = Math.min(Math.floor(barn.milkLitres), vehicle.storage.capacity - storageAmount(vehicle));
       if (amount > 0) start({ kind: 'barn-load-milk', vehicleId: vehicle.id, barnId, itemId: 'milk', amount });
     },
-    dropOffCargo(selectedItemId = null) {
+    dropOffCargo() {
       if (isCinematicActive()) return;
       const vehicle = getActiveVehicle();
       const state = getActiveVehicleState();
@@ -249,11 +249,10 @@ export function createTransferController({
       const village = progression.state();
       if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop' || !storageAmount()) return;
       const storage = vehicle.storage;
-      const storedItemId = storageItemId();
-      const itemId = selectedItemId || storedItemId;
+      const itemId = storageItemId(vehicle);
       const requirement = village.needs.find(entry => entry.cropId === itemId);
-      const amount = requirement
-        ? storage.contents[itemId] || 0
+      const amount = requirement && !requirement.complete
+        ? Math.min(storage.contents[itemId] || 0, requirement.target - requirement.amount)
         : 0;
       if (amount) start({
         kind: 'cargo', vehicleId: vehicle.id, itemId, amount,

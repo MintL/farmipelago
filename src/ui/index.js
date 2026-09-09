@@ -297,44 +297,63 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     });
   };
 
+  const villageTitle = villageNeeds.querySelector('.villageTitle');
+  const settlementRule = villageNeeds.querySelector('.settlementRule');
+  const settlementProgress = villageNeeds.querySelector('.settlementProgress');
+  const settlementNext = villageNeeds.querySelector('.settlementNext');
+  const settlementNextUnlocks = villageNeeds.querySelector('.settlementNextUnlocks');
   const villageCards = new Map();
   const renderVillageNeeds = (needs, machine) => {
+    const settlement = siloInventory.settlement;
+    villageTitle.textContent = `Settlement · Tier ${settlement.tier}`;
+    settlementRule.textContent = `Complete any ${settlement.requiredCompletions} of ${needs.length}`;
+    const progressText = settlement.complete ? `Tier ${settlement.tier} complete` : '';
+    settlementProgress.hidden = !settlement.complete;
+    if (settlementProgress.textContent !== progressText) settlementProgress.textContent = progressText;
+    const next = settlement.nextDevelopment;
+    settlementNext.hidden = !next;
+    if (next) settlementNextUnlocks.textContent = next.unlocks.join(' · ');
+    for (const [id, card] of villageCards) {
+      if (needs.some(need => need.id === id)) continue;
+      card.element.remove();
+      villageCards.delete(id);
+    }
     for (const need of needs) {
       let card = villageCards.get(need.id);
       if (!card) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'villageNeedCard';
-        const fill = document.createElement('span');
-        fill.className = 'villageNeedFill';
-        fill.setAttribute('aria-hidden', 'true');
+        const element = document.createElement('div');
+        element.setAttribute('role', 'group');
+        element.className = 'villageNeedCard';
         const name = document.createElement('strong');
         name.textContent = need.name;
         const amount = document.createElement('span');
         amount.className = 'villageNeedAmount';
-        button.append(fill, cropIcon(need.id, need.name), name, amount);
-        button.addEventListener('click', () => {
-          siloCropId = need.id;
-          renderSiloInventory();
-        });
-        villageNeedsGrid.append(button);
-        card = { button, fill, amount };
+        const status = document.createElement('span');
+        status.className = 'settlementRequirementStatus';
+        element.append(cropIcon(need.id, need.name), name, amount, status);
+        villageNeedsGrid.append(element);
+        card = { element, amount, status };
         villageCards.set(need.id, card);
       }
-      const stockText = `${Math.floor(need.amount).toLocaleString('en-US')} / ${need.target.toLocaleString('en-US')} L`;
-      card.fill.style.height = `${Math.min(1, need.amount / need.target) * 100}%`;
-      card.amount.textContent = stockText;
-      card.button.setAttribute('aria-pressed', String(siloCropId === need.id));
-      card.button.setAttribute('aria-label', `${need.name}: ${stockText}`);
+      const amountText = `${need.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} / ${need.target.toLocaleString('en-US')} L`;
+      const optional = settlement.complete && !need.complete;
+      const statusText = need.complete ? '✓ Complete' : optional ? '' : need.amount > 0 ? 'In progress' : 'Not started';
+      card.amount.textContent = amountText;
+      card.status.style.visibility = optional ? 'hidden' : '';
+      card.status.textContent = optional ? '\u00a0' : statusText;
+      card.element.dataset.optional = String(optional);
+      card.element.dataset.complete = String(need.complete);
+      card.element.setAttribute('aria-label', `${need.name}: ${amountText}, ${optional ? 'optional' : statusText}`);
     }
-    const selected = needs.find(need => need.id === siloCropId);
+    const carriedId = Object.keys(machine.contents).find(id => machine.contents[id] > 0);
+    const carried = needs.find(need => need.id === carriedId);
     siloLoadButton.hidden = true;
-    siloUnloadButton.disabled = !selected || !machine.canTransfer || machine.storageKind !== 'crop'
-      || !(machine.contents[selected.id] > 0);
-    siloUnloadButton.setAttribute('aria-label', `Deliver ${selected?.name || 'selected crop'} to village`);
-    siloUnloadButton.title = 'Deliver selected crop';
+    siloUnloadButton.disabled = !carried || !carried.accepting || !machine.canTransfer || machine.storageKind !== 'crop'
+      || !(machine.contents[carried.id] > 0);
+    siloUnloadButton.setAttribute('aria-label', `Deliver ${carried?.name || 'carried crop'} to settlement`);
+    siloUnloadButton.title = `Deliver ${carried?.name || 'carried crop'}`;
     siloUnloadIconUse.setAttribute('href', '#icon-silo-unload');
-    siloInventoryElement.setAttribute('aria-label', 'Village tier 1 needs');
+    siloInventoryElement.setAttribute('aria-label', villageTitle.textContent);
   };
 
   const renderSiloInventory = () => {
@@ -431,7 +450,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       const top = safe.top;
       const centerX = Math.max(left + popupHalfWidth, Math.min(innerWidth - right - popupHalfWidth, x));
       const minAnchorY = top + bounds.height + 8;
-      let anchorY = Math.max(minAnchorY, Math.min(innerHeight - top, y));
+      // The silo-style delivery action sits below the popup's own bounds.
+      const actionHeight = siloUnloadButton.getBoundingClientRect().height + 8;
+      let anchorY = Math.max(minAnchorY, Math.min(innerHeight - top - actionHeight, y));
       // Hidden desktop controls have empty rectangles; they must not push the
       // popup to the top. Only avoid controls that intersect its actual bounds.
       const controls = [stickZone, cycleVehicleButton, ...actionCluster.querySelectorAll('button')];
@@ -442,8 +463,8 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       }).sort((a, b) => b.top - a.top);
       for (const rect of obstacles) {
         const overlapsX = centerX + popupHalfWidth > rect.left - 8 && centerX - popupHalfWidth < rect.right + 8;
-        const overlapsY = anchorY - 8 > rect.top - 8 && anchorY - 8 - bounds.height < rect.bottom + 8;
-        if (overlapsX && overlapsY) anchorY = Math.max(minAnchorY, rect.top);
+        const overlapsY = anchorY - 8 + actionHeight > rect.top - 8 && anchorY - 8 - bounds.height < rect.bottom + 8;
+        if (overlapsX && overlapsY) anchorY = Math.max(minAnchorY, rect.top - actionHeight);
       }
       siloInventoryElement.style.left = `${centerX}px`;
       siloInventoryElement.style.top = `${anchorY}px`;
@@ -996,7 +1017,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   siloUnloadButton.addEventListener('click', () => {
     if (!siloInventory) return;
     if (siloInventory.kind === 'cattle-barn') onBarnFeed?.(siloInventory.id);
-    else if (siloInventory.kind === 'cargo') onCargoDropOff(siloCropId);
+    else if (siloInventory.kind === 'cargo') onCargoDropOff();
     else onSiloUnload(siloInventory.id);
   });
   document.querySelector('#menuToggle').addEventListener('click', openPause);
@@ -1227,6 +1248,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
             unit: item.unit === 'bales' ? 'bales' : 'litres',
             amount,
             target,
+            complete: item?.complete === true,
             accepting: item?.accepting !== false,
             locked: Boolean(item?.locked),
           }];
@@ -1250,9 +1272,11 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       if (nextInventory.kind === 'silo' && crops[carriedCropId] && !cropsInSilo.some(crop => crop.id === carriedCropId)) {
         cropsInSilo.push({ id: carriedCropId, amount: 0 });
       }
+      const settlement = nextInventory.kind === 'cargo' ? nextInventory.settlement : null;
       const signature = [
         nextInventory.kind,
-        cropsInSilo.map(crop => `${crop.id}:${crop.unit}:${crop.amount}:${crop.target || ''}:${crop.accepting}:${crop.locked}`).join('|'),
+        JSON.stringify(settlement),
+        cropsInSilo.map(crop => `${crop.id}:${crop.unit}:${crop.amount}:${crop.target || ''}:${crop.accepting}:${crop.locked}:${crop.complete}`).join('|'),
         machine.type,
         machine.capacity,
         machine.canTransfer,
@@ -1277,6 +1301,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
         id: nextInventory.id,
         kind: nextInventory.kind,
         crops: cropsInSilo,
+        settlement,
         machine,
         signature,
         carriedCropId,

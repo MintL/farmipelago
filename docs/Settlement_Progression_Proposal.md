@@ -557,7 +557,6 @@ The implementation should build on the existing boundaries rather than create a 
 - Replace the current draining-stock visual language with four requirement cards.
 - Show exact amount / target and a permanent `Complete` state.
 - Show `Complete any 3 of 4` prominently.
-- Show overall progress such as `2 / 3`.
 - Add a compact `Next development` area, initially populated with placeholder Tier 2 unlock text from the progression data rather than hard-coded UI copy.
 - Keep the popup compact, phone-safe and visually subordinate to the world.
 - Do not add population, happiness, decaying bars or currencies.

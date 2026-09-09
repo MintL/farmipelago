@@ -1,5 +1,5 @@
 import { TILE, gridKey } from '../../core/shared.js';
-import { PEN_TILES_PER_COW } from './config.js';
+import { PEN_TILES_PER_COW, STARTER_COW_COUNT } from './config.js';
 
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const integer = (value, fallback = 0) => Number.isSafeInteger(Math.round(Number(value))) ? Math.round(Number(value)) : fallback;
@@ -389,4 +389,3 @@ export function penGeometryFromLasso(samples, terrain, barnSite, context = {}) {
   }
   return { ...geometry, selectedTiles, trimmedTiles, gateTiles };
 }
-

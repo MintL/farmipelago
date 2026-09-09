@@ -5,7 +5,6 @@ export function createDebugView({
   timeSlider,
   timeValue,
   unlockList,
-  milestoneList,
   clearOverrides,
 }) {
   return {
@@ -48,22 +47,7 @@ export function createDebugView({
       }
       clearOverrides.hidden = !unlockables.some(unlockable => unlockable.overridden);
     },
-    renderMilestones(milestones) {
-      milestoneList.replaceChildren();
-      for (const milestone of milestones) {
-        milestoneList.append(debugButton({
-          name: milestone.title,
-          category: 'Milestone',
-          state: milestone.active ? 'Active' : 'Switch',
-          className: 'debugUnlock debugMilestone',
-          dataKey: 'milestoneId',
-          dataValue: milestone.id,
-          pressed: milestone.active,
-          disabled: milestone.active,
-          label: `${milestone.title}: ${milestone.active ? 'Active milestone' : 'Switch to this milestone and clear its progress'}`,
-        }));
-      }
-    },
+
   };
 }
 

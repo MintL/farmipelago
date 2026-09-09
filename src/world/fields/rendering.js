@@ -53,6 +53,10 @@ export function createCropInstances(tileCapacity, group) {
   const furrows = addInstances('furrow', .78, .025, .07, mats.furrow, tileCapacity * 3);
   return {
     furrows,
+    capacity: tileCapacity,
+    dispose() {
+      for (const mesh of Object.values(pools)) { mesh.removeFromParent(); mesh.geometry.dispose(); mesh.dispose(); }
+    },
     refreshFurrows(tiles) {
       const matrix = new THREE.Matrix4();
       let count = 0;
@@ -87,6 +91,7 @@ export function createCropInstances(tileCapacity, group) {
           x, y, z, rotationX, rotationY, rotationZ, scaleX, scaleY, scaleZ,
           pivotX: activeCrop.x,
           pivotY: activeCrop.topY,
+          pivotZ: activeCrop.z,
           crop: activeCrop.crop,
           wasAnimated: false,
         });
@@ -99,10 +104,10 @@ export function createCropInstances(tileCapacity, group) {
     },
     animate(elapsed) {
       const readyPhase = (elapsed % READY_PULSE_SECONDS) / READY_PULSE_SECONDS;
-      const readyBump = readyPhase < .15
-        ? ease(readyPhase / .15)
-        : readyPhase < .48
-          ? 1 - ease((readyPhase - .15) / .33)
+      const readyBump = readyPhase < .22
+        ? ease(readyPhase / .22)
+        : readyPhase < .65
+          ? 1 - ease((readyPhase - .22) / .43)
           : 0;
       for (const [name, mesh] of Object.entries(pools)) {
         if (name === 'furrow') continue;
@@ -113,7 +118,6 @@ export function createCropInstances(tileCapacity, group) {
           if (!crop) continue;
           let scaleY = 1;
           let scaleXZ = 1;
-          let tilt = 0;
           if (crop.stage === 4) {
             const entranceAge = Number.isFinite(crop.animationStarted) ? Math.max(0, elapsed - crop.animationStarted) : Infinity;
             if (entranceAge < .45) {
@@ -125,9 +129,8 @@ export function createCropInstances(tileCapacity, group) {
               scaleXZ = 1 - overshoot * .045;
             }
             else {
-              scaleY = 1 + readyBump * .06;
-              scaleXZ = 1 - readyBump * .018;
-              tilt = readyBump * .035;
+              scaleY = 1 + readyBump * .18;
+              scaleXZ = 1 + readyBump * .07;
             }
           }
           else if (Number.isFinite(crop.animationStarted)) {
@@ -143,18 +146,14 @@ export function createCropInstances(tileCapacity, group) {
               scaleXZ = 1 - overshoot * .045;
             }
           }
-          const animated = Math.abs(scaleY - 1) > .001 || Math.abs(scaleXZ - 1) > .001 || Math.abs(tilt) > .001;
+          const animated = Math.abs(scaleY - 1) > .001 || Math.abs(scaleXZ - 1) > .001;
           if (!animated && !entry.wasAnimated) continue;
-          const dx = entry.x - entry.pivotX;
-          const dy = (entry.y - entry.pivotY) * scaleY;
-          const cosine = Math.cos(tilt);
-          const sine = Math.sin(tilt);
           transform.position.set(
-            entry.pivotX + dx * cosine - dy * sine,
-            entry.pivotY + dx * sine + dy * cosine,
-            entry.z,
+            entry.pivotX + (entry.x - entry.pivotX) * scaleXZ,
+            entry.pivotY + (entry.y - entry.pivotY) * scaleY,
+            entry.pivotZ + (entry.z - entry.pivotZ) * scaleXZ,
           );
-          transform.rotation.set(entry.rotationX, entry.rotationY, entry.rotationZ + tilt);
+          transform.rotation.set(entry.rotationX, entry.rotationY, entry.rotationZ);
           transform.scale.set(entry.scaleX * scaleXZ, entry.scaleY * scaleY, entry.scaleZ * scaleXZ);
           transform.updateMatrix();
           mesh.setMatrixAt(index, transform.matrix);
@@ -192,6 +191,16 @@ export function createFieldEffects(group) {
   };
   const dirt = createPool('plough-soil-effects', .16, .13, .16, mats.ploughed, 64);
   const weeds = createPool('weed-collapse-effects', .07, .32, .07, mats.weed, 48);
+  const clippings = createPool('mow-grass-effects', .07, .22, .07, mats.grassCrop, 144);
+  const harvestPools = Object.fromEntries(Object.entries({
+    wheat: mats.wheatRipe,
+    barley: mats.barleyRipe,
+    canola: mats.canolaFlower,
+    soybean: mats.soybeanPod,
+    corn: mats.cornRipe,
+  }).map(([cropId, material]) => [cropId,
+    createPool(`harvest-${cropId}-effects`, .1, .15, .1, material, 96),
+  ]));
   const claim = (pool, data) => {
     const index = pool.slots.findIndex(slot => !slot.active);
     const slotIndex = index === -1 ? pool.cursor++ % pool.slots.length : index;
@@ -202,8 +211,43 @@ export function createFieldEffects(group) {
     transform.updateMatrix();
     pool.mesh.setMatrixAt(index, transform.matrix);
     pool.slots[index].active = false;
+    pool.slots[index].burst = null;
   };
   return {
+    mow(tile, born) {
+      for (let index = 0; index < 12; index++) {
+        const angle = index * 2.39996;
+        claim(clippings, {
+          born, angle,
+          x: tile.x + Math.cos(angle) * .12,
+          y: tile.topY + .25 + (index % 4) * .08,
+          z: tile.z + Math.sin(angle) * .12,
+          groundY: tile.topY + .045,
+          dx: Math.cos(angle) * (.12 + (index % 3) * .04),
+          dz: Math.sin(angle) * (.12 + (index % 3) * .04),
+          spin: (index % 2 ? 1 : -1) * (3 + index * .3),
+        });
+      }
+    },
+    harvest(tile, born, readTarget) {
+      const pool = harvestPools[tile.crop.cropId];
+      if (!pool) return;
+      const burst = { readTarget, sampledAt: null, target: null };
+      for (let index = 0; index < 12; index++) {
+        const angle = index * 2.39996;
+        const radius = .12 + (index % 3) * .07;
+        claim(pool, {
+          born, burst,
+          x: tile.x + Math.cos(angle) * radius,
+          y: tile.topY + .28 + (index % 4) * .12,
+          z: tile.z + Math.sin(angle) * radius,
+          dx: Math.cos(angle) * (.2 + (index % 3) * .06),
+          dz: Math.sin(angle) * (.2 + (index % 3) * .06),
+          angle, spin: (index % 2 ? 1 : -1) * (3 + index * .3),
+          stalk: index % 3 === 0,
+        });
+      }
+    },
     plough(tile, heading, born) {
       const backward = { x: Math.sin(heading), z: Math.cos(heading) };
       for (let index = 0; index < 3; index++) {
@@ -255,6 +299,46 @@ export function createFieldEffects(group) {
         transform.rotation.set(0, progress * slot.spin, progress * slot.spin);
         transform.scale.set(1 - progress * .25, scale, 1 - progress * .25);
       });
+      animatePool(clippings, .8, (slot, progress) => {
+        const flight = Math.min(1, progress / .75);
+        const settle = ease(Math.max(0, (flight - .7) / .3));
+        transform.position.set(
+          slot.x + slot.dx * ease(flight),
+          THREE.MathUtils.lerp(slot.y, slot.groundY, flight) + Math.sin(flight * Math.PI) * .38,
+          slot.z + slot.dz * ease(flight),
+        );
+        transform.rotation.set(
+          THREE.MathUtils.lerp(flight * slot.spin, Math.PI * .5, settle),
+          slot.angle + flight * slot.spin,
+          flight * slot.spin * .7 * (1 - settle),
+        );
+        // Land flat, then shrink into the persistent loose-grass pile.
+        const scale = 1 - ease(Math.max(0, (progress - .8) / .2));
+        transform.scale.setScalar(scale);
+      });
+      for (const pool of Object.values(harvestPools)) {
+        animatePool(pool, .62, (slot, progress) => {
+          const burst = slot.burst;
+          if (burst.sampledAt !== elapsed) {
+            burst.target = burst.readTarget();
+            burst.sampledAt = elapsed;
+          }
+          const target = burst.target;
+          // A quick outward cut leads into a curved pull toward the live header.
+          const pull = ease(Math.max(0, (progress - .18) / .82));
+          const scatter = Math.sin(Math.min(1, progress / .4) * Math.PI * .5) * (1 - pull);
+          const curl = Math.sin(progress * Math.PI) * (1 - pull) * .12;
+          transform.position.set(
+            THREE.MathUtils.lerp(slot.x, target.x, pull) + slot.dx * scatter + Math.cos(slot.angle + progress * 5) * curl,
+            THREE.MathUtils.lerp(slot.y, target.y, pull) + Math.sin(progress * Math.PI) * .42,
+            THREE.MathUtils.lerp(slot.z, target.z, pull) + slot.dz * scatter + Math.sin(slot.angle + progress * 5) * curl,
+          );
+          transform.rotation.set(progress * slot.spin, slot.angle + progress * slot.spin, progress * slot.spin * .7);
+          const scale = (1 + Math.sin(progress * Math.PI) * .18)
+            * (1 - ease(Math.max(0, (progress - .65) / .35)));
+          transform.scale.set(scale * (slot.stalk ? .65 : 1), scale * (slot.stalk ? 2.4 : 1), scale);
+        });
+      }
     },
   };
 }

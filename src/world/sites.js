@@ -1,5 +1,4 @@
 import { TILE, gridKey } from '../core/shared.js';
-import { cargoDeckContains } from '../gameplay/logistics/cargo-port.js';
 import { FARM_ISLAND_ID, WORKSHOP_YAW } from './config.js';
 
 export function findWorkshopSite(terrain, island) {
@@ -89,6 +88,17 @@ export function reserveVehicleSpawnGround(terrain, spawnPoints) {
   }
 }
 
+// Preserve the seeded east-side public yard when restoring existing worlds.
+function receivingYardContains(site, x, z, margin = 0) {
+  const yaw = Math.atan2(site.outward.x, site.outward.z);
+  const dx = x - site.x;
+  const dz = z - site.z;
+  const localX = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+  const localZ = dx * Math.sin(yaw) + dz * Math.cos(yaw);
+  return Math.abs(localX) <= 4.9 * .5 + margin &&
+    Math.abs(localZ - 2.12) <= 5.4 * .5 + margin;
+}
+
 export function findCargoSite(terrain, island) {
   // The settlement receives traffic across its south bridge and carries cargo
   // onward to its open east edge.
@@ -97,9 +107,9 @@ export function findCargoSite(terrain, island) {
   const candidates = [];
 
   // The half-diagonal margin treats each terrain tile as a full square rather
-  // than only testing its center against the rotated deck footprint.
-  const deckIsClear = site => [...terrain.values()].every(tile =>
-    !cargoDeckContains(site, tile.x, tile.z, TILE * .72) || tile.topY <= site.y + .01
+  // than only testing its center against the receiving yard footprint.
+  const yardIsClear = site => [...terrain.values()].every(tile =>
+    !receivingYardContains(site, tile.x, tile.z, TILE * .72) || tile.topY <= site.y + .01
   );
 
   const approachIsClear = site => {
@@ -122,12 +132,12 @@ export function findCargoSite(terrain, island) {
     const dz = tile.gz - island.cz;
     if (tile.radial < .62 || dx <= island.r * .45) continue;
     const site = { x: tile.x, y: tile.topY, z: tile.z, outward };
-    if (!approachIsClear(site) || !deckIsClear(site)) continue;
+    if (!approachIsClear(site) || !yardIsClear(site)) continue;
     candidates.push({ site, tile });
   }
 
   // Prefer the easternmost valid anchor, then the southernmost site along that
-  // edge so the cargo bay sits opposite the workshop.
+  // edge so the clear yard sits opposite the workshop.
   candidates.sort((a, b) => b.tile.gx - a.tile.gx || b.tile.gz - a.tile.gz);
   if (candidates.length) return candidates[0].site;
 
@@ -135,7 +145,7 @@ export function findCargoSite(terrain, island) {
     .filter(tile => !tile.water && Math.abs(tile.topY - tile.baseY) <= .01 &&
       tile.radial >= .62 && tile.gx - island.cx > island.r * .45)
     .map(tile => ({ site: { x: tile.x, y: tile.topY, z: tile.z, outward }, tile }))
-    .filter(candidate => deckIsClear(candidate.site))
+    .filter(candidate => yardIsClear(candidate.site))
     .sort((a, b) => b.tile.gx - a.tile.gx || b.tile.gz - a.tile.gz)[0];
   return safeFallback?.site || null;
 }
@@ -145,9 +155,9 @@ export function reserveCargoApproach(terrain, site, islandId) {
   for (const tile of terrain.values()) {
     if (tile.islandId !== islandId) continue;
     const approach = Math.abs(tile.topY - site.y) <= .01 && Math.hypot(tile.x - site.x, tile.z - site.z) <= 2.35;
-    if (approach || cargoDeckContains(site, tile.x, tile.z, TILE * .85)) tile.reserved = true;
+    if (approach || receivingYardContains(site, tile.x, tile.z, TILE * .85)) tile.reserved = true;
     // Tree crowns reach farther than their trunks; keep decorations clear
     // without unnecessarily removing the surrounding tiles from farming.
-    if (cargoDeckContains(site, tile.x, tile.z, TILE * 2.75)) tile.noDecoration = true;
+    if (receivingYardContains(site, tile.x, tile.z, TILE * 2.75)) tile.noDecoration = true;
   }
 }

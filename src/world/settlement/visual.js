@@ -1,4 +1,5 @@
-import { MODEL_VOXEL, TILE, THREE, createVoxelLantern, createVoxelModel, gridKey, mats } from '../../core/shared.js';
+import { MODEL_VOXEL, TILE, THREE, createVoxelModel, gridKey, mats } from '../../core/shared.js';
+import { createVillageFlag } from './flag.js';
 
 const BUILDING_HEIGHT = MODEL_VOXEL * 10;
 
@@ -81,14 +82,14 @@ function reservePath(terrain, islandId, from, to) {
   return tiles;
 }
 
-export function createSettlementVisual({ island, terrain, cargoSite, bridgeLanding }) {
+export function createSettlementVisual({ island, terrain, cargoSite, bridgeLanding, reducedMotion = false }) {
   const group = new THREE.Group();
   group.name = 'settlement';
   const colliders = [];
   const occluders = [];
   const lanternPositions = [];
   const lightSurfaceQuads = [];
-  const glowMeshes = [];
+  let receivingSite = null;
   const pathTiles = reservePath(terrain, island.id, bridgeLanding, cargoSite);
   const candidates = [...terrain.values()].filter(tile => tile.islandId === island.id && !tile.water);
   const specs = [
@@ -105,6 +106,17 @@ export function createSettlementVisual({ island, terrain, cargoSite, bridgeLandi
       .sort((first, second) => Math.hypot(first.x - targetX, first.z - targetZ) - Math.hypot(second.x - targetX, second.z - targetZ))[0];
     if (!tile) throw new Error(`Settlement requires a clear site for ${spec.name}`);
     reserveFootprint(terrain, tile, 1, 1);
+    if (spec.name === 'settlement-receiving-house') {
+      receivingSite = { x: tile.x, y: tile.topY, z: tile.z + MODEL_VOXEL * 4.5, outward: { x: 0, z: -1 } };
+      for (let dz = 1; dz <= 2; dz++) {
+        const approach = terrain.get(gridKey(tile.gx, tile.gz + dz));
+        if (!approach || approach.islandId !== island.id || approach.water) continue;
+        approach.reserved = true;
+        approach.noDecoration = true;
+        pathTiles.push(approach);
+      }
+      continue;
+    }
     const building = createBuildingModel({
       name: spec.name,
       width: spec.width,
@@ -134,43 +146,20 @@ export function createSettlementVisual({ island, terrain, cargoSite, bridgeLandi
       approach.noDecoration = true;
       pathTiles.push(approach);
     }
-
-    if (spec.name !== 'settlement-receiving-house') continue;
-    const glowMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffdfa0,
-      emissive: 0xffa62e,
-      emissiveIntensity: .25,
-      roughness: .38,
-    });
-    const { group: lantern, glowMesh } = createVoxelLantern({
-      glowMaterial,
-      hanging: true,
-      name: 'settlement-receiving-lantern',
-    });
-    lantern.position.set(0, MODEL_VOXEL * 6.2, -MODEL_VOXEL * 5.4);
-    building.add(lantern);
-    building.updateMatrixWorld(true);
-    lanternPositions.push(lantern.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, .1, 0)));
-    glowMeshes.push(glowMesh);
-    const y = tile.topY + .015;
-    lightSurfaceQuads.push([
-      new THREE.Vector3(tile.x - TILE, y, tile.z - TILE),
-      new THREE.Vector3(tile.x + TILE, y, tile.z - TILE),
-      new THREE.Vector3(tile.x - TILE, y, tile.z + TILE),
-      new THREE.Vector3(tile.x + TILE, y, tile.z + TILE),
-    ]);
   }
+
+  const flag = createVillageFlag(receivingSite, { reducedMotion });
+  group.add(flag.group);
+  colliders.push(...flag.colliders.map(collider => ({ ...collider, islandId: island.id })));
 
   return {
     group,
+    receivingSite,
     colliders,
     occluders,
     lanternPositions,
     lightSurfaceQuads,
     pathTiles,
-    setNightAmount(amount) {
-      const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
-      glowMeshes.forEach(mesh => { mesh.material.emissiveIntensity = .25 + nightAmount * 2.75; });
-    },
+    animate: flag.animate,
   };
 }

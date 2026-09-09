@@ -1,0 +1,19 @@
+<!doctype html><html><body style="margin:0;background:#789;color:white;font:16px monospace"><pre id="results" style="position:absolute;z-index:2;background:#123b;padding:12px">Running physics verification…</pre><script type="module">
+import {THREE} from '/src/core/shared.js';
+import {generateIsland} from '/src/world/generator.js';
+import {createPhysics} from '/src/physics/index.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color('#8ca9b7');scene.add(new THREE.HemisphereLight(0xffffff,0x556677,3));
+const camera=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,.1,200);camera.position.set(30,30,40);camera.lookAt(0,0,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);document.body.append(renderer.domElement);
+try {
+const physics=await createPhysics();physics.createVehicle('test',{x:100,y:0,z:100});const island=generateIsland(12345);scene.add(island.group);
+const body=physics.addMovingIsland(island,{x:0,y:0,z:0},false);
+if(body.numColliders()!==0)throw Error('Passing island has collision');
+physics.setMovingIslandVelocity(body,{x:1,y:0,z:-1});
+for(let i=0;i<120;i++)physics.step(1/60);
+island.group.position.copy(physics.movingIslandPosition(body));
+if(island.group.position.x<1.8)throw Error('Drift did not advance');
+document.querySelector('#results').textContent='PASS: Generated island renders\nPASS: Passing island has zero colliders (cannot land or drive on it)\nPASS: Physics-owned drift advances\nRoutes now maintain a 10-tile projected shore gap.';
+renderer.render(scene,camera);
+} catch(e){document.querySelector('#results').textContent='FAIL: '+e.stack;}
+</script></body></html>

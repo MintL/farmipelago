@@ -1,7 +1,7 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-06
+**Updated from implementation:** 2026-09-08
 
 ## 1. Game Concept
 
@@ -55,13 +55,13 @@ The player should regularly have to think:
 
 The player keeps developing the same generated Farmipelago.
 
-The game is not structured around completing disposable farming levels. The farm accumulates history through ploughed fields, planted crops, placed silos, stored produce, vehicle locations and completed progression milestones.
+The game is not structured around completing disposable farming levels. The farm accumulates history through ploughed fields, planted crops, placed silos, stored produce, vehicle locations and village supply reserves.
 
 ### Progression Adds Possibilities
 
 Progression should primarily introduce new ways to farm rather than simply increasing numerical efficiency.
 
-The current prototype unlocks new crops through deliveries. Future progression can add animals, machinery, infrastructure and additional agricultural systems.
+The current prototype starts with three crop types. Future islands should introduce animals, machinery, infrastructure and additional agricultural systems.
 
 ### Compact and Playful
 
@@ -75,13 +75,13 @@ Systems can have meaningful consequences without requiring realistic complexity.
 
 The implemented crop-farming loop is:
 
-**Inspect land → plough → choose seed → plant → grow → harvest with combine → unload into silo → load trailer → transport to cargo hub → deliver milestone cargo → unlock new crops → repeat**
+**Inspect land → plough → choose seed → plant → grow → harvest with combine → unload into silo → load trailer → transport to Settlement Storehouse → replenish village needs → repeat**
 
 The first implemented livestock extension adds:
 
-**Grow grass → mow → bale hay → carry a bale to a Cattle Barn → feed cattle → produce milk → load a Water / Milk Tank → deliver milk at the cargo hub**
+**Grow grass → mow → bale hay → carry a bale to a Cattle Barn → feed cattle → produce milk → load a Water / Milk Tank → store milk in a Water / Milk Tank**
 
-The player can also ignore the current milestone and continue farming freely.
+The player can also ignore village needs and continue farming freely. Livestock is available through retained unlocks or Debug; tier 1 does not consume hay or milk.
 
 Moment-to-moment play revolves around driving and operating machinery.
 
@@ -89,49 +89,15 @@ Long-term play revolves around making the persistent Farmipelago capable of prod
 
 ---
 
-## 5. Main Progression
+## 5. Village Needs and Progression
 
-Farmipelago uses milestone progression inspired by games such as Shapez rather than a conventional money-first farming economy.
+The village has ongoing resident needs inspired by Anno. Tier 1 requests **Wheat, Barley and Canola**, all unlocked from the start. Each crop has a desired reserve of **3,600 L** and independently consumes **60 L per active gameplay minute**. This is one hour of supply, not a delivery cap: surplus deliveries create a larger buffer.
 
-The outside world requests specific agricultural deliveries. Completing them advances progression and unlocks new capabilities.
+A need is supplied while its stock is above zero and unsupplied at zero; these statuses are not printed on the cards. The green card fill shows the fraction of the desired reserve, capped visually at 100%, while the numeric stock continues above the target. Consumption stops at zero. It pauses when gameplay is blocked, the tab is hidden, the game is closed, or the opening cinematic runs; it continues in construction mode. Shortages carry no penalties or lost capabilities.
 
-### Current Prototype Progression
+Tier 1 remains fixed even when all reserves are full. Population growth, happiness, later tiers and rewards are deferred. There is no milestone tracker, delivery completion cinematic or final completion state.
 
-The farm starts with **Wheat** unlocked.
-
-**Getting started**
-
-- Deliver 3,600 L Wheat.
-- Unlock Barley, Canola and Soybeans.
-
-**Crop diversity**
-
-- Choose any two crops from Wheat, Barley, Canola and Soybeans.
-- Deliver 3,600 L of each chosen crop.
-- Unlock Corn.
-
-Once two crops have been committed to the Crop diversity milestone, only those two remain relevant to its tracker and cargo-pad requirements.
-
-**Livestock preparation**
-
-- Deliver 4 physical hay bales.
-- Unlock the Cattle Barn and livestock equipment.
-
-**First milk**
-
-- Deliver 3,600 L Milk.
-
-Completing a non-final milestone triggers the cargo VTOL pickup and reveals newly unlocked capabilities. Completing First milk produces a Farmipelago-complete state and then returns the player to free farming.
-
-There is no time limit on milestones and no macro-level failure state.
-
-The current four milestones are prototype content, not the intended final progression length.
-
-### Long-Term Direction
-
-Later milestones should introduce increasingly broad production requirements and eventually combine different farming systems, for example crops plus livestock products.
-
-Progression should continue to unlock possibilities rather than becoming a sequence of increasingly expensive vehicle upgrades.
+Other existing capabilities are available through Debug unlocks for now. Previously earned capabilities survive save migration. Future islands should introduce new crops, machinery and agricultural systems through normal play, with village needs giving those capabilities continuing purpose. Island-based unlock progression is not yet implemented.
 
 ---
 
@@ -198,7 +164,7 @@ Storage, access between islands and potentially other ways of adapting difficult
 
 These do not need to form a large visible skill tree.
 
-Main progression should primarily be driven by increasingly complex production deliveries. Optional progression should primarily reward breadth, experimentation and development of the Farmipelago.
+Main progression should introduce capabilities through new islands, with increasingly varied village needs giving production a continuing purpose. Optional progression should primarily reward breadth, experimentation and development of the Farmipelago.
 
 ---
 
@@ -210,12 +176,142 @@ The current generator provides a permanent two-island opening:
 
 - a dominant, level Farm Island with the farmyard, starter field space and a walk-in 3×3 workshop at the northern end of its west edge
 - a broad, irregular lake along the Farm Island's south coast, feeding an east-flowing river and waterfall
-- a much smaller, mostly level Settlement Island held stationary directly north, with the tractor and combine spawns, reserved turnaround space, and the cargo hub
-- a compact non-interactive settlement shell with voxel-built homes, a communal receiving structure, worn paths and warm lighting
+- a much smaller, mostly level Settlement Island held stationary directly north, with the tractor and combine spawns, reserved turnaround space, and the Settlement Storehouse
+- a compact settlement with voxel-built homes, an interactive storehouse, worn paths and warm lighting
 - a fresh opening cinematic that first establishes both parked vehicles on Settlement, pans to reveal the visible, non-colliding Farm approaching from the south along negative Z, travels with its final docking, then eases back over the vehicles into the normal drive camera; HUD and gameplay input remain suppressed until that camera release, and the final center-aligned separation is measured from the generated shores before either footprint is placed
+- two metal chains extend between the facing undersides of Settlement and the approaching Farm, tightening as the islands dock; their anchors follow the perimeter at one-quarter and three-quarters of each island’s full width; the camera then holds on the connection while bridge planks assemble from Settlement toward Farm, followed by railings and lanterns; the chains remain as visible underside connections, and reduced motion preserves the ordered reveal without the pieces dropping into place
 - one broad, gently crowned wooden bridge with railings and warm day/night lanterns providing the pair's only physical connection from the Farm Island's north shore to the Settlement Island's south shore; its modeled deck targets `2.0 ± 0.25` terrain tiles while the terrain itself retains an air gap greater than one tile
 - grass, dirt and stone terrain layers with deep pointed undersides
 - generated trees, rocks and ground cover around the retained terrain
+
+Passing islands use the same seeded terrain, soil strata, stone undersides,
+environmental coloring, trees, ground cover, lakes, rivers and waterfalls as the
+starter islands. About 80% of ordinary generated islands have 4–5.5-tile radii;
+the others vary from 7–10 tiles. Generation settings explicitly control size,
+elevation, terraces, underside depth/taper, vegetation, moisture, sunlight and
+water style. The starter islands retain their fixed presets.
+
+The shared sky flow starts southwest and turns clockwise through a full circle
+every ten active minutes. Relative passing motion runs opposite that heading at
+one shared cruise of 180% of the travel speed for encounters and decorations
+(2.07 tiles/second normally, scaled together for reduced motion), so the original back of the Farmipelago becomes an
+upstream side after roughly five minutes. The farm and its camera do not rotate.
+All environmental travel cues follow this same changing direction.
+
+An encounter scheduler targets one suitable shore arrival every 60 seconds,
+accounting for off-screen approach time. It prefers valid connection sites near
+the active vehicle, within the normal 12-tile interaction range, or the nearest
+valid shore when none is in reach. Among nearby sites, compact layouts and
+multiple neighboring connections retain strong preference. Generated candidates
+must have compatible bridge landings and a clear direct connection route. A
+small, flat island with clear landings is used as a generation fallback.
+
+Encounter routes validate a straight passage through a nearby shore waypoint,
+with the same incoming and outgoing heading. Both types use the current heading
+when planning; encounters allow up to 30 degrees of bias to find a clear passage.
+Encounter timing holds a prepared candidate off-scene until its launch time,
+using up to two reserved approaches in flight and targeting arrivals at least a
+minute apart. Entry stays near the current camera edge instead of being pushed
+farther upstream to fill the schedule. Individual islands never
+speed up or slow down to meet the schedule. A longer or occupied approach may
+delay an arrival; collision clearance takes priority. The waypoint marks the encounter; the island
+continues along the same heading through departure. Encounter islands
+pass normally, with no scheduled hovering or special waiting window. Moving the
+vehicle away can miss an encounter. Candidates stay unpublished until their
+complete passage is clear and reserved. Published islands never teleport, pursue
+the vehicle, change direction, or discard their route when blocked. Unexpected
+obstructions still trigger the fixed-step safety stop, preserving the route. Normal passage maintains at
+least 5.5 tiles of terrain clearance. Passing islands have no vehicle colliders
+and cannot be boarded.
+
+Decorative passing islands are temporarily disabled in the game and route
+debugger because their distant lanes are not visible on small screens. Saved
+decorative islands are skipped on load; encounter and released islands remain
+active. The following decorative behavior is retained for later re-enabling.
+
+When enabled, three decorative islands are attempted at initialization, with another attempted
+every twenty active seconds up to a maximum of four decorative islands. Their
+straight lanes follow the projected outer shore with a 14-tile terrain gap,
+remaining outside interaction range for the whole passage. A lane must cross the
+current gameplay view for at least eight tiles of travel to be admitted. They
+never receive selection outlines or Connect actions. New routes follow the
+changing world heading; a published island keeps its own planned heading.
+
+Every passing island reserves its complete entry-to-exit route before becoming
+visible, including its swept solid bounds and a one-tile buffer. Complete
+reservation volumes must be mutually disjoint: a new corridor cannot block an
+older island's future path. The first encounter has priority over initial
+decoration. Entry and exit use the current game camera and zoom, with a two-tile
+buffer around the complete visual bounds. There is no fixed distance margin
+around the whole farm. Full-route shore and collision checks still apply. Islands
+are removed only after reaching the planned exit outside the buffered view. There is no age-based
+removal, minute-by-minute route renewal, or unplanned drift after the route ends.
+The total passing population remains capped at 48, with encounters taking precedence.
+
+All island motion uses swept solid-envelope checks against land, bridges, other
+moving islands and reserved connection/release routes. Solid envelopes include
+undersides, props and carried structures; spray and particles are not solid.
+Unrelated moving islands retain a one-tile envelope gap. Decorative traffic uses
+its complete solid bounds so irregular edges and overhangs cannot interleave.
+Traffic yields or stops
+before contact. Connection reservations cover the whole pull and bridge-building
+space. Releases preflight a clear lift/exit/descent, and preserve vertical physics
+motion. A blocked release remains attached with “No clear departure.” Collision
+avoidance overrides encounter timing: a blocked or geometrically impossible
+opportunity remains pending rather than causing an overlap or a burst of arrivals.
+
+Pause and hidden tabs freeze these clocks. Reduced motion slows translation and
+subdues effects while keeping the direction cycle and encounter cadence. Travel
+phase, displacement and encounter-clock progress persist across sessions.
+Passing islands also save their seeds, generation settings, exact positions,
+passage routes, route progress and encounter/decorative roles. Reload restores
+their locations and route reservations before new arrivals are scheduled, with
+no offline catch-up. Older saves without island locations start new approaches.
+
+Within 12 tiles of the active vehicle, measured to the nearest shore edge, a
+thin white silhouette marks the whole passing island as selectable. Distant
+islands have no outline and ignore selection taps. Leaving range clears the
+selection and action; switching vehicles uses the new vehicle’s position. Tap any visible part for a brighter selection outline,
+then use the small contextual Connect action. There is no destination ghost or preview camera zoom. Connect and Release are
+anchored beside the selected island with a fine pointer, fitted within the screen
+and placed clear of visible HUD controls. Both actions use the same compact cream single-row control with muted amber
+text and a vertical divider before the separate dismiss target. Blocked actions retain that size, using a
+lock and “Required link” or “No clear site”; the full reason remains available
+as an accessible description and tooltip. Placement uses projected terrain
+footprints rather than bounds inflated by waterfalls and spray. The pointer
+ends at the actual tapped surface, following it as the island and camera move. The player chooses which
+island to keep; the game chooses where it joins, preserving its shape and orientation.
+Placement strongly favors bays, concavities and multiple neighboring islands over
+long arms. Only reachable destinations are offered: the complete incoming
+footprint must have a clear, direct approach past existing terrain and bridges.
+Favor the nearest approach; do not send an island around the Farmipelago to reach
+a remote socket. Compactness and multiple neighbors remain strong preferences
+among directly reachable destinations. New connections stop with four tiles of
+clear sky between facing shores, also checking the rest of the irregular footprint.
+
+Connecting reveals the connection gap, shoots chains from each neighboring island,
+and lets them attach before the incoming island starts its pull toward the destination.
+The island keeps its current drift speed and heading throughout the launch.
+Two chains straddle each bridge, fixed to exposed shore faces. Placement checks
+the predicted catch position and pulling angle, then reserves both the drifting
+launch and curved pull. Once the chains catch, they tighten and the island bends
+smoothly toward docking, preserving its velocity through the catch and easing to
+a stop at the destination. The chains relax after docking. The camera follows
+the pull, then holds while the bridges assemble.
+For expansion attachments, the camera looks across the connection gap and frames
+all chain anchors, with distance fitted to portrait or landscape aspect. It moves
+slightly higher to show bridge construction, then returns to the vehicle. Expansion
+bridges assemble from each retained island toward the incoming island.
+The island follows its planned route continuously. Only after bridge construction
+does it become normal playable land, including farming, exploration, resources and
+buildings. Connected topology and land state persist; an interrupted connection
+replays its arrival on reload. There is no temporary attachment category.
+
+Tap connected expansion land to Release. This is disabled if removing the island
+would disconnect any remaining island from Farm. The starter pair is retained.
+Released land keeps its content and resumes drifting; vehicles return to their
+Settlement spawn with cargo retained. Departed, unconnected islands are transient.
+Pause freezes the simulation; build mode continues it.
 
 Island identity, role and land-use capabilities are explicit. The Farm Island
 allows farming and player construction. The Settlement Island remains
@@ -224,7 +320,9 @@ construction so it reads as a community destination rather than a second farm.
 
 Vehicles can jump, so elevation and gaps are part of navigation without requiring ramps.
 
-Generated props, bridges, the cargo pad, completed player-placed buildings and the visiting VTOL can fade when they block the camera's view of the active vehicle. Bridges and the cargo pad do not fade merely because the vehicle is driving across them, so driving surfaces remain readable beneath the vehicle.
+Generated lakes and rivers must be enclosed by solid banks, with exactly one exposed tile edge at their waterfall outlet. Notched shores never relax this rule: coastal lakes move to a banked site, and passing islands may use a smaller enclosed watercourse when the broad lake cannot fit.
+
+Generated props, bridges, the Settlement Storehouse and completed player-placed buildings can fade when they block the camera's view of the active vehicle. Bridges do not fade merely because the vehicle is driving across them, so driving surfaces remain readable beneath the vehicle.
 
 The Farmipelago persists across browser sessions, including its generated tiles and seed.
 
@@ -246,20 +344,20 @@ The world also runs a persistent ten-minute visual day/night cycle in which ever
 
 The Farm Tractor's paired front lamps follow the same late-afternoon-through-sunrise timing as other local fixtures and cast warm, focused beams ahead across the terrain.
 
-The attached starter pair reads as continuously travelling southwest through
-the sky even though its gameplay coordinates remain fixed. Many small, compact
-voxel clouds stream northeast slowly below and around the distant silhouette,
+The attached starter pair reads as travelling through the sky with a slowly
+turning shared heading, even though its gameplay coordinates remain fixed. Many small, compact
+voxel clouds stream opposite the current travel heading slowly below and around the distant silhouette,
 while a much smaller population of substantially larger opaque clouds passes at
 island-edge and underside height at about two and a half times the speed. Even the
 highest crown of a near cloud remains at or below the playable terrain plane.
-Both bands use deterministic irregular spacing, lanes, heights, scales, and
+Both bands use deterministic irregular two-dimensional spacing, heights, scales, and
 stepped voxel silhouettes, wrap around a stable frame derived once from the two
 islands, stay aligned to the world grid, and do not follow the camera or either
 vehicle. A shared world-owned gust subtly biases tree sway. Reduced motion keeps
 the directional translation at a slower steady pace and removes cloud bob and
 gust pulse.
 
-Small opaque voxel dust motes and loose leaf chips also skim northeast through
+Small opaque voxel dust motes and loose leaf chips also skim with the relative flow through
 a shallow band above the playable land. Their deterministic sources are cached
 from dry open terrain and generated trees or vegetation respectively, including
 the Farm's presentation offset during its opening arrival. The shared gust adds
@@ -267,7 +365,22 @@ subtle speed, lift, and lateral variation without affecting physics, crops, or
 input. Night lowers their palette brightness, while reduced motion halves the
 visible populations and removes gust lift and leaf tumble.
 
-A vast saturated surface also passes northeast far below the cloud layers. One
+A gold-and-cream flag above the Settlement Storehouse makes wind direction visible
+from the village. Its free end points with the clouds and loose leaves, opposite
+the shared travel heading, and cloth waves run outward from its fixed mast with
+gust-driven flutter. It follows the same active clock, pauses with gameplay, and
+keeps a gentle wave and correct heading with reduced motion.
+
+The Farm Island waterfall reinforces the same travel direction while remaining
+firmly attached to its generated river outlet. Its lower water and three foam
+streams follow a shallow segmented curve opposite the current heading, and one fixed pool of small
+solid spray voxels recycles from the lower fall without physics or gameplay
+state. Normal motion uses only restrained shared-gust variation; reduced motion
+retains the backward lean and slower steady spray without turbulence. The
+complete lake, river, fall, foam, and spray assembly remains owned by the Farm
+during its opening arrival and after attachment.
+
+A vast saturated surface also follows the relative flow far below the cloud layers. One
 periodic top-down tile map supplies dense square cells of green grass, plain
 blue water, brown soil, and darker forest ground with stepped shore and biome
 edges but no drawn grid lines. A palette-preserving mip chain keeps those
@@ -280,7 +393,7 @@ single-draw instanced voxel trees share a fixed, horizon-biased detail footprint
 inside a broader diffuse plane. The extreme horizon may become texture-only,
 while the base-plane edge remains beyond the camera frustum. Together they
 preserve the voxel-world silhouette from every camera
-orientation. It derives all motion from the shared travel distance, remains
+orientation. It derives motion from accumulated shared X/Z displacement, remains
 fixed to the stable Farmipelago travel frame rather than any camera or vehicle,
 and has no gameplay terrain, collision, interaction, persistence, independent
 clock, or shadow work. Its materials deliberately opt out of scene fog because
@@ -307,9 +420,9 @@ The current prototype contains five crops:
 
 The player selects seed while using the seeder. Only crops unlocked by progression should be available for normal progression play.
 
-Planted crops visibly sprout and grow. Harvest-ready crops pulse in synchronized world time.
+Planted crops visibly sprout and grow. Harvest-ready crops pulse in synchronized world time every 3.2 seconds, gently expanding up to 18% in height and 7% in width from their rooted base before settling back with a short rest. Reduced motion disables the pulse.
 
-Each ready crop tile currently yields a fixed **200 L**. Each ready grass tile likewise produces **200 L** of loose grass when mown.
+Each ready crop tile yields a random whole-litre amount from **70–110 L**, rolled when harvested. The **90 L** average fills the combine's **3,600 L** tank in approximately **40 tiles**. Each ready grass tile produces a fixed **200 L** of loose grass when mown.
 
 Crop choice matters through progression requirements, visual identity and the need to keep harvested types separate in machine storage, rather than through environmental yield differences.
 
@@ -335,19 +448,23 @@ The Combine Harvester uses its built-in header. The header can be raised/lowered
 
 Harvested crop enters the combine's internal storage.
 
+Each successful cut sends a short burst of crop-colored voxel stalks and grains upward, then curls them into the moving header over 0.62 seconds. The effect uses bounded reusable instance pools, follows the harvesting combine even after vehicle switching, and is disabled with reduced motion. Yield and storage update immediately.
+
+Mowing mature grass creates a matching green voxel-clipping burst. Clippings tumble upward, fall onto the cut tile, and settle flat into its persistent loose-grass pile over 0.8 seconds. Both front and rear mowers use this bounded visual effect; reduced motion disables it while keeping the loose grass and regrowth.
+
 ---
 
 ## 12. Livestock
 
 Cattle are the first implemented livestock system and connect directly to the existing physical hay and vehicle-logistics loops.
 
-After Livestock preparation, the player can place a Cattle Barn on clear level terrain. Before committing it, the player may reposition the barn and choose **Draw pen**. The barn doorway lights brightly and a broad three-tile ground gate extends in front of it; the player roughly circles those tiles and the pasture they want with one continuous gesture. The lasso closes automatically, trims unusable edge land, keeps the continuous area connected to the gate, and resolves to an editable, grid-snapped orthogonal fence. Fixed connector sections begin at the midpoint of the barn's left and right walls, so the barn itself closes the pasture entrance. Fence generation and editing reject segments that pass through the barn or another building. Every four valid pasture tiles provide one hard capacity slot. An Undo action abandons the provisional pen and returns to movable barn placement; final Confirm permanently commits both barn and pen.
+With a retained or Debug livestock unlock, the player can place a Cattle Barn on clear level terrain. Before committing it, the player may reposition the barn and choose **Draw pen**. The barn doorway lights brightly and a broad three-tile ground gate extends in front of it; the player roughly circles those tiles and the pasture they want with one continuous gesture. The lasso closes automatically, trims unusable edge land, keeps the continuous area connected to the gate, and resolves to an editable, grid-snapped orthogonal fence. Fixed connector sections begin at the midpoint of the barn's left and right walls, so the barn itself closes the pasture entrance. Fence generation and editing reject segments that pass through the barn or another building. Every four valid pasture tiles provide one hard capacity slot. An Undo action abandons the provisional pen and returns to movable barn placement; final Confirm permanently commits both barn and pen.
 
-Final barn confirmation grants two adult cows. A provisional pen never starts livestock simulation. Once confirmed, cows are individual persistent animals that choose farther visible points across clear pasture, walk directly toward them at free angles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
+Final barn confirmation grants two adult cows. Newly granted cows and newborn calves fall from one tile above the pasture under world-strength gravity, squash briefly on landing with their feet anchored, and recover to their normal size before walking. Restored animals do not replay the arrival; reduced motion skips it. A provisional pen never starts livestock simulation. Once confirmed, cows are individual persistent animals that choose farther visible points across clear pasture, walk directly toward them at free angles and cannot leave or transfer to another barn. With at least two adults, available capacity and stored hay, a herd-level birth timer creates a calf. Calves are visibly smaller, count against capacity and mature automatically. All adults produce milk; the prototype deliberately omits pregnancy state, sex, disease, health, old age, natural death, slaughter, selling, manure, purchasing and animal transport.
 
 Existing physical 3,600 L hay bales are deposited at the barn and converted to shared herd feed. Hay supports full milk production and automatic herd growth. Without hay, cattle continue grazing without depleting terrain and produce at 20% of the fed rate; herd growth pauses and cattle never starve or die.
 
-Milk accumulates in the barn up to 10,000 L. The tractor's livestock-gated 6,000 L Water / Milk Tank loads milk from a nearby barn in rapid 10 L steps and carries it to the cargo hub for the First milk milestone.
+Milk accumulates in the barn up to 10,000 L. The tractor's livestock-gated 6,000 L Water / Milk Tank loads milk from a nearby barn in rapid 10 L steps for transport. Milk is not accepted by the current tier 1 village.
 
 ---
 
@@ -381,11 +498,15 @@ but softly resists extreme jackknifing. Mounted rear and front tools remain
 rigidly aligned with the tractor. Tow articulation is intentionally kinematic
 and does not add separate equipment collision bodies.
 
+Vehicles and tools may use smaller blocks and rotated block assemblies to keep machinery detailed and readable; the strict five-model-voxels-per-tile building standard still applies to buildings. The tractor, combine and all seven rear/five front tool models use 0.05-tile detail blocks, with finer cab framing, wheels, angled plough shares and loader booms, tapered hoppers, slim mower decks, a ribbed trailer and detailed baler and liquid tank. Each rigid assembly assigns one material per occupied cell; windows, open buckets, trailer beds and the baler chamber are constructed spaces, and wheel and tank silhouettes are stepped. The blue tractor retains its glazed cab, paired timed headlights and beacon. The green-and-cream combine has fine cab framing, inset engine vents, detailed wheels, an open-spoke header reel, a moving feeder throat and a block-built unloading auger. Its header lift, reel spin, rear-wheel steering and auger deployment retain their existing animation interfaces. Front and rear mounted tools use visible lift links that follow their socket positions; trailers, the baler and the liquid tank use a common drawbar pivot and an open clevis. The clevis is hidden when the rear three-point linkage is in use. Articulated parts retain their wheel, rotor, lift, towing and transfer animation, with lift bars extending between their endpoints. This visual update does not alter equipment unlocks, inventory capacities, field-working areas or the kinematic driving model.
+
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 
 ### Workshop
 
-The workshop is a permanent starter structure at the northern end of the Farm Island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area. The cargo hub is across the north bridge on the Settlement Island's outer east side.
+The workshop is a permanent starter structure at the northern end of the Farm Island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area. The Settlement Storehouse is across the north bridge on the Settlement Island's outer east side.
+
+The accepted Fieldworks design uses teal walls, twin stepped sawtooth skylights, a yellow lifting gantry, a raised hoist, and detailed service equipment on the shared five-voxels-per-tile grid. It retains the 3×3 enclosure, site, orientation and loadout trigger; its wider open bay and detailed structure have matching merged voxel collision. The entrance lantern follows the day/night cycle.
 
 The player drives into it and receives a live 3D preview of the active vehicle and compatible equipment. Selecting an equipped rear or front attachment again leaves that slot empty. The UI distinguishes unavailable slots for vehicles such as the combine.
 
@@ -399,11 +520,11 @@ Crop volume is represented physically in litres and moves between actual invento
 
 The crop logistics chain is:
 
-**Combine → silo → Grain Trailer → cargo hub**
+**Combine → silo → Grain Trailer → Settlement Storehouse**
 
 The cattle logistics chain is:
 
-**Hay bale → Cattle Barn → stored milk → Water / Milk Tank → cargo hub**
+**Hay bale → Cattle Barn → stored milk → Water / Milk Tank**
 
 Transfers occur in rapid 10 L steps and are reflected in vehicle/building inventories rather than functioning as abstract menu submissions. Crop and milk transfers are made physically legible by color-matched swarms of tiny tumbling cuboids that weave along a guided arc from the source inventory to the receiver. Machinery and storage objects anticipate and react to the flow with compact toy-like movement.
 
@@ -434,17 +555,23 @@ A round build button opens a dedicated elevated, pannable construction view. Ava
 
 The player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn**.
 
-Buildings are designed freely before commitment, but become permanent once confirmed. A pulsing lime edge outline visually distinguishes every unconfirmed building from the normal treatment used by completed structures; confirmation removes that outline permanently. Placed drafts use a deliberate hold-and-drag gesture for repositioning so a quick tap remains available for selection. A Grain Silo remains movable until its contextual Confirm action is used, and it cannot store or transfer crops before that confirmation.
+The pending demolition confirmation includes a compact inline warning: a silo loses all stored crops; a barn loses its pen, cattle, stored hay and milk. It explicitly states that demolition cannot be undone.
+
+Successfully confirming a silo or the final barn-and-pen layout automatically closes construction mode and returns to the normal driving camera and controls. Draw pen keeps construction mode open for pasture editing. As with any exit from construction mode, other unconfirmed drafts are discarded.
+
+Buildings are designed freely before commitment, but become fixed in place once confirmed. A pulsing lime edge outline visually distinguishes every unconfirmed building from the normal treatment used by completed structures; confirmation removes that outline permanently. Placed drafts use a deliberate hold-and-drag gesture for repositioning so a quick tap remains available for selection. A Grain Silo remains movable until its contextual Confirm action is used, and it cannot store or transfer crops before that confirmation.
+
+In construction mode, selecting a completed silo or Cattle Barn exposes **Demolish**. The first tap changes that same button to **Confirm demolish**; a second tap permanently removes the building and its stored contents, plus the pen and cattle for a barn. Tapping elsewhere, changing selection or leaving construction mode cancels the pending confirmation. No native confirmation popup is used. Demolition clears the associated collision and land occupancy and is saved automatically. Completed buildings cannot be relocated, and the workshop, settlement structures and bridge cannot be demolished.
 
 Cattle Barn construction has two stages. The player first positions the movable barn draft and chooses **Draw pen**. The barn then stays fixed while the player lassos the desired pasture, edits the generated fence through snapped corner and segment dragging, or uses **Repaint border** to create a new candidate. Repainting does not destroy the existing provisional pen unless the new lasso is valid. An Undo action removes the entire provisional pen and returns to movable barn placement. Final Confirm commits both barn and pen permanently, removes all editing controls, grants the two starter cows and enables normal livestock interactions and simulation.
 
-Permanent commitment makes scarce clear, level land and future farm layout part of the Farmipelago puzzle, while the draft phases let the player experiment before making an irreversible choice. Leaving construction mode is an explicit cancellation boundary: every unconfirmed silo or barn, including provisional pen geometry, is removed. A refresh while construction mode is still active preserves the current draft phase without confirming it.
+Fixed placement makes scarce clear, level land and future farm layout part of the Farmipelago puzzle, while the draft phases let the player experiment before commitment. Later reorganization requires demolition and loses the removed building's contents. Leaving construction mode is an explicit cancellation boundary: every unconfirmed silo or barn, including provisional pen geometry, is removed. A refresh while construction mode is still active preserves the current draft phase without confirming it.
 
 The permanent starter structures are:
 
 - vehicle workshop
-- Settlement Island homes and communal receiving structure
-- cargo hub and landing pad on the Settlement Island
+- Settlement Island homes
+- Settlement Storehouse with an open receiving bay on solid settlement ground
 
 Future buildings may support:
 
@@ -460,22 +587,15 @@ The design should continue to require buildings to have clear gameplay functions
 
 ---
 
-## 16. Cargo Hub and Deliveries
+## 16. Settlement Storehouse and Deliveries
 
-The current progression receiver is a **cargo hub** permanently attached to the smaller northern Settlement Island.
+The progression receiver is a permanent **Settlement Storehouse** on the smaller northern Settlement Island, replacing its decorative receiving house. It is built on solid ground with cream walls, recessed side windows, a stepped red roof, a broad open receiving bay and a warm hanging lantern. A clear approach connects it to the settlement paths.
 
-It contains:
+The player brings wheat, barley or canola to the front yard. A contextual **Village · Tier 1** popup presents three selectable square crop cards, each with its icon, name and current litres against the 3,600 L desired reserve. Green fills each card from the bottom, capped at its full height. The popup omits status labels and bottom help text.
 
-- a small-voxel VTOL landing deck with stepped edges, inlaid block markings and voxel beacons
-- voxel-built staged delivery crates, hay bales and milk cans
-- a nearby cargo interaction popup
-- visible milestone requirements and Deliver controls
+Select a card and use the existing **Deliver** button. Matching carried cargo is selected automatically on arrival. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries can exceed the reserve. Visible crates reflect current stocks with bounded visual density; reaching a target does not trigger a shipment handoff. The popup is clamped to phone safe areas above driving controls, and its cards and Deliver button support keyboard activation.
 
-The player transports crops or milk to the hub and transfers eligible cargo into the current milestone. Physical hay bales remain a separate one-object delivery path. Staged cargo visually changes between crop crates, hay bales and milk cans according to the active milestone.
-
-When a milestone is completed, an articulated four-fan cargo VTOL built from the same small-model voxel grid rapidly approaches the landing deck. Its stepped fuselage, cockpit, landing gear, booms and fan housings preserve a recognizable aircraft silhouette without reverting to smooth low-poly primitives. Staged cargo is collected and the aircraft departs, creating a physical payoff for progression rather than resolving it only through menus.
-
-The cargo hub provides the current in-world connection to the outside world. The wider fiction behind who is requesting or receiving the products remains intentionally open.
+Hay, milk and other crop types are not requested in tier 1. Later needs and island-based capability introductions remain future work.
 
 ---
 
@@ -489,6 +609,7 @@ Current controls include:
 
 - dynamic camera-relative virtual joystick in the lower-left drive zone
 - two-finger horizontal swipe over the world to rotate the drive camera in 90° steps
+- pinch over the world or use the + / − buttons to zoom in driving and construction views
 - jump button
 - contextual primary tool action
 - secondary action such as cycling seed
@@ -498,7 +619,7 @@ Current controls include:
 - nearby building/cargo interaction popups
 - cattle-barn Feed bale and Load milk actions
 
-The virtual stick can begin anywhere inside its drive zone and points the vehicle in the corresponding screen-relative direction.
+Dragging the virtual stick inside its drive zone points the vehicle in the corresponding screen-relative direction. A quick tap does not start driving and can select visible island land beneath the stick. Empty space between action buttons passes taps to the world.
 
 ### Desktop Fallback
 
@@ -509,6 +630,7 @@ Current keyboard controls include:
 - E — raise/lower or activate the relevant tool
 - V — cycle vehicles
 - F — cycle seed with the seeder
+- + / − or mouse wheel over the world — zoom
 - [ / ] — rotate the drive camera in 90° steps
 - B — build mode
 - H — hide the HUD for screenshots; H or Escape restores it
@@ -518,6 +640,8 @@ Current keyboard controls include:
 ### Camera
 
 The normal gameplay camera is a smooth high-angle follow camera that keeps the active vehicle framed. It has four 90° orientations relative to the default angle, joined by a short eased rotation, and driving remains camera-relative throughout the turn.
+
+Both driving and construction support smooth, bounded distance zoom, from close-up detail to a broad overview, with independent zoom levels for each view. Pinching takes precedence over swipe rotation once the fingers move apart or together.
 
 Construction mode switches to an elevated pannable overview camera.
 
@@ -538,7 +662,7 @@ Current implementation follows these principles through:
 - round action buttons
 - compact crop icons and inventory readouts
 - contextual silo, cattle-barn and cargo popups
-- an integrated milestone tracker
+- a contextual three-card village needs grid
 - live 3D vehicle/equipment previews in the workshop
 - temporary labels for actions such as seed cycling
 - input-aware desktop control hints
@@ -567,16 +691,16 @@ Current visual language includes:
 - softly lit terrain and gentle fog
 - a time-varying flat-color backdrop with sun/moon-driven global lighting, animated celestial shadows, warm bright twilight and darker readable blue moonlight
 - a hanging warm lantern above the permanent starter workshop entrance, lit from late afternoon until after sunrise
-- two bright hanging voxel lanterns at the cargo hub matching the workshop: one on the permanent pole and one seed-varied companion, with seed-stable rotation variation
+- a warm hanging voxel lantern above the Settlement Storehouse receiving bay matching the workshop
 - matching warm voxel lanterns on the ends of broad, railed wooden bridges, using the same late-afternoon-through-sunrise emissive treatment and precomputed local surface lighting; only the global celestial rig and vehicle headlights use dynamic lighting
 - deep pointed floating-island undersides
 - colorful toy-like farm vehicles
 - a blue hero tractor with glazed cab, lamps and beacon
 - squash-and-stretch on vehicle jumps and crop growth
 - animated trees and vegetation
-- compact voxel-built settlement homes and a communal receiving structure with stepped roofs, constructed openings and warm doorway lighting
+- compact voxel-built settlement homes and a storehouse with stepped roofs, constructed openings and warm doorway lighting
 - sparse environment-driven prop clusters across both elevations, with off-grid placement and subtle rotation, mirroring and scale variation
-- waterfalls, flat landing splashes matched to the day/night base-water palette, and environmental motion
+- outlet-anchored segmented waterfalls with backward-trailing foam and solid voxel spray, flat landing splashes matched to the day/night base-water palette, and environmental motion
 - guided crop and milk transfer swarms made from small color-matched cuboids, coordinated with animated machinery, responsive storage objects and delivery crates
 
 The overall feeling should be:
@@ -629,7 +753,7 @@ The current save includes:
 - field and crop state
 - placed buildings and silo contents
 - cattle pens, individual cow movement/growth state, shared hay, milk and birth progress
-- progression state and delivered amounts
+- village stocks (including fractional litres), retained earned capabilities and debug unlock overrides
 - vehicle positions
 - vehicle loadouts
 - vehicle storage
@@ -642,7 +766,7 @@ The pause menu includes a confirmed restart option that deletes the save and gen
 
 Progression objectives should never prevent players from simply enjoying their farm.
 
-There is no deadline for deliveries and no penalty for taking a long time. After completing all currently available milestones, the player returns to unrestricted free farming.
+There is no deadline for deliveries and no penalty for taking a long time. Village stocks only consume active simulation time, with no offline catch-up. Existing saves retain their world, earned capabilities and debug overrides; recorded wheat/barley/canola delivery amounts become initial village stock once. New saves mark this village state explicitly to prevent repeat migration. Free farming remains available at all times.
 
 Progression provides direction rather than pressure.
 
@@ -680,23 +804,23 @@ The playable prototype currently proves the following major systems together:
 
 - persistent procedurally generated Farm Island + Settlement Island pair
 - persistent visual day/night cycle with a Debug time scrubber
-- world-owned southwest travel presentation with wrapped distant/near voxel-cloud parallax and terrain-aware dust/leaf airflow
-- a deterministic periodic green/blue/brown planetary surface far below the clouds, with fog-muted cliffs and dense tiny trees scrolling northeast from the same travel distance
+- persistent, slowly turning world travel with wrapped cloud/surface parallax, terrain-aware airflow, scheduled island encounters and shared collision avoidance
+- a deterministic periodic green/blue/brown planetary surface far below the clouds, with cliffs and tiny trees scrolling from shared accumulated displacement
 - vehicle driving and jumping
 - tractor attachments
 - ploughing and seeding
-- crop growth and fixed per-tile yield
+- crop growth and randomized per-tile crop yield
 - combine harvesting
 - crop storage in litres
 - persistent placeable silos
 - trailer-based transport
 - cattle barns, draft-editable permanently confirmed custom pens and persistent herds
-- compact non-simulated settlement shell with cargo receiving on the smaller northern island
+- compact settlement with storehouse receiving on the smaller northern island
 - explicit per-island farming and construction capabilities
 - hay-fed milk production with grazing fallback
-- Water / Milk Tank transport and milk delivery
-- cargo-hub deliveries
-- crop-unlock milestone progression
+- Water / Milk Tank transport
+- storehouse deliveries
+- ongoing tier 1 village needs with uncapped supply reserves
 - multiple persistent vehicles
 - loadout workshop
 - construction overview mode
@@ -708,9 +832,9 @@ This prototype should be treated as the foundation for expansion rather than as 
 
 ## 24. Major Open Questions
 
-### What comes after First milk?
+### What comes after village tier 1?
 
-The current four milestones prove crop, hay and cattle progression, but the longer sequence introducing additional products and agricultural systems still needs to be designed.
+Future islands should introduce new capabilities and products. Their relationship to later village tiers, population and happiness still needs to be designed.
 
 ### What should optional milestones unlock?
 
@@ -730,11 +854,11 @@ Current farming changes surface state but does not fundamentally reshape the gen
 
 ### What is the fiction behind the cargo network?
 
-The cargo hub and VTOL establish the mechanic, but the organization requesting deliveries and the broader setting remain open.
+The settlement receives farm deliveries through its storehouse, but the residents’ wider needs and the broader setting remain open.
 
 ### How should vehicles and tools unlock?
 
-Crop gates are implemented. The game still needs a coherent way to introduce future tractors, livestock machinery and specialized equipment without falling back into a simple money ladder.
+Capability gates and Debug overrides are implemented; the village starts with wheat, barley and canola. The game still needs a coherent way to introduce future tractors, livestock machinery and specialized equipment without falling back into a simple money ladder.
 
 ---
 

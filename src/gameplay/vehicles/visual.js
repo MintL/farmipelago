@@ -1,9 +1,15 @@
-import { createCombineAsset, createFrontToolAsset, createLiquidTankAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './assets.js';
+import { TRACTOR_MOUNTS } from './tractor-assets.js';
+import { createLiftLinkage } from './linkage.js';
+import { createBalerAsset, createCombineAsset, createFrontToolAsset, createLiquidTankAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './assets.js';
 import { FRONT_EQUIPMENT_IDS, REAR_EQUIPMENT_IDS, equipmentDefinition } from '../catalog/equipment.js';
 import { THREE } from '../../core/shared.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const wakeUpDuration = .78;
+const rearJointSoftLimit = THREE.MathUtils.degToRad(50);
+const rearJointHardLimit = THREE.MathUtils.degToRad(65);
+
+const wrappedAngle = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 
 export function createVehicle(scene, vehicle) {
   const root = new THREE.Group();
@@ -20,8 +26,8 @@ export function createVehicle(scene, vehicle) {
   wakeUp.add(tractor?.group || combine.group);
   root.add(wakeUp);
   scene.add(root);
-  const toolDownY = .3;
-  const toolUpY = .78;
+  const toolDownY = TRACTOR_MOUNTS.downY;
+  const toolUpY = TRACTOR_MOUNTS.upY;
   let rearToolTargetY = toolUpY;
   let rearToolY = toolUpY;
   let rearToolVelocity = 0;
@@ -38,23 +44,34 @@ export function createVehicle(scene, vehicle) {
   let augerYaw = 0;
   let augerExtension = 0;
   let baleKick = 0;
+  let vehicleHeading = 0;
+  let rearJointYaw = 0;
+  let rearJointReady = false;
+  let rearAxleTravel = 0;
   const worldPoint = new THREE.Vector3();
   const localPoint = new THREE.Vector3();
+  const rearHitch = new THREE.Vector3();
+  const previousRearHitch = new THREE.Vector3();
+  const rearAxle = new THREE.Vector3();
+  const previousRearAxle = new THREE.Vector3();
   const trailer = tractor ? createTrailerAsset() : null;
+  const baler = tractor ? createBalerAsset() : null;
   const liquidTank = tractor ? createLiquidTankAsset() : null;
   const attachments = tractor ? Object.fromEntries(REAR_EQUIPMENT_IDS.map(type => {
-    const attachment = type === 'trailer' ? trailer.group : type === 'liquid-tank' ? liquidTank.group : createRearToolAsset(type);
-    attachment.position.set(0, ['trailer', 'liquid-tank', 'baler'].includes(type) ? 0 : toolUpY, ['trailer', 'liquid-tank'].includes(type) ? 1.18 : 1.38);
+    const attachment = type === 'trailer' ? trailer.group : type === 'baler' ? baler.group : type === 'liquid-tank' ? liquidTank.group : createRearToolAsset(type);
+    attachment.position.set(0, ['trailer', 'liquid-tank', 'baler'].includes(type) ? 0 : toolUpY, ['trailer', 'liquid-tank', 'baler'].includes(type) ? TRACTOR_MOUNTS.towZ : TRACTOR_MOUNTS.rearZ);
     tractor.group.add(attachment);
     return [type, attachment];
   })) : {};
   const frontAttachments = tractor ? Object.fromEntries(FRONT_EQUIPMENT_IDS.map(type => {
     const attachment = createFrontToolAsset(type);
-    attachment.position.set(0, type === 'front-mower' ? toolUpY : 0, -1.02);
+    attachment.position.set(0, equipmentDefinition(type)?.working ? toolUpY : 0, TRACTOR_MOUNTS.frontZ);
     attachment.rotation.y = Math.PI;
     tractor.group.add(attachment);
     return [type, attachment];
   })) : {};
+  const rearLinkage = tractor ? createLiftLinkage(tractor.group) : null;
+  const frontLinkage = tractor ? createLiftLinkage(tractor.group, true) : null;
   let loadout = 'plough';
   let frontLoadout = 'loader';
   Object.entries(attachments).forEach(([name, attachment]) => { attachment.visible = name === loadout; });
@@ -122,9 +139,104 @@ export function createVehicle(scene, vehicle) {
       throw new Error(`${vehicle} visual must remain scene-owned outside island presentation roots`);
     }
   };
+  const currentRearArticulation = () => equipmentDefinition(loadout)?.articulation?.type === 'tow'
+    ? equipmentDefinition(loadout).articulation
+    : null;
+  const resetRearJoint = (yaw = 0) => {
+    const nextYaw = Number(yaw);
+    rearJointYaw = THREE.MathUtils.clamp(wrappedAngle(Number.isFinite(nextYaw) ? nextYaw : 0), -rearJointHardLimit, rearJointHardLimit);
+    rearJointReady = false;
+    rearAxleTravel = 0;
+    const attachment = attachments[loadout];
+    if (attachment) attachment.rotation.y = currentRearArticulation() ? rearJointYaw : 0;
+  };
+  const updateRearArticulation = (state, heading, dt) => {
+    vehicleHeading = heading;
+    root.position.set(state.x, state.y, state.z);
+    root.rotation.y = heading;
+    const attachment = attachments[loadout];
+    const articulation = currentRearArticulation();
+    if (!attachment || !articulation) {
+      rearJointReady = false;
+      rearAxleTravel = 0;
+      if (attachment) attachment.rotation.y = 0;
+      root.updateMatrixWorld(true);
+      return;
+    }
+
+    const hitchOffset = attachment.position.z;
+    rearHitch.set(
+      state.x + Math.sin(heading) * hitchOffset,
+      state.y,
+      state.z + Math.cos(heading) * hitchOffset,
+    );
+    const absoluteHeading = heading + rearJointYaw;
+    if (!rearJointReady || !state.grounded) {
+      rearAxle.set(
+        rearHitch.x + Math.sin(absoluteHeading) * articulation.axleOffset,
+        state.y,
+        rearHitch.z + Math.cos(absoluteHeading) * articulation.axleOffset,
+      );
+      previousRearHitch.copy(rearHitch);
+      rearJointReady = Boolean(state.grounded);
+    }
+    else {
+      const hitchDx = rearHitch.x - previousRearHitch.x;
+      const hitchDz = rearHitch.z - previousRearHitch.z;
+      const hitchDistance = Math.hypot(hitchDx, hitchDz);
+      if (hitchDistance > 1.5) {
+        resetRearJoint();
+        rearAxle.set(
+          rearHitch.x + Math.sin(heading) * articulation.axleOffset,
+          state.y,
+          rearHitch.z + Math.cos(heading) * articulation.axleOffset,
+        );
+        rearJointReady = true;
+      }
+      else if (hitchDistance > .00001) {
+        previousRearAxle.copy(rearAxle);
+        let nextYaw = Math.atan2(rearAxle.x - rearHitch.x, rearAxle.z - rearHitch.z);
+        let nextJointYaw = wrappedAngle(nextYaw - heading);
+        const reversing = hitchDx * -Math.sin(heading) + hitchDz * -Math.cos(heading) < 0;
+        if (reversing && Math.abs(nextJointYaw) > rearJointSoftLimit) {
+          const target = Math.sign(nextJointYaw) * rearJointSoftLimit;
+          nextJointYaw = THREE.MathUtils.lerp(nextJointYaw, target, 1 - Math.exp(-8 * dt));
+        }
+        rearJointYaw = THREE.MathUtils.clamp(nextJointYaw, -rearJointHardLimit, rearJointHardLimit);
+        nextYaw = heading + rearJointYaw;
+        rearAxle.set(
+          rearHitch.x + Math.sin(nextYaw) * articulation.axleOffset,
+          state.y,
+          rearHitch.z + Math.cos(nextYaw) * articulation.axleOffset,
+        );
+        const axleDx = rearAxle.x - previousRearAxle.x;
+        const axleDz = rearAxle.z - previousRearAxle.z;
+        rearAxleTravel += axleDx * -Math.sin(nextYaw) + axleDz * -Math.cos(nextYaw);
+      }
+      previousRearHitch.copy(rearHitch);
+    }
+    attachment.rotation.y = rearJointYaw;
+    root.updateMatrixWorld(true);
+  };
 
   return {
     assertSceneOwnership,
+    updateRearArticulation,
+    rearJointYaw: () => currentRearArticulation() ? rearJointYaw : 0,
+    setRearJointYaw(yaw) {
+      resetRearJoint(yaw);
+    },
+    resetRearJoint,
+    rearToolHeading() {
+      return wrappedAngle(vehicleHeading + (currentRearArticulation() ? rearJointYaw : 0));
+    },
+    rearToolPoint(localX, localZ, localY = 0) {
+      const attachment = attachments[loadout];
+      if (!attachment) return root.getWorldPosition(new THREE.Vector3());
+      root.updateMatrixWorld(true);
+      worldPoint.set(localX, localY, localZ);
+      return attachment.localToWorld(worldPoint.clone());
+    },
     resetTransientState() {
       transfer = null;
       transferPulse = 0;
@@ -154,8 +266,10 @@ export function createVehicle(scene, vehicle) {
       }
     },
     setLoadout(nextLoadout) {
+      const previousLoadout = loadout;
       if (nextLoadout?.tool === null || attachments[nextLoadout?.tool]) loadout = nextLoadout.tool;
       if (nextLoadout?.frontTool === null || frontAttachments[nextLoadout?.frontTool]) frontLoadout = nextLoadout.frontTool;
+      if (loadout !== previousLoadout) resetRearJoint();
       Object.entries(attachments).forEach(([name, attachment]) => {
         attachment.visible = name === loadout;
       });
@@ -167,8 +281,8 @@ export function createVehicle(scene, vehicle) {
       const ratio = capacity ? THREE.MathUtils.clamp(amount / capacity, 0, 1) : 0;
       if (trailer) {
         trailer.grain.visible = loadout === 'trailer' && ratio > 0;
-        trailer.grain.scale.set(1, Math.max(.12, ratio * 3.6), 1);
-        trailer.grain.position.y = .08 + ratio * .19;
+        trailer.grain.scale.set(1, Math.max(.12, ratio * 2.5), 1);
+        trailer.grain.position.y = .1;
       }
       if (liquidTank) {
         liquidTank.liquid.visible = loadout === 'liquid-tank' && ratio > 0;
@@ -254,8 +368,7 @@ export function createVehicle(scene, vehicle) {
       if (!reducedMotion) baleKick = 1;
     },
     sync(state, heading, steer, driveAmount, dt, elapsed) {
-      root.position.set(state.x, state.y, state.z);
-      root.rotation.y = heading;
+      updateRearArticulation(state, heading, dt);
       if (state.grounded && !wasGrounded && lastVerticalSpeed < -1.4) {
         landingSquash = Math.min(.3, .12 + Math.abs(lastVerticalSpeed) * .018);
       }
@@ -278,6 +391,9 @@ export function createVehicle(scene, vehicle) {
         frontAttachment.position.y = frontToolY;
         frontAttachment.rotation.x = frontToolVelocity * .035;
       }
+      if (tractor) tractor.towHitch.visible = Boolean(currentRearArticulation()) || !attachment;
+      rearLinkage?.update(currentRearArticulation() ? null : attachment);
+      frontLinkage?.update(frontAttachment);
       if (combine) {
         const headerTargetY = frontToolTargetY === toolDownY ? .24 : .42;
         const headerSpring = spring(headerY, headerVelocity, headerTargetY, dt);
@@ -288,7 +404,7 @@ export function createVehicle(scene, vehicle) {
       }
 
       const speedFactor = Math.min(1, state.speed / 5.5);
-      const activeWheels = combine ? combine.wheels : [...tractor.wheels, ...(loadout === 'trailer' ? trailer.wheels : loadout === 'liquid-tank' ? liquidTank.wheels : [])];
+      const activeWheels = combine ? combine.wheels : tractor.wheels;
       activeWheels.forEach(wheel => {
         wheel.spin += state.speed * dt / wheel.radius;
         wheel.roller.rotation.x = wheel.spin;
@@ -296,6 +412,17 @@ export function createVehicle(scene, vehicle) {
         const wobble = Math.sin(elapsed * (8 + speedFactor * 15) + wheel.phase) * (.012 + speedFactor * .065);
         wheel.holder.rotation.z = wobble;
       });
+      const towWheels = loadout === 'trailer' ? trailer.wheels
+        : loadout === 'baler' ? baler.wheels
+        : loadout === 'liquid-tank' ? liquidTank.wheels
+        : [];
+      towWheels.forEach(wheel => {
+        wheel.spin += rearAxleTravel / wheel.radius;
+        wheel.roller.rotation.x = wheel.spin;
+        const wobble = Math.sin(elapsed * (8 + speedFactor * 15) + wheel.phase) * (.012 + speedFactor * .065);
+        wheel.holder.rotation.z = wobble;
+      });
+      rearAxleTravel = 0;
       const engineBob = state.grounded ? Math.sin(elapsed * (8 + Math.min(1, state.speed / 4) * 5)) * .04 * Math.min(1, state.speed / 4) : 0;
       const airStretch = state.grounded ? 0 : .14;
       selectionPulse *= Math.exp(-7 * dt);
@@ -374,7 +501,7 @@ export function createVehicle(scene, vehicle) {
       if (trailer) {
         const tilt = activeOutput && loadout === 'trailer' ? .56 : 0;
         trailer.bed.rotation.x += (tilt - trailer.bed.rotation.x) * (1 - Math.exp(-10 * dt));
-        trailer.bed.position.y = .5 - (loadout === 'trailer' && transfer?.direction === 'input' ? transferPulse * .055 : 0);
+        trailer.bed.position.y = .4 - (loadout === 'trailer' && transfer?.direction === 'input' ? transferPulse * .055 : 0);
         trailer.tailgate.rotation.x = activeOutput && loadout === 'trailer' ? .82 : 0;
       }
       if (liquidTank) {

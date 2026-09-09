@@ -6,10 +6,10 @@ export const REAR_EQUIPMENT = [
   { id: 'plough', name: 'Plough', icon: 'plough', description: 'Turns grass tiles into prepared soil across four rows.' },
   { id: 'seeder', name: 'Seeder', icon: 'seeder', description: 'Plants the selected seed in two clean rows of prepared soil.' },
   { id: 'sprayer', name: 'Sprayer', icon: 'sprayer', description: 'Covers a wide strip and clears weeds from growing crops.' },
-  { id: 'trailer', name: 'Grain Trailer', icon: 'silo', description: 'Carries up to 20,000 L between silos and the cargo pad.', inventory: { kind: 'crop', capacity: TRAILER_STORAGE_CAPACITY, icon: 'silo' } },
+  { id: 'trailer', name: 'Grain Trailer', icon: 'silo', description: 'Carries up to 20,000 L between silos and the Settlement Storehouse.', articulation: { type: 'tow', axleOffset: 2.04 }, inventory: { kind: 'crop', capacity: TRAILER_STORAGE_CAPACITY, icon: 'silo' } },
   { id: 'rear-mower', name: 'Rear Mower', icon: 'mower', description: 'Cuts mature grass in an offset swath on the tractor’s right.', gate: 'equipment:hay', working: true },
-  { id: 'baler', name: 'Baler', icon: 'baler', description: 'Picks up loose cut grass and compresses each 3,600 L into one bale.', gate: 'equipment:hay', working: true, inventory: { kind: 'grass', capacity: BALER_STORAGE_CAPACITY, icon: 'grass', stateKey: 'balerLitres' } },
-  { id: 'liquid-tank', name: 'Water / Milk Tank', icon: 'milk-tank', description: 'Carries liquid products such as milk between livestock buildings and the cargo pad.', gate: 'equipment:livestock', working: false, inventory: { kind: 'liquid', capacity: LIQUID_TANK_CAPACITY, icon: 'milk' } },
+  { id: 'baler', name: 'Baler', icon: 'baler', description: 'Picks up loose cut grass and compresses each 3,600 L into one bale.', gate: 'equipment:hay', working: true, articulation: { type: 'tow', axleOffset: 1.16 }, inventory: { kind: 'grass', capacity: BALER_STORAGE_CAPACITY, icon: 'grass', stateKey: 'balerLitres' } },
+  { id: 'liquid-tank', name: 'Water / Milk Tank', icon: 'milk-tank', description: 'Carries liquid products such as milk between livestock buildings and the Settlement Storehouse.', gate: 'equipment:livestock', working: false, articulation: { type: 'tow', axleOffset: 1.85 }, inventory: { kind: 'liquid', capacity: LIQUID_TANK_CAPACITY, icon: 'milk' } },
 ].map(item => ({ slot: 'tool', working: item.working ?? !['trailer', 'liquid-tank'].includes(item.id), ...item }));
 
 export const FRONT_EQUIPMENT = [

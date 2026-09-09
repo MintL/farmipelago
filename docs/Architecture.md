@@ -58,8 +58,37 @@ one world update reparents those same roots to their authored parents at zero
 offset, reveals the fixed bridge, changes lifecycle status to `attached`, and
 rebuilds the full static collider set. Vehicle models and their transient effect
 pools remain scene-owned and are asserted never to enter the arrival transform.
-There is no moving-ground physics. A passing candidate island may later need a
-more general transform model, but that belongs to step 2 and later.
+`src/physics/reference-frame.js` retains the world/reference coordinate boundary.
+Physics public vehicle and bale APIs use canonical world coordinates; Rapier
+owns moving-body translation. Passing islands use `addMovingIsland(..., false)`:
+they have zero colliders, so vehicles cannot land on them. Their groups follow
+`movingIslandPosition()` and `setMovingIslandVelocity()`.
+
+`src/world/islands/attachment-placement.js` owns tunable range, clearance and
+compactness weights, candidate bridge sockets and graph-safe release checks.
+`attachment-route.js` tests the entire incoming footprint in translation space,
+including a clearance margin around existing terrain and bridge blocks. It uses
+swept line-of-sight checks; blocked candidates are skipped without detours.
+Approach distance penalizes remote sockets alongside compactness scoring.
+Shape and orientation stay fixed. Final placements maintain a four-tile
+edge-to-edge shore clearance, with five-tile center-to-center bridge sockets.
+
+`attachment.js` owns selection, ghost, route animation, multi-neighbor chains and
+bridge timing. `src/ui/island-selection.js` supplies world raycasting, the small
+contextual action and stencil silhouette outlines. The existing intro camera
+consumes attachment arrival state and finishes by showing bridge construction.
+`src/app/attachment-camera.js` frames expansion chains across their gap, chooses
+one camera side at confirmation and fits all anchors to the viewport aspect.
+`attached-content.js` registers island-local terrain in the normal world grid,
+updates island capabilities, bridges and reservations, and rebuilds matching static
+colliders only when the arrival completes. Runtime topology serialization refreshes
+from these mutable records.
+
+Release removes every incident bridge and is allowed only if a graph traversal
+still reaches all retained islands from Farm. Field visuals, forage and constructed
+buildings move with the released group; vehicles are rescued with cargo retained.
+Reconnection restores those objects into the normal systems. Passing and released
+land remains transient until connected. Build mode advances physics; pause blocks it.
 
 The shared water shader renders and computes Fresnel in world space, but derives
 its wave and ripple pattern from world XZ minus the owning island presentation
@@ -67,6 +96,19 @@ offset. Each water draw supplies that offset from its water root without cloning
 the material. The moving Farm therefore carries its pattern with it, while a
 stationary island supplies zero offset and remains stable through camera and FOV
 changes.
+
+`src/world/water/waterfall.js` owns the waterfall's presentation records and fixed
+resources beneath that same water root. Each record retains its stable outlet,
+fall height, terrain-edge direction, one ten-instance water-segment mesh, and
+three reusable foam children. One shared 24-instance solid mist mesh serves the
+generated waterfall records. Render updates derive northeast air motion only
+from the opposite of the shared travel snapshot, join the segment endpoints on
+a nonlinear curve whose displacement grows down the fall, and recycle mist by
+rewriting fixed instance matrices. Reduced motion preserves a static backward
+lean and slower steady recycle with no turbulent variation. Because the
+segments, foam, and mist are children of the existing zero-offset water root,
+the opening arrival reparents the complete effect once and attachment restores
+the same objects without clones, persistence, collision, or position jumps.
 
 The app owns the opening camera and input lifecycle. It begins before the first
 render with both parked Settlement vehicles framed, eases its target toward the
@@ -80,13 +122,13 @@ clears held input, makes the HUD inert and invisible, and suppresses driving,
 jumping, tools, construction, vehicle switching, camera gestures, transfers,
 and contextual popups until the camera is back at its exact drive framing.
 
-`src/world/travel.js` owns the presentation-only southwest travel direction,
-accumulated visual distance, speed, and deterministic gust signal. The app
-advances it once per clamped render update and passes the same read-only
-snapshot to environment and vegetation presentation; island transforms,
-physics, saves, and encounter policy do not depend on it. On world
-initialization or regeneration, the app derives one stable travel frame from
-the union of the two island records' transformed bounds.
+`src/world/travel.js` owns a ten-minute clockwise travel heading, integrated
+X/Z displacement, scalar distance, speed and deterministic gust. Its read-only
+snapshot drives environment presentation and island traffic. Optional saved
+travel state restores phase and displacement before scene initialization. The
+farm's coordinates and camera orientation remain fixed. Pause and hidden tabs
+stop time; reduced motion retains the heading period with slower translation.
+The app derives the stable presentation frame from the starter island bounds.
 `src/world/environment/clouds.js` owns the cloud presentation behind the
 environment facade: 216 smaller distant clusters and 24 substantially larger
 near clusters use irregular layered silhouettes assembled from stepped runs.
@@ -95,8 +137,8 @@ each, for two bounded cloud draw calls and 1,648 total instances. Their spacing,
 lateral offsets, heights, aspect, silhouettes, and bob parameters are
 deterministically generated once; every formation remains aligned to the world
 grid and render updates only rewrite the fixed instance matrices. The distant
-field wraps northeast at a `.78`
-travel-distance multiplier, while the sparse near pass uses `1.9`; reduced
+field wraps in fixed X/Z coordinates at a `.78`
+displacement multiplier, while the sparse near pass uses `1.9`; reduced
 motion removes bob, lowers near contrast, and reduces its multiplier to `1.02`.
 Lighting retains its independently moving camera/gameplay focus, so camera
 rotation, vehicle switching, construction, and cinematics cannot shift the wrap
@@ -111,8 +153,9 @@ anchors from generated terrain metadata, excluding reserved land and restored
 building or pasture footprints. Each anchor retains its island presentation
 offset reference so the Farm's particles accompany its opening approach. Frame
 updates rewrite only the two fixed instance matrices from the shared travel
-direction, distance, and gust; they allocate no scene objects and perform no
-terrain, physics, camera, or vehicle queries. Day/night tinting is applied at
+direction, distance, and gust. Crossing a 22.5-degree heading sector refreshes
+the cached terrain-sensitive emission corridors; particles adopt new anchors at
+lifecycle boundaries. No scene objects are allocated during particle updates. Day/night tinting is applied at
 the environment facade. Each record carries seed-stable harmonic frequencies,
 amplitudes, and phases: dust follows a restrained broad lateral meander, while
 leaves use wider overlapping lateral waves and subtler vertical flutter. The
@@ -207,9 +250,11 @@ sleeping bale state includes `supportIslandId`, allowing a future moving island
 to carry supported objects without coupling Rapier to world generation.
 
 The two-island direction starts a new schema-0 save lineage at
-`farmipelago.gameState.v2`. Its validator requires exactly the configured Farm
-and Settlement records, their roles and capabilities, one resolved bridge
-connection, the environment phase, and the existing gameplay fields.
+`farmipelago.gameState.v2`. Its validator requires the configured Farm
+and Settlement records with their original roles and capabilities, and accepts
+additional seeded attached islands with validated generation settings and a
+connected bridge graph, plus the environment phase and existing gameplay fields.
+Confirmed arrivals store their destination and clear route for replay on reload.
 Settlement must be `attached`; Farm and bridge must coherently be either
 `approaching` or `attached`. An approaching save replays the deterministic
 presentation and camera sequence from its start, while an attached save restores
@@ -218,3 +263,121 @@ Building and vehicle island-local poses may only reference retained islands.
 The loader never reads, migrates, deletes, or overwrites the legacy
 `farmipelago.gameState` key; incompatible v2 data is removed from the v2 key
 only and replaced by a fresh farm.
+
+
+## Configurable island generation
+
+`generateIsland(seed, overrides = {})` in `src/world/generator.js`
+creates a natural island and returns its group, terrain, resolved `settings`,
+footprint radius, animation method and disposer. Omitted settings are randomized
+from a separate deterministic stream in `src/world/islands/generation-settings.js`.
+Decoration attempts call this entry point every twenty simulation seconds;
+the encounter scheduler generates its candidates independently.
+
+```js
+const island = generateIsland(seed, {
+  radius: 9,              // terrain tiles; nominal diameter is twice this
+  maxElevation: 3,        // whole levels above the base plane; zero is flat
+  terraceCoverage: .45,   // terrace radius as a fraction of island radius
+  undersideLayers: 8,     // whole layers below the soil
+  undersideTaper: .34,    // radius removed per underside layer
+  treeDensity: .34,       // multiplier on environmental tree probability
+  treeBaseChance: .006,   // additional tree probability before the shared cap
+  rockDensity: 1,
+  groundCoverDensity: .82,
+  moistureBias: 0,        // offset applied to the generated moisture field
+  sunlightBias: 0,
+  waterStyle: 'watercourse', // 'coast', 'watercourse', or 'none'
+});
+```
+
+The settings resolver validates supported names and bounded numeric values.
+Default random islands retain water and at least one raised level. A coastal
+lake that cannot fit a natural island falls back to the normal smaller
+watercourse. Terraces avoid the water route and its banks.
+
+The starter pair calls the same terrain and decoration builders with explicit
+`FARM_GENERATION` and `SETTLEMENT_GENERATION` presets. These match their previous
+radii (including the original seed jitter), zero added elevation, underside
+layers/taper, environmental biases, vegetation density and water styles. The
+original starter random sequence, field clearance and infrastructure placement
+remain intact. Passing-island settings define their local geometry and are retained when an
+island joins the persistent topology. Playable capabilities start after attachment.
+
+Natural islands build in a detached staging group with distinct `drifting-*`
+terrain IDs. `drifting.js` owns the encounter scheduler and decorative population.
+It validates a generated island against `attachmentCandidates`, chooses a nearby
+shore with a directly reachable connection pose, and schedules the approach by
+arrival time. Encounters validate a straight upstream/shore/downstream passage
+within 30 degrees of the same current used for new decorative lanes. The shore waypoint triggers
+arrival accounting; the remaining route and departure keep the same heading.
+Every waypoint follower and forecast uses one shared cruise: 1.8 times the world
+travel speed. Encounter timing holds one prepared candidate off-scene until
+launch rather than moving its spawn farther upstream, with at most two published
+incoming encounters and one-minute arrival targets. Its complete route is reserved
+while queued and revalidated before publication. Unpublished candidates are
+transient across reloads; already published traffic retains its saved routes.
+ETAs use the remaining shore-route distance at this common speed, including after
+restoring older saves or a safety stop.
+`approach-route.js` supplies fixed-step waypoint velocities. Published routes are
+immutable; the safety gate can stop an island without discarding its route.
+Candidate retries happen off-scene over separate updates. Entry and exit search
+outward from the passage waypoint to the current camera edge. Cached visual AABBs
+use a two-tile buffer; there is no enclosing farm-distance margin. Full-route
+solid/shore checks remain mandatory. Retirement requires reaching the planned
+exit outside the buffered view; there is no age cull.
+Published traffic never follows the camera; unsuccessful candidates are disposed.
+
+`motion-safety.js` owns cached solid envelopes, a spatial index for retained
+terrain/bridges/structures, continuous relative swept-AABB checks over conservative
+component columns, and corridor reservations. Columns retain island concavities;
+decorative traffic uses full solid bounds and a one-tile gap at publication and
+on every step. Three decorations are attempted initially, then one every twenty
+seconds, capped at four independently of encounters.
+Decorations use straight lanes fourteen tiles beyond the projected terrain
+shore, with the whole passage fixed before publication. Lane/frustum clipping
+rejects routes with less than eight tiles of potentially visible travel, keeping
+the four decorative slots for traffic that can cross the current gameplay view. All passage reservations last until retirement; they are never
+renewed mid-flight. The first encounter reserves its passage before decorations.
+`route-reservations.js` subdivides sweeps into at most two-tile segments, avoiding
+huge empty rectangles around diagonal routes. Full reserved volumes, including
+bridge extras, are compared symmetrically before acquisition or replacement.
+A refused reservation preserves the previous one. Release reservations are
+acquired before detaching land, and passage reservations before adding bodies.
+The debugger draws these same actual routes and reservation volumes.
+The fixed physics-step callback checks all traffic proposals together; yielding is
+rechecked after stopping a participant because that changes relative motion.
+Connection motion advances on the same fixed-step callback, with render updates
+applying the accepted pose. Complete pull corridors and future bridge volumes are
+reserved before a cinematic begins. Releases validate an exit or lift/exit/descent
+before detaching, including suspended buildings; the reference frame preserves Y
+velocity. Scene/mesh envelope construction stays outside numerical stepping.
+
+Optional `environment.travel` and `environment.encounters` records preserve travel
+phase/displacement and cadence without a schema-version change. Their absence uses
+initial defaults. The encounter record also stores the active passing population:
+seeds/settings, physics positions (including release height), route/index/speed,
+arrival metadata, reserved envelope bounds and scheduler clocks/sequence. Restore
+recreates moving bodies and the same complete route reservations after retained
+and pending attachment topology, before scheduling new traffic. Saves predating
+the population array retain the original fresh-approach behavior. The legacy
+per-island speed field is written with the shared cruise and no longer overrides
+runtime movement when loading older saves. No offline time
+is added to these clocks.
+
+### Island route debugger
+
+`island-debug.html` is an independent Vite entry using the production generator,
+physics, travel model, scheduler, route planner and attachment APIs. It never imports
+the app session or persistence. A flat orthographic X/Z renderer consumes generated
+terrain and the scheduler's read-only inspection snapshots. Those contain actual
+poses, desired routes, numerical forecasts, envelope bounds, corridor reservations,
+yield reasons and overlap diagnostics. Forecasts use copied positions and the same
+proposal/safety functions, without generation or live physics changes.
+
+A stable gameplay-sized perspective camera controls spawn visibility independently
+of debugger pan/zoom. The observer marker supplies the normal observer callback.
+Fast-forward performs additional 1/60-second steps inside a bounded render-frame
+budget and displays the effective rate instead of enlarging timesteps. Reset
+releases old physics, islands, drawing buffers and route resources. Connect/Release
+use the production attachment APIs to inspect expanding topology manually.

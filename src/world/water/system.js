@@ -1,11 +1,12 @@
 import { TILE, THREE, box, gridKey, mats } from '../../core/shared.js';
 import { shuffle } from '../../core/random.js';
+import { addWaterfall } from './waterfall.js';
 
 export const WATER_DEPTH = .22;
 
 function applyWaterPatternOffset(renderer, scene, camera, geometry, material) {
   const offset = this.userData.waterPatternRoot?.userData.waterPatternOffset;
-  material.uniforms.patternOffset.value.set(offset?.x || 0, offset?.z || 0);
+  material.uniforms?.patternOffset?.value.set(offset?.x || 0, offset?.z || 0);
 }
 
 function addPatternedWaterMesh(water, mesh) {
@@ -34,6 +35,7 @@ export function addWatercourse(cells, island, terrain, water, waterMotion, water
     if (!route) continue;
 
     const waterKeys = new Set([...lakeKeys, ...route.path.map(tile => gridKey(tile.gx, tile.gz))]);
+    if (!hasEnclosedWatercourse(waterKeys, route, terrain, island.id)) continue;
     for (const key of waterKeys) {
       const tile = terrain.get(key);
       excavateWaterTile(tile);
@@ -65,37 +67,31 @@ export function addStarterCoastLake(cells, island, terrain, water, waterMotion, 
     [-1, 1], [0, 1], [1, 1], [2, 1],
     [0, 2], [1, 2],
   ];
-  const cellKeys = new Set(cells.map(cell => gridKey(cell.gx, cell.gz)));
-  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const fitsLake = (candidate, requireBank, minimumSouth = 4) => {
+  const fitsLake = (candidate, minimumSouth = 4) => {
     if (candidate.dz < minimumSouth) return false;
     const lakeCells = lakeOffsets.map(([dx, dz]) => ({
       gx: candidate.gx + dx,
       gz: candidate.gz + dz,
     }));
     if (lakeCells.some(cell => Math.abs(cell.gx - island.cx) <= 3 && Math.abs(cell.gz - island.cz) <= 3)) return false;
-    return lakeCells.every(cell => cellKeys.has(gridKey(cell.gx, cell.gz)) && (!requireBank ||
-      directions.every(([dx, dz]) => cellKeys.has(gridKey(cell.gx + dx, cell.gz + dz)))));
+    return lakeCells.every(cell => {
+      const tile = terrain.get(gridKey(cell.gx, cell.gz));
+      return tile?.islandId === island.id && hasSolidSurroundings(tile, terrain, island.id);
+    });
   };
   const target = { dx: island.r * .2, dz: island.r * .52 };
   const sortSouthEast = (first, second) =>
     Math.hypot(first.dx - target.dx, first.dz - target.dz) -
       Math.hypot(second.dx - target.dx, second.dz - target.dz) ||
     second.dz - first.dz;
-  const bankedCandidates = cells.filter(candidate => fitsLake(candidate, true)).sort(sortSouthEast);
-  // Extremely notched seeds may not have room for a complete one-tile bank;
-  // preserve the full lake footprint and southern placement in that case.
+  const bankedCandidates = cells.filter(candidate => fitsLake(candidate)).sort(sortSouthEast);
+  // Notched shores may require moving inland, but never dropping lake banks.
   const bankedKeys = new Set(bankedCandidates.map(candidate => gridKey(candidate.gx, candidate.gz)));
-  const fallbackCandidates = cells
-    .filter(candidate => fitsLake(candidate, false) && !bankedKeys.has(gridKey(candidate.gx, candidate.gz)))
-    .sort(sortSouthEast);
-  const candidateKeys = new Set([...bankedCandidates, ...fallbackCandidates]
-    .map(candidate => gridKey(candidate.gx, candidate.gz)));
   const edgeCaseCandidates = cells
-    .filter(candidate => fitsLake(candidate, false, 3) && !candidateKeys.has(gridKey(candidate.gx, candidate.gz)))
+    .filter(candidate => fitsLake(candidate, 3) && !bankedKeys.has(gridKey(candidate.gx, candidate.gz)))
     .sort(sortSouthEast);
   const riverSourceOffsets = [[4, 0], [3, -1], [3, 1], [2, -2], [2, 2]];
-  const candidates = [...bankedCandidates, ...fallbackCandidates, ...edgeCaseCandidates];
+  const candidates = [...bankedCandidates, ...edgeCaseCandidates];
   let selection = null;
 
   for (const minimumPathLength of [3, 2]) {
@@ -108,6 +104,9 @@ export function addStarterCoastLake(cells, island, terrain, water, waterMotion, 
           source, lakeKeys, terrain, island.id, true, { x: 1, z: 0 }, minimumPathLength
         ))
         .filter(Boolean)
+        .filter(route => hasEnclosedWatercourse(
+          new Set([...lakeKeys, ...route.path.map(tile => gridKey(tile.gx, tile.gz))]), route, terrain, island.id
+        ))
         .sort((first, second) => first.path.length - second.path.length);
       if (!routes.length) continue;
       selection = { lakeKeys, route: routes[0] };
@@ -135,6 +134,26 @@ export function addStarterCoastLake(cells, island, terrain, water, waterMotion, 
   });
   addWaterfall(route.path.at(-1), route.outlet, water, waterfalls, random);
   return waterKeys;
+}
+
+function hasEnclosedWatercourse(waterKeys, route, terrain, islandId) {
+  const end = route.path.at(-1);
+  const directions = [{ x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 }];
+  let exposedEdges = 0;
+  for (const key of waterKeys) {
+    const tile = terrain.get(key);
+    if (!tile || tile.islandId !== islandId) return false;
+    for (const direction of directions) {
+      const neighborKey = gridKey(tile.gx + direction.x, tile.gz + direction.z);
+      const neighbor = terrain.get(neighborKey);
+      if (!neighbor || neighbor.islandId !== islandId) {
+        if (tile !== end || direction.x !== route.outlet.x || direction.z !== route.outlet.z) return false;
+        exposedEdges++;
+      }
+      else if (!waterKeys.has(neighborKey) && neighbor.topY < tile.topY - .01) return false;
+    }
+  }
+  return exposedEdges === 1;
 }
 
 function excavateWaterTile(tile) {
@@ -244,45 +263,4 @@ function addRiverDrop(from, to, direction, water) {
   else if (direction.z < 0) sheet.rotation.y = Math.PI;
   sheet.name = 'river-drop';
   addPatternedWaterMesh(water, sheet);
-}
-
-function addWaterfall(tile, direction, water, waterfalls, random) {
-  const height = 15;
-  const atEastWestEdge = direction.x !== 0;
-  const waterfall = box(
-    atEastWestEdge ? .07 : TILE * .78,
-    height,
-    atEastWestEdge ? TILE * .78 : .07,
-    mats.water,
-    false,
-    true,
-  );
-  waterfall.position.set(
-    tile.x + direction.x * (TILE * .5 + .02),
-    tile.topY - height * .5 + .02,
-    tile.z + direction.z * (TILE * .5 + .02),
-  );
-  addPatternedWaterMesh(water, waterfall);
-
-  const streams = [];
-  for (let index = 0; index < 3; index++) {
-    const stream = box(
-      atEastWestEdge ? .084 : .11,
-      1.15,
-      atEastWestEdge ? .11 : .084,
-      mats.waterFoam,
-      false,
-      false,
-    );
-    const across = (index - 1) * .22;
-    stream.position.set(
-      waterfall.position.x + (atEastWestEdge ? 0 : across),
-      tile.topY - random() * height,
-      waterfall.position.z + (atEastWestEdge ? across : 0),
-    );
-    stream.renderOrder = 2;
-    water.add(stream);
-    streams.push({ mesh: stream, phase: random() });
-  }
-  waterfalls.push({ streams, topY: tile.topY + .05, height });
 }

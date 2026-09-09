@@ -9,15 +9,15 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.280</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.353</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
-        <section id="milestoneTracker" data-complete="false" aria-live="polite">
-          <div id="milestoneHeader"><strong id="milestoneTitle">Getting started</strong></div>
-          <div id="milestoneRows"></div>
-        </section>
       </div>
       <div id="topActions">
+        <div id="zoomControls" role="group" aria-label="Camera zoom">
+          <button id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>
+        </div>
         <div id="fieldControls">
           <div id="buildingControl">
             <button id="buildingToggle" type="button" aria-label="Open building menu" aria-pressed="false" title="Buildings">
@@ -32,9 +32,13 @@
     </header>
     <div id="viewHint"></div>
     <aside id="siloInventory" hidden aria-live="polite">
+      <div id="villageNeeds" hidden>
+        <strong class="villageTitle">Village · Tier 1</strong>
+        <div id="villageNeedsGrid" role="group" aria-label="Village needs"></div>
+      </div>
       <div id="siloActions">
         <button id="siloLoad" type="button" aria-label="Load selected crop" title="Load selected crop"><svg class="icon" aria-hidden="true"><use href="#icon-load"></use></svg></button>
-        <button id="siloUnload" type="button" aria-label="Unload combine into silo" title="Unload combine into silo"><svg class="icon" aria-hidden="true"><use id="siloUnloadIconUse" href="#icon-silo-unload"></use></svg></button>
+        <button id="siloUnload" type="button" aria-label="Unload combine into silo" title="Unload combine into silo"><svg class="icon" aria-hidden="true"><use id="siloUnloadIconUse" href="#icon-silo-unload"></use></svg><span class="villageDeliverLabel">Deliver</span></button>
       </div>
       <button id="previousSiloCrop" type="button" aria-label="Previous stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
       <div class="siloInventoryCrop"><svg id="siloCropIcon" class="icon" role="img" aria-label="Corn"><use id="siloCropIconUse" href="#icon-corn"></use></svg><strong id="siloCropValue">0</strong></div>
@@ -42,6 +46,8 @@
       <div id="barnStorageRows" hidden></div>
     </aside>
     <div id="constructionPopup" hidden aria-live="polite">
+      <p id="demolitionWarning" hidden></p>
+      <button id="constructionDemolish" type="button" hidden>Demolish</button>
       <button id="constructionCancel" type="button">Cancel</button>
       <button id="constructionUndo" type="button" aria-label="Back to building placement" title="Back to building placement">
         <svg class="icon" aria-hidden="true"><use href="#icon-undo"></use></svg>
@@ -154,7 +160,7 @@
             <div id="controlsList" hidden>
               <strong>Drive</strong><span>WASD, arrow keys, or the fixed touch joystick</span>
               <strong>Jump</strong><span>Space or jump button</span>
-              <strong>Camera</strong><span>Two-finger swipe left or right over the world, or use [ and ], to rotate 90°</span>
+              <strong>Camera</strong><span>Two-finger swipe left or right over the world, or use [ and ], to rotate 90°. Pinch over the world, scroll, or use + / − to zoom in driving and construction views.</span>
               <strong>Front tool</strong><span>Q or the front action button</span>
               <strong>Rear tool</strong><span>E or the rear action button</span>
               <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
@@ -194,11 +200,8 @@
                   <span><strong>24°</strong><small>Strong diorama</small></span><small class="debugUnlockState">Select</small>
                 </button>
               </div>
-              <strong class="debugSectionLabel">Active milestone</strong>
-              <p class="debugIntro">Selecting a milestone switches immediately and clears its current delivery progress.</p>
-              <div id="debugMilestoneList" aria-label="Milestone override"></div>
               <strong class="debugSectionLabel">Unlocks</strong>
-              <p class="debugIntro">Overrides unlock an option without completing its delivery. Normal progression unlocks remain unchanged.</p>
+              <p class="debugIntro">Preview capabilities planned for future islands. Starter and previously earned capabilities remain unlocked.</p>
               <div id="debugUnlockList" aria-label="Unlockable overrides"></div>
               <button id="clearUnlockOverrides" class="button" type="button" hidden>Clear overrides</button>
             </div>
@@ -217,22 +220,6 @@
         </div>
       </section>
 
-      <section id="celebrationDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="celebrationHeading" hidden>
-        <header class="dialogHeader">
-          <div><span class="eyebrow" id="celebrationEyebrow">Shipment complete</span><h1 class="dialogTitle" id="celebrationHeading">Milestone complete</h1></div>
-        </header>
-        <div id="celebrationBody">
-          <p class="celebrationCopy" id="celebrationCopy"><strong id="celebrationTitle"></strong> has expanded what this Farmipelago can grow.</p>
-          <span class="celebrationSectionLabel" id="celebrationUnlocksLabel">Now available</span>
-          <ul id="celebrationUnlocks" aria-label="Newly available capabilities"></ul>
-          <div class="pauseActions celebrationActions">
-            <button id="celebrationContinue" class="pauseAction" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>
-              <span><strong id="celebrationContinueLabel">Continue farming</strong><small>Return to the Farmipelago</small></span>
-            </button>
-          </div>
-        </div>
-      </section>
     </div>
 
   </div>

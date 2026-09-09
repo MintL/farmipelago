@@ -121,7 +121,7 @@
 .button.danger { border-color: rgba(159, 63, 57, .4); color: var(--danger); }
 .button:disabled { opacity: .38; }
 
-#pauseDialog, #celebrationDialog {
+#pauseDialog{
   width: min(520px, 100%);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -130,40 +130,6 @@
   background: transparent;
   box-shadow: none;
   color: #292b25;
-}
-#celebrationDialog { width: min(440px, 100%); }
-#celebrationBody {
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 10px 16px 16px;
-  scrollbar-color: rgba(48, 55, 43, .35) transparent;
-}
-.celebrationCopy {
-  margin: 0;
-  padding: 14px;
-  border-top: 1px solid var(--line-strong);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.celebrationCopy strong { color: var(--ink); }
-.celebrationSectionLabel {
-  display: block;
-  padding: 13px 14px 7px;
-  color: var(--accent);
-  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-}
-#celebrationUnlocks {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--line-strong);
-  border-bottom: 1px solid var(--line-strong);
-  list-style: none;
 }
 .unlockItem {
   min-height: 54px;
@@ -178,10 +144,9 @@
 .unlockItem:last-child { border-bottom: 0; }
 .unlockItem strong { font-size: 12px; letter-spacing: .01em; }
 .unlockIcon { width: 24px; height: 24px; flex: 0 0 auto; color: var(--accent); }
-.celebrationActions { margin-top: 12px; }
-#pauseDialog .dialogHeader, #celebrationDialog .dialogHeader { min-height: 58px; padding: 4px 10px 10px 14px; border: 0; }
-#pauseDialog .dialogHeader .eyebrow, #celebrationDialog .dialogHeader .eyebrow { color: var(--accent); }
-#pauseDialog .dialogHeader .eyebrow::before, #celebrationDialog .dialogHeader .eyebrow::before {
+#pauseDialog .dialogHeader{ min-height: 58px; padding: 4px 10px 10px 14px; border: 0; }
+#pauseDialog .dialogHeader .eyebrow{ color: var(--accent); }
+#pauseDialog .dialogHeader .eyebrow::before{
   content: "";
   display: inline-block;
   width: 5px;
@@ -190,7 +155,7 @@
   vertical-align: middle;
   background: var(--accent);
 }
-#pauseDialog .dialogTitle, #celebrationDialog .dialogTitle {
+#pauseDialog .dialogTitle{
   margin: 5px 0 0 17px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 26px;
@@ -261,7 +226,7 @@
 .debugTimeTicks { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
 .debugIntro { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
 #debugCameraPresets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-#debugUnlockList, #debugMilestoneList { display: grid; gap: 6px; }
+#debugUnlockList { display: grid; gap: 6px; }
 .debugSectionLabel { color: var(--ink); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .debugUnlock {
   width: 100%;

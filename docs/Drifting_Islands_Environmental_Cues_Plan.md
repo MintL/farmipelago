@@ -1,10 +1,49 @@
 # Drifting Islands — Environmental Cues Implementation Plan
 
-**Status:** In progress; Steps 1–2 accepted, Step 3 implementation complete with manual visual/performance acceptance pending
+**Status:** Steps 1–4 accepted by the user; Step 5 rejected and completely removed after visual review; Step 6 rejected and completely removed at user request
 **Scope:** Improve the fixed Farmipelago's illusion of southwest travel without
 moving playable islands or gameplay state  
 **Execution rule:** Complete, build, manually verify, and record each numbered
 step before starting the next one
+
+## Current priority — Boardable passing islands
+
+On 2026-09-08 the user prioritized physical passing-island boarding. Build 0.317
+adds moving terrain/prop collision, near-shore routes, vehicle riding, departure
+cleanup and spawn-safe reloads. Cloud-shade visual acceptance remains separate.
+Permanent attachment and encounter farming are later slices.
+
+Build 0.319 replaces the moving terrain triangle mesh with merged solid
+rectangles after a report of blocked forward driving. Heights, shores, basin
+floors and terrace walls retain their generated dimensions. Production build
+validation passes; manual confirmation of the reported issue remains pending.
+
+Build 0.320 follows the user's requested active-island reference model. Confirmed
+landing fixes that island in physics and gives other islands relative velocities;
+the permanent pair moves as one body. The reference persists through jumps and
+changes on landing, vehicle switching or rescue. Active islands cannot despawn.
+Canonical world/save coordinates are preserved through a physics conversion
+boundary, and camera smoothing compensates for reference travel.
+
+Build 0.321 removes the first-two-island near-boarding spawn shortcut. Every
+spawn now checks the current camera frustum against the complete island bounds
+plus an eight-tile margin and moves farther upstream if needed. Production
+build validation passes. Manual checks remain: watch initial/later spawns in
+portrait and landscape, all camera orientations/zoom levels, construction view
+and while aboard a drifting island; confirm silhouettes enter from off-screen
+and approach lanes still offer the same boarding distance.
+
+Manual acceptance remains pending: confirm the boarded island stays still while
+the starter pair moves; drive and jump terraces; jump back and verify the frame
+switch is seamless; switch vehicles on different islands; stay aboard past the
+normal departure boundary; check parked vehicles and loose/carried cargo;
+then jump out and back on both near routes;
+park and switch vehicles aboard; jump terraces and inspect shore/tree/rock
+collision; miss a jump and confirm rescue; let an occupied island depart;
+reload aboard with cargo; pause/resume and build mode; regenerate without ghost
+colliders; repeat keyboard and touch driving at phone width and compare FPS.
+Also run the full `AGENTS.md` regression checklist. No gameplay automation was
+performed for this change.
 
 ## Outcome
 
@@ -789,13 +828,13 @@ pass.
 
 ### Step 3 verification record
 
-- Status: **Implementation complete; manual visual/performance acceptance pending**
+- Status: **Accepted by the user for Step 4 progression**
 - Date/build: 2026-09-06 / 0.279
 - Tester and device/browser: Static/resource verification only; human visual test pending
 - Plane elevation / size / repeat span / accepted texture: `y = -54` / 720×720 world units / 160 world units / one 512×512 RGBA diffuse containing 128×128 logical tiles (four texels / 1.25 world units each), using ten deterministic dominant-terrain-class mip levels, nearest texel sampling, linear mip-level blending, and anisotropy capped at 4
 - Plateau grid / levels / visible faces / triangles / draws: 64×64 cells at 2.5 world units, five one-unit levels (`0–4`); verification seed 99173 has level counts `2,580 / 409 / 296 / 240 / 571`, 1,516 source top faces and 841 source exposed-side faces. Across fixed 3×3 coverage that is 13,644 tops / 7,569 sides, 27,288 top triangles / 15,138 side triangles, and two draws.
 - Tree instance cap / accepted instances / draws: hard cap 1,000 records per repeat cell; the seamless forest-density mask plus deterministic per-tile occupancy yields 878 records for seed 99173, repeated as 7,902 combined trees across 3×3 coverage in one instanced draw. The combined brown-trunk/green-canopy source geometry is 24 triangles and approximately one unit wide, with restrained scale and quarter-turn yaw variation.
-- Step 2 FPS / accepted FPS: Step 2 FPS was not recorded; Step 3 human FPS and frame-pacing comparison pending
+- Step 2 FPS / accepted FPS: Step 2 FPS and Step 3 accepted FPS were not recorded
 - Direction, distance, and reachability notes: Code inspection confirms a `.34` multiplier on `-travelState.direction`, the adjusted distant plane elevation 54 units below terrain, and one fixed 80-unit horizontal bias toward the initial default-view horizon. The bias is derived once and does not follow camera rotation, vehicles, or later focus changes. There is no gameplay, physics, raycast, or persistence integration; human perception and reachability judgment remains pending.
 - Wrap and synchronization notes: One modulo-wrapped world offset drives the shared plateau/tree root and its exact negative divided by the 160-unit span drives the diffuse texture. One hundred deterministic seed/reinitialization checks retained the quantized height counts, density-controlled tree placements, two module children, four draws, four intentionally fog-disabled distant materials, and clean disposal. Tree populations ranged from 802 to 980 records for seeds 0–99, all remained on grass-compatible diffuse tiles, all cached a matching quantized plateau height, and the nine repeated transforms and tree instance buffers stayed fixed through travel updates. Focused checks confirm periodic neighbor lookup, tile-aligned plateau edges, jittered tree anchors, invariant geometry/instance buffers, and matching diffuse/root phases across wrap boundaries; the required long visual wrap check remains manual.
 - Debug readability tuning: The supplied build 0.269 phone screenshot showed one or two enormous pale geometric regions and no useful cliff/tree scale cues. Build 0.270 raises the periodic terrain harmonics from continent-scale one-to-three-cycle fields to roughly three-to-eight-cycle fields, strengthens the raw green/blue/brown/forest colors, changes the plane material tint to white, shrinks cliff footprints from 12–20 to 6–12 units while raising them from 3–5.5 to 4–7 units, and arranges the unchanged 36-tree cap into nine deterministic groves with larger `3.2 × 2.1 × 2.6` block canopies. A 100-seed resource check retained all counts and the same five draws.
@@ -809,7 +848,7 @@ pass.
 - No-fog visibility correction: Build 0.277 retains the complete build 0.276 footprint reduction but disables fog again on the diffuse plane, plateau tops, plateau sides, and combined trees. Visual feedback established that fog made the saturated terrain colors disappear. Global fog is unchanged; fixed horizon-biased coverage beyond the camera frustum hides finite backdrop edges instead.
 - Draw-distance correction: Build 0.278 changes the main gameplay camera from `near = 0.1 / far = 200` to `near = 0.1 / far = 400` and enlarges the still-two-triangle diffuse plane from 480 to 720 units. Static analysis found top-screen intersection depths of 207.9–252.9 in the drive presets, 232.6 in construction, up to 239.7 in the opening goals, 302.6 in the stable milestone framing, and 365.5 during the widest milestone-entry transition. The 400-unit far plane covers those cases with margin. A 720-unit square retains at least 421.7 units of projected horizon coverage across the four quarter-turn headings before bounded focus displacement. The 3×3 detailed field deliberately remains unchanged, so the extreme newly visible band may use only the periodic diffuse texture. Increasing the far plane adds no scene objects or draw calls; it exposes more fragments of already-submitted distant meshes and therefore still requires phone fill-rate verification. Keeping `near = 0.1` avoids close-object clipping, and the resulting 4,000:1 ratio remains modest for the existing depth buffer.
 - Six-unit depth adjustment: Build 0.279 lowers the complete distant surface from `y = -48` to `y = -54`, keeping plane and landmark root phase-locked. Recalculated top-screen depths are 224.1–275.9 across drive presets, 250.5 in construction, up to 260.0 in the opening goals, 334.1 in the stable milestone framing, and 394.0 during the widest milestone-entry transition. The unchanged `far = 400` retains a 6.0-unit camera-depth margin in the modeled worst case. The 720-unit plane still supplies at least 421.7 units of projected horizon coverage; its maximum modeled top-ray intersection extends 372.3 horizontal units beyond the target. The 3×3 detail boundary remains unchanged and the expanded extreme band is intentionally diffuse-only.
-- Accepted limitations: One 512×512 RGBA diffuse texture with a palette-preserving manual mip chain, one 720-unit two-triangle base plane at `y = -54`, four draws, one direct scene child (six module nodes), and 232,076 effective triangles for verification seed 99173: two base-plane, 27,288 plateau-top, 15,138 plateau-side, and 189,648 instanced-tree triangles. The 3×3 field reduces repeated tree instances to 7,902 and total effective triangles by 64.0% from build 0.275. The main camera uses `near = 0.1 / far = 400`; global fog remains unchanged and all four distant materials intentionally use `fog: false`. Manual phone, cinematic, day/night, reduced-motion, worst-case far-margin, texture-only transition, edge-coverage, fill-rate, 15-minute FPS, and full gameplay regression checks remain outstanding, so Step 4 stays blocked.
+- Accepted limitations: One 512×512 RGBA diffuse texture with a palette-preserving manual mip chain, one 720-unit two-triangle base plane at `y = -54`, four draws, one direct scene child (six module nodes), and 232,076 effective triangles for verification seed 99173: two base-plane, 27,288 plateau-top, 15,138 plateau-side, and 189,648 instanced-tree triangles. The 3×3 field reduces repeated tree instances to 7,902 and total effective triangles by 64.0% from build 0.275. The main camera uses `near = 0.1 / far = 400`; global fog remains unchanged and all four distant materials intentionally use `fog: false`. The user accepted Step 3 for progression with the phone, cinematic, day/night, reduced-motion, worst-case far-margin, texture-only transition, edge-coverage, fill-rate, 15-minute FPS, and full gameplay regression checks not separately recorded.
 
 ## Step 4 — Trail the Waterfall and Mist Backward
 
@@ -872,13 +911,47 @@ not change water gameplay, terrain, collision, splash physics, or saved state.
 
 ### Step 4 verification record
 
-- Status: **Blocked by Step 3 acceptance**
-- Date/build:
-- Tester and device/browser:
-- Step 2 FPS / accepted FPS:
-- Notes and accepted limitations:
+- Status: **Accepted by the user on 2026-09-08**
+- Acceptance: Explicit user approval to proceed to Step 5; historical unrecorded FPS/device data below is not inferred.
+- Date/build: 2026-09-07 / 0.281
+- Tester and device/browser: Static/resource verification only; human visual test pending
+- Step 3 FPS / accepted FPS: Step 3 FPS was not recorded; Step 4 human FPS and frame-pacing comparison pending
+- Notes and accepted limitations: The one generated starter waterfall replaces
+  its single rigid 15-unit sheet with ten connected voxel-water segments in one
+  instanced draw while retaining the three reusable foam-stream draws. One new
+  24-instance solid spray pool adds one draw, one box geometry, and one local
+  opaque material derived from the existing foam palette. The waterfall total
+  is five draws: one segmented water sheet, three foam streams, and one mist
+  pool, a net increase of one draw and one water-root child from the prior
+  effect. Every frame rewrites only ten segment matrices, three existing foam
+  transforms, and 24 mist matrices. The sheet's first curve point remains at
+  the stable terrain outlet; horizontal displacement grows quadratically to a
+  1.45-unit lower-fall trail plus at most .22 shared-gust and .045 sine
+  variation. Direction is normalized `-travelState.direction`, so the configured
+  southwest vector `(-.707, +.707)` produces northeast trailing `(+.707,
+  -.707)`. Reduced motion holds the 1.45-unit curve static, removes turbulent
+  spread and pulses, and recycles the mist at 55% of normal speed. All segment,
+  foam, and mist objects are children of the existing Farm-owned water root, so
+  the established arrival reparenting, attachment restoration, refresh, and
+  regeneration disposal boundaries apply without another effect root. Water
+  gameplay, terrain, collision, splash physics, persistence, camera/backdrop,
+  and Step 5 remain unchanged. Focused static checks confirm that east/west
+  outlets retain a 0.78-unit Z-wide / 0.07-unit X-thin sheet and north/south
+  outlets retain a 0.78-unit X-wide / 0.07-unit Z-thin sheet while their segment
+  centers trail northeast. Same-seed generation produced identical segment and
+  mist matrices; 1,000 updates retained the same children, geometry, material,
+  and instance counts. Generated opening, completed attachment, attached
+  refresh, and new-seed regeneration checks each found one water root, one
+  segment mesh, and one mist mesh, with both effects parented directly to the
+  water root and no stale Farm root after regeneration. Manual
+  direction/readability, arrival, day/night, phone, reduced-motion, two-minute
+  gust, 15-minute performance, and complete gameplay regression checks remain
+  outstanding.
 
 ## Step 5 — Add Distant Rock and Debris Silhouettes
+
+**Closed: rejected and removed.** The proposal below is retained as historical
+design context, not an implemented feature or instruction to resume work.
 
 ### Goal
 
@@ -941,13 +1014,26 @@ Create a world-owned far-scenery module composed by the environment.
 
 ### Step 5 verification record
 
-- Status: **Blocked by Step 4 acceptance**
-- Date/build:
-- Tester and device/browser:
-- Step 3 FPS / accepted FPS:
-- Notes and accepted limitations:
+- Status: **Rejected by the user after visual review; completely removed**
+- Date/removal build: 2026-09-08 / 0.314 → 0.315; the current concurrent build version was incremented once, not reverted.
+- Decision: The user rejected the distant rock/debris layer and explicitly requested its removal.
+- Removal: Deleted the dedicated module and removed its environment import,
+  construction, scene addition, palette, update, and travel-frame hooks. Removed
+  its README, Architecture, and GDD implementation claims. No dormant code,
+  instances, geometries, materials, or draw calls remain for Step 5 (all zero).
+- Preserved: Accepted Steps 1–4, including waterfall behavior and budgets,
+  plus concurrent unrelated gameplay, UI, tooling, and documentation changes.
+- Validation: `npm run build` and `git diff --check` passed. Static checks
+  confirmed the module is absent and no Step 5 symbols/resources remain in
+  source or the rebuilt output; player-facing implementation claims are removed.
+  Vite emitted its existing large-chunk advisory.
+  No browser automation or new visual/FPS acceptance is claimed.
+- Next step: The user subsequently authorized trying Step 6; Step 5 remains removed.
 
 ## Step 6 — Prototype Lightweight Moving Cloud Shadows
+
+**Closed: rejected and removed at user request.** The proposal below is retained
+as historical design context, not an active implementation.
 
 ### Goal
 
@@ -1005,7 +1091,7 @@ Keep the effect only if all are true:
 - The patch does not look like a weather hazard, crop status, selection overlay,
   lighting bug, or cloud physically passing below the ground.
 - It remains subordinate to real sun/moon shadows and local lighting.
-- Phone frame pacing remains acceptably close to the accepted Step 5 baseline.
+- Phone frame pacing remains acceptably close to the post-removal Step 4 baseline.
 - Day/night, fog, reduced motion, refresh, and regeneration behave correctly.
 
 If any criterion cannot be met after one bounded tuning pass, remove the
@@ -1024,19 +1110,25 @@ prototype, record the reason, and close the step as a verified no-go.
 4. Inspect dawn, day, dusk, and night, including moving real celestial shadows.
 5. Repeat at a narrow phone viewport and with reduced motion.
 6. Refresh, regenerate, pause/resume, and run for 15 minutes while comparing FPS
-   and frame pacing with the accepted Step 5 baseline.
+   and frame pacing with the post-removal Step 4 baseline.
 7. Re-run the complete project manual gameplay checklist from `AGENTS.md`.
 8. Record **accepted** or **removed/no-go** with the evidence. If removed, verify
    the clean post-removal build and scene before closing the step.
 
 ### Step 6 verification record
 
-- Status: **Blocked by Step 5 acceptance**
-- Decision: Accepted / Removed as no-go
-- Date/build:
-- Tester and device/browser:
-- Step 4 FPS / prototype FPS / final FPS:
-- Evidence and rationale:
+- Status: **Rejected and completely removed at user request**
+- Decision: Removed as no-go; the user requested reverting the prototype.
+- Date/removal build: 2026-09-08 / 0.317 → 0.318; preserved the current concurrent version and incremented once.
+- Removal: Deleted the shade module, removed its environment lifecycle hooks,
+  and restored the generator's original terrain-top material construction.
+  No shader injection, shade uniforms, cache-key overrides, resources or draws
+  remain from Step 6. Removed prototype claims from README, Architecture and GDD.
+- Preserved: Accepted Steps 1–4 and all concurrent unrelated changes. Step 5
+  remains removed. No visual/FPS acceptance is claimed for the rejected prototype.
+- Validation: `npm run build` and `git diff --check` passed. Static checks
+  confirm no shade module or shader/lifecycle symbols remain in source or rebuilt
+  output. Vite emitted its existing large-chunk advisory. No browser automation.
 
 ## Final Integration Gate
 

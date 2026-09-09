@@ -1,4 +1,5 @@
 import { THREE } from '../../core/shared.js';
+import { TRAVEL_DIRECTION } from '../travel.js';
 
 const DISTANT_CLOUD_COUNT = 216;
 const NEAR_CLOUD_COUNT = 24;
@@ -106,6 +107,7 @@ function spacedPositions(count, salt, wideGapIndexes = []) {
 
 function createCloudRecords({ count, salt, silhouettes, near = false }) {
   const positions = spacedPositions(count, salt, near ? [2, 7] : [13, 38, 59]);
+  const lateralPositions = spacedPositions(count, salt + 97);
   let instanceCount = 0;
   const clouds = positions.map((s, index) => {
     const silhouette = silhouettes[Math.floor(hash01(index, salt + 1) * silhouettes.length)];
@@ -122,6 +124,8 @@ function createCloudRecords({ count, salt, silhouettes, near = false }) {
     const cloud = {
       s,
       lane,
+      homeX: s,
+      homeZ: lateralPositions[(index * (near ? 7 : 79)) % count],
       y: near ? -4.2 - hash01(index, salt + 9) * 3.8 : -18 - hash01(index, salt + 9) * 12,
       width,
       height,
@@ -188,11 +192,11 @@ export function createCloudSystem({ reducedMotion = false } = {}) {
   const transform = new THREE.Object3D();
   const frame = { centerX: 0, centerZ: 0, halfTravelSpan: 180 };
 
-  const positionBand = (band, elapsed, distance, motionX, motionZ, lateralX, lateralZ, speed) => {
+  const positionBand = (band, elapsed, offsetX, offsetZ, speed) => {
     for (const cloud of band.clouds) {
-      const along = wrappedCoordinate(cloud.s * frame.halfTravelSpan + distance * speed, frame.halfTravelSpan);
-      const x = frame.centerX + motionX * along + lateralX * cloud.lane;
-      const z = frame.centerZ + motionZ * along + lateralZ * cloud.lane;
+      // Fixed two-dimensional distribution; changing flow translates, never rotates it.
+      const x = frame.centerX + wrappedCoordinate(cloud.homeX * frame.halfTravelSpan - offsetX * speed, frame.halfTravelSpan);
+      const z = frame.centerZ + wrappedCoordinate(cloud.homeZ * frame.halfTravelSpan - offsetZ * speed, frame.halfTravelSpan);
       const y = cloud.y + (reducedMotion ? 0 : Math.sin(elapsed * cloud.bobSpeed + cloud.bobPhase) * cloud.bobAmount);
       for (let lobeIndex = 0; lobeIndex < cloud.silhouette.length; lobeIndex++) {
         const [offsetX, offsetY, offsetZ, scaleX, scaleY, scaleZ] = cloud.silhouette[lobeIndex];
@@ -213,24 +217,10 @@ export function createCloudSystem({ reducedMotion = false } = {}) {
   };
 
   const update = (elapsed, travelState) => {
-    const distance = Number(travelState?.distance) || 0;
-    const directionX = Number(travelState?.direction?.x) || 0;
-    const directionZ = Number(travelState?.direction?.z) || 0;
-    const motionX = -directionX;
-    const motionZ = -directionZ;
-    const lateralX = -motionZ;
-    const lateralZ = motionX;
-    positionBand(distant, elapsed, distance, motionX, motionZ, lateralX, lateralZ, DISTANT_SPEED);
-    positionBand(
-      near,
-      elapsed,
-      distance,
-      motionX,
-      motionZ,
-      lateralX,
-      lateralZ,
-      reducedMotion ? REDUCED_NEAR_SPEED : NEAR_SPEED,
-    );
+    const offsetX = travelState?.offsetX ?? TRAVEL_DIRECTION.x * (travelState?.distance || 0);
+    const offsetZ = travelState?.offsetZ ?? TRAVEL_DIRECTION.z * (travelState?.distance || 0);
+    positionBand(distant, elapsed, offsetX, offsetZ, DISTANT_SPEED);
+    positionBand(near, elapsed, offsetX, offsetZ, reducedMotion ? REDUCED_NEAR_SPEED : NEAR_SPEED);
   };
 
   return {

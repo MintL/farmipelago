@@ -46,7 +46,7 @@
 }
 
 #actionCluster {
-  pointer-events: auto;
+  pointer-events: none;
   position: absolute;
   right: var(--safe-right);
   bottom: var(--safe-bottom);
@@ -54,6 +54,7 @@
   height: 220px;
 }
 .actionButton {
+  pointer-events: auto;
   display: grid;
   place-items: center;
   padding: 0;
@@ -214,3 +215,26 @@ body[data-input-mode="keyboard"] .toolCopy { display: grid; gap: 1px; }
 body[data-input-mode="keyboard"] .toolName { font-size: 12px; font-weight: 740; }
 body[data-input-mode="keyboard"] .toolState { color: var(--muted); font-size: 10px; }
 body[data-input-mode="keyboard"] .keycap { display: block; }
+
+#zoomControls {
+  pointer-events: auto;
+  display: flex;
+  height: 48px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--glass);
+}
+#zoomControls button {
+  width: 44px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 23px;
+}
+#zoomControls button + button { border-left: 1px solid var(--line); }
+#zoomControls button:active { background: var(--glass-soft); }
+#zoomControls button:focus-visible { outline-offset: -3px; }

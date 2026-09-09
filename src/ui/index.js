@@ -2,8 +2,7 @@ import { cropIds, crops } from '../gameplay/catalog/crops.js';
 import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from '../gameplay/catalog/equipment.js';
 import { DEFAULT_DAY_PHASE } from '../world/environment/index.js';
 import { queryUiDom } from './dom.js';
-import { cropIcon, createCropMeterRenderer, formatLitres, formatRequirementAmount, formatRequirementProgress } from './format.js';
-import { renderMilestoneCelebration } from './celebration-view.js';
+import { cropIcon, createCropMeterRenderer, formatLitres } from './format.js';
 import { createDebugView } from './debug-view.js';
 
 const CATEGORIES = [
@@ -36,6 +35,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     selectBuildingType: onBuildingTypeSelected,
     constructionPrimaryAction: onConstructionPrimaryAction,
     constructionCancel: onConstructionCancel,
+    constructionDemolish: onConstructionDemolish,
     constructionUndo: onConstructionUndo,
     cargoDropOff: onCargoDropOff,
     changeBuildMode: onBuildModeChange,
@@ -45,11 +45,10 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     buildPointerCancel: onBuildPointerCancel,
     overrideUnlock: onUnlockOverride = () => {},
     clearUnlockOverrides: onClearUnlockOverrides = () => {},
-    overrideMilestone: onMilestoneOverride = () => {},
     changeCameraPreset: onCameraPresetChange = () => true,
     changeTimeOfDay: onTimeOfDayChange = () => true,
     rotateCameraStep: onCameraRotateStep = () => true,
-    dismissMilestoneCelebration: onMilestoneCelebrationDismissed = () => {},
+    zoomCamera: onCameraZoom = () => {},
     persistentStateChange: onPersistentStateChange = () => {},
     previewLoadout: onLoadoutPreview = () => {},
   } = commands;
@@ -68,9 +67,11 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   let buildHint = '';
   let constructionUiState = null;
   let constructionUiSignature = '';
+  let demolishConfirmationId = null;
   let insideBarn = false;
   let overlayState = null;
   let stickPointer = null;
+  let stickPress = null;
   let stickOrigin = { x: 0, y: 0 };
   let panPointer = null;
   let panLastX = 0;
@@ -81,32 +82,31 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   const cameraGesturePointers = new Map();
   let cameraGestureStart = null;
   let cameraGestureTriggered = false;
+  let cameraGesturePinching = false;
+  let cameraGestureConsumed = false;
+  let cameraGestureDistance = 0;
   let seedCropToastTimer = null;
   let restoreFocus = null;
   let inventoryHud = null;
   let siloInventory = null;
   let siloCropId = null;
-  let milestoneState = null;
   let debugUnlockables = [];
-  let debugMilestones = [];
   let debugCameraFov = Number(cameraPresetFov);
   let debugDayPhase = DEFAULT_DAY_PHASE;
   const amountTickers = new Map();
 
   const {
-    topBar, overlay, barnDialog, pauseDialog, celebrationDialog, celebrationEyebrow,
-    celebrationHeading, celebrationTitle, celebrationCopy, celebrationUnlocksLabel,
-    celebrationUnlocks, celebrationContinue, celebrationContinueLabel, pauseBody,
+    topBar, overlay, barnDialog, pauseDialog, pauseBody,
     confirmBody, pauseTitle, controlsList, showControls, hideHud, showDebug, debugPanel,
     debugTimeSlider, debugTimeValue, debugCameraPresets, debugUnlockList,
-    debugMilestoneList, clearUnlockOverrides, stickZone, stickBase, stickKnob,
+    clearUnlockOverrides, stickZone, stickBase, stickKnob,
     actionCluster, cycleVehicleButton, desktopHints, secondaryHint, secondaryHintLabel,
     frontToolToggle, rearToolToggle, seedCycleControl, seedCropToast, unloadButton,
     unloadIconUse, frontToolState, rearToolState, inventoryMeter, siloInventoryElement,
     siloCropIcon, siloCropIconUse, siloCropValue, previousSiloCrop, nextSiloCrop,
-    siloLoadButton, siloUnloadButton, siloUnloadIconUse, milestoneTracker, milestoneTitle,
-    milestoneRows, buildingToggle, buildPalette, buildingOptions, repaintPen,
-    constructionPopup, constructionCancel, constructionUndo, constructionConfirm,
+    siloLoadButton, siloUnloadButton, siloUnloadIconUse, villageNeeds, villageNeedsGrid,
+    buildingToggle, buildPalette, buildingOptions, repaintPen,
+    constructionPopup, constructionCancel, constructionUndo, constructionConfirm, constructionDemolish, demolitionWarning,
     barnStorageRows, viewHint, loadoutSummary, vehicleName, vehicleIdentity, applyLoadout,
   } = queryUiDom();
   const gameplayLayers = [topBar, stickZone, cycleVehicleButton, actionCluster, desktopHints, siloInventoryElement, constructionPopup];
@@ -120,13 +120,11 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     timeSlider: debugTimeSlider,
     timeValue: debugTimeValue,
     unlockList: debugUnlockList,
-    milestoneList: debugMilestoneList,
     clearOverrides: clearUnlockOverrides,
   });
   const renderDebugCameraPresets = () => debugView.renderCameraPresets(debugCameraFov);
   const renderDebugTimeOfDay = () => debugView.renderTimeOfDay(debugDayPhase);
   const renderDebugUnlockables = () => debugView.renderUnlockables(debugUnlockables);
-  const renderDebugMilestones = () => debugView.renderMilestones(debugMilestones);
 
   const renderCropMeter = createCropMeterRenderer();
 
@@ -166,6 +164,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
 
   const clearStick = () => {
     stickPointer = null;
+    stickPress = null;
     input.x = input.y = 0;
     stickKnob.style.transform = 'translate(0px, 0px)';
     stickBase.classList.remove('active');
@@ -187,6 +186,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     return {
       x: (points[0].x + points[1].x) * .5,
       y: (points[0].y + points[1].y) * .5,
+      distance: Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y),
     };
   };
 
@@ -194,7 +194,13 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     cameraGesturePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (cameraGesturePointers.size === 2) {
       cameraGestureStart = cameraGestureCenter();
+      cameraGestureDistance = cameraGestureStart.distance;
       cameraGestureTriggered = false;
+      cameraGesturePinching = false;
+      cameraGestureConsumed = true;
+      clearPan();
+      clearBuildPointer();
+      panDragX = panDragY = 0;
     }
     else if (cameraGesturePointers.size > 2) cameraGestureStart = null;
   };
@@ -204,12 +210,18 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     if (!point) return false;
     point.x = event.clientX;
     point.y = event.clientY;
-    if (!cameraGestureStart || cameraGestureTriggered) return true;
+    if (!cameraGestureStart || cameraGestureTriggered) return cameraGestureConsumed || !buildMode;
     const center = cameraGestureCenter();
     if (!center) return true;
+    if (cameraGesturePinching || Math.abs(center.distance - cameraGestureStart.distance) >= 10) {
+      cameraGesturePinching = true;
+      if (center.distance > 0 && cameraGestureDistance > 0) onCameraZoom(cameraGestureDistance / center.distance);
+      cameraGestureDistance = center.distance;
+      return true;
+    }
     const dx = center.x - cameraGestureStart.x;
     const dy = center.y - cameraGestureStart.y;
-    if (Math.abs(dx) >= CAMERA_SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.1) {
+    if (!buildMode && Math.abs(dx) >= CAMERA_SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.1) {
       cameraGestureTriggered = true;
       onCameraRotateStep(dx < 0 ? -1 : 1);
     }
@@ -221,14 +233,18 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
 
   const endCameraGesturePointer = event => {
     if (!cameraGesturePointers.has(event.pointerId)) return false;
+    const consumed = cameraGestureConsumed || !buildMode;
     cameraGesturePointers.delete(event.pointerId);
+    if (cameraGesturePointers.size === 0) cameraGestureConsumed = false;
     cameraGestureStart = null;
     cameraGestureTriggered = false;
-    return true;
+    return consumed;
   };
 
   const clearCameraGesture = () => {
     cameraGesturePointers.clear();
+    cameraGestureConsumed = false;
+    cameraGesturePinching = false;
     cameraGestureStart = null;
     cameraGestureTriggered = false;
   };
@@ -281,6 +297,46 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     });
   };
 
+  const villageCards = new Map();
+  const renderVillageNeeds = (needs, machine) => {
+    for (const need of needs) {
+      let card = villageCards.get(need.id);
+      if (!card) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'villageNeedCard';
+        const fill = document.createElement('span');
+        fill.className = 'villageNeedFill';
+        fill.setAttribute('aria-hidden', 'true');
+        const name = document.createElement('strong');
+        name.textContent = need.name;
+        const amount = document.createElement('span');
+        amount.className = 'villageNeedAmount';
+        button.append(fill, cropIcon(need.id, need.name), name, amount);
+        button.addEventListener('click', () => {
+          siloCropId = need.id;
+          renderSiloInventory();
+        });
+        villageNeedsGrid.append(button);
+        card = { button, fill, amount };
+        villageCards.set(need.id, card);
+      }
+      const stockText = `${Math.floor(need.amount).toLocaleString('en-US')} / ${need.target.toLocaleString('en-US')} L`;
+      card.fill.style.height = `${Math.min(1, need.amount / need.target) * 100}%`;
+      card.amount.textContent = stockText;
+      card.button.setAttribute('aria-pressed', String(siloCropId === need.id));
+      card.button.setAttribute('aria-label', `${need.name}: ${stockText}`);
+    }
+    const selected = needs.find(need => need.id === siloCropId);
+    siloLoadButton.hidden = true;
+    siloUnloadButton.disabled = !selected || !machine.canTransfer || machine.storageKind !== 'crop'
+      || !(machine.contents[selected.id] > 0);
+    siloUnloadButton.setAttribute('aria-label', `Deliver ${selected?.name || 'selected crop'} to village`);
+    siloUnloadButton.title = 'Deliver selected crop';
+    siloUnloadIconUse.setAttribute('href', '#icon-silo-unload');
+    siloInventoryElement.setAttribute('aria-label', 'Village tier 1 needs');
+  };
+
   const renderSiloInventory = () => {
     const cropsInSilo = siloInventory?.crops || [];
     siloInventoryElement.hidden = !siloInventory;
@@ -291,11 +347,13 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     siloInventoryElement.dataset.kind = siloInventory.kind;
     const machine = siloInventory.machine;
     const cattleBarn = siloInventory.kind === 'cattle-barn';
-    const cargoPad = siloInventory.kind === 'cargo';
+    const settlementInput = siloInventory.kind === 'cargo';
+    villageNeeds.hidden = !settlementInput;
+    siloInventoryElement.setAttribute('aria-live', settlementInput ? 'off' : 'polite');
     barnStorageRows.hidden = !cattleBarn;
-    document.querySelector('.siloInventoryCrop').hidden = cattleBarn;
-    previousSiloCrop.hidden = cattleBarn;
-    nextSiloCrop.hidden = cattleBarn;
+    document.querySelector('.siloInventoryCrop').hidden = cattleBarn || settlementInput;
+    previousSiloCrop.hidden = cattleBarn || settlementInput;
+    nextSiloCrop.hidden = cattleBarn || settlementInput;
     if (cattleBarn) {
       const barn = siloInventory.barn;
       barnStorageRows.replaceChildren();
@@ -326,21 +384,22 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     if (cropsInSilo.length && !cropsInSilo.some(crop => crop.id === siloCropId)) siloCropId = cropsInSilo[0].id;
     if (siloInventory.autoSelectCarriedCrop) {
       const carriedId = machine.carriedBale ? 'hay-bale' : tankCropId;
-      const carriedCrop = cropsInSilo.find(crop => crop.id === carriedId && (!cargoPad || crop.accepting));
+      const carriedCrop = cropsInSilo.find(crop => crop.id === carriedId && (!settlementInput || crop.accepting));
       if (carriedCrop) siloCropId = carriedCrop.id;
       siloInventory.autoSelectCarriedCrop = false;
     }
+    if (settlementInput) {
+      renderVillageNeeds(cropsInSilo, machine);
+      return;
+    }
     const crop = cropsInSilo.find(entry => entry.id === siloCropId) || cropsInSilo[0] || null;
-    const canLoad = !cargoPad && machine.storageKind === 'crop' && Boolean(crop?.amount) && machine.canTransfer
+    const canLoad = machine.storageKind === 'crop' && Boolean(crop?.amount) && machine.canTransfer
       && tankAmount < machine.capacity && (!tankCropId || tankCropId === crop.id);
-    const canUnload = cargoPad
-      ? Boolean(crop) && crop.accepting && machine.canTransfer && crop.amount < crop.target
-        && (crop.unit === 'bales' ? machine.carriedBale : (machine.contents[crop.id] || 0) > 0)
-      : machine.storageKind === 'crop' && machine.canTransfer && tankAmount > 0;
+    const canUnload = machine.storageKind === 'crop' && machine.canTransfer && tankAmount > 0;
     previousSiloCrop.disabled = cropsInSilo.length < 2;
     nextSiloCrop.disabled = cropsInSilo.length < 2;
-    siloLoadButton.hidden = cargoPad;
-    const unloadLabel = cargoPad && crop?.unit === 'bales' ? 'Deliver carried hay bale' : cargoPad ? 'Deliver selected cargo' : 'Unload cargo into silo';
+    siloLoadButton.hidden = false;
+    const unloadLabel = 'Unload cargo into silo';
     siloUnloadButton.setAttribute('aria-label', unloadLabel);
     siloUnloadButton.title = unloadLabel;
     siloUnloadIconUse.setAttribute('href', '#icon-silo-unload');
@@ -356,18 +415,40 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     const itemName = crop.name || crops[crop.id]?.name || crop.id;
     siloCropIconUse.setAttribute('href', `#icon-${crop.icon || crop.id}`);
     siloCropIcon.setAttribute('aria-label', crop.locked ? `${itemName} unavailable` : itemName);
-    const tickerKey = `${cargoPad ? 'cargo' : 'silo'}:${siloInventory.id}:${crop.id}`;
+    const tickerKey = `silo:${siloInventory.id}:${crop.id}`;
     const displayAmount = tickerValue(tickerKey, crop.amount, crop.amount, TRANSFER_TICKS_PER_SECOND, 'silo');
-    siloCropValue.textContent = cargoPad
-      ? formatRequirementProgress(displayAmount, crop.target, crop.unit)
-      : formatLitres(displayAmount);
-    siloInventoryElement.setAttribute('aria-label', cargoPad
-      ? `Cargo pad: ${formatRequirementAmount(crop.amount, crop.unit)} of ${formatRequirementAmount(crop.target, crop.unit)} ${itemName} delivered`
-      : `Silo inventory: ${formatLitres(crop.amount)} ${itemName}`);
+    siloCropValue.textContent = formatLitres(displayAmount);
+    siloInventoryElement.setAttribute('aria-label', `Silo inventory: ${formatLitres(crop.amount)} ${itemName}`);
   };
 
   const positionStoragePopup = (x, y, minimumTop, bottomMargin) => {
-    const popupHalfWidth = siloInventoryElement.getBoundingClientRect().width * .5;
+    const bounds = siloInventoryElement.getBoundingClientRect();
+    const popupHalfWidth = bounds.width * .5;
+    if (siloInventory?.kind === 'cargo') {
+      const safe = topBar.getBoundingClientRect();
+      const left = safe.left;
+      const right = innerWidth - safe.right;
+      const top = safe.top;
+      const centerX = Math.max(left + popupHalfWidth, Math.min(innerWidth - right - popupHalfWidth, x));
+      const minAnchorY = top + bounds.height + 8;
+      let anchorY = Math.max(minAnchorY, Math.min(innerHeight - top, y));
+      // Hidden desktop controls have empty rectangles; they must not push the
+      // popup to the top. Only avoid controls that intersect its actual bounds.
+      const controls = [stickZone, cycleVehicleButton, ...actionCluster.querySelectorAll('button')];
+      const obstacles = controls.flatMap(control => {
+        const rect = control.getBoundingClientRect();
+        const visible = rect.width > 0 && rect.height > 0 && getComputedStyle(control).visibility !== 'hidden';
+        return visible ? [rect] : [];
+      }).sort((a, b) => b.top - a.top);
+      for (const rect of obstacles) {
+        const overlapsX = centerX + popupHalfWidth > rect.left - 8 && centerX - popupHalfWidth < rect.right + 8;
+        const overlapsY = anchorY - 8 > rect.top - 8 && anchorY - 8 - bounds.height < rect.bottom + 8;
+        if (overlapsX && overlapsY) anchorY = Math.max(minAnchorY, rect.top);
+      }
+      siloInventoryElement.style.left = `${centerX}px`;
+      siloInventoryElement.style.top = `${anchorY}px`;
+      return;
+    }
     const horizontalMargin = popupHalfWidth + 12;
     siloInventoryElement.style.left = `${innerWidth <= horizontalMargin * 2
       ? innerWidth * .5
@@ -411,41 +492,24 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     }
   };
 
-  const renderMilestone = milestone => {
-    milestoneState = milestone;
-    milestoneTitle.textContent = milestone.title;
-    milestoneTracker.dataset.complete = String(milestone.complete);
-    milestoneRows.replaceChildren();
-    if (milestone.hint) {
-      const hint = document.createElement('span');
-      hint.className = 'milestoneHint';
-      hint.textContent = milestone.hint;
-      milestoneRows.append(hint);
-    }
-    for (const requirement of milestone.requirements) {
-      const row = document.createElement('div');
-      const requirementId = requirement.itemId || requirement.cropId;
-      const displayDelivered = tickerValue(`milestone:${milestone.id}:${requirementId}`, requirement.delivered, requirement.delivered, TRANSFER_TICKS_PER_SECOND, 'milestone');
-      const percent = requirement.target ? Math.min(100, displayDelivered / requirement.target * 100) : 0;
-      row.className = 'milestoneRow';
-      row.dataset.locked = String(requirement.locked);
-      renderCropMeter(row, {
-        cropId: requirement.icon || requirementId,
-        label: requirement.name,
-        value: requirement.locked ? 'Unavailable' : formatRequirementProgress(displayDelivered, requirement.target, requirement.unit),
-        percent,
-        ariaLabel: requirement.locked ? `${requirement.name} unavailable` : `${requirement.name} delivered`,
-        ariaValueText: `${formatRequirementAmount(displayDelivered, requirement.unit)} of ${formatRequirementAmount(requirement.target, requirement.unit)} ${requirement.name} delivered`,
-      });
-      milestoneRows.append(row);
-    }
-  };
-
   const renderConstructionPopup = () => {
     const state = constructionUiState;
     const visible = buildMode && state && !state.hidden;
     constructionPopup.hidden = !visible;
+    if (!visible || state.buildingId !== demolishConfirmationId || state.phase !== 'complete') demolishConfirmationId = null;
     if (!state) return;
+    const confirmingDemolition = demolishConfirmationId === state.buildingId;
+    constructionPopup.dataset.confirmingDemolition = String(confirmingDemolition);
+    demolitionWarning.hidden = !confirmingDemolition;
+    demolitionWarning.textContent = state.type === 'cattle-barn'
+      ? 'You will lose this barn, its pen, all cattle, and any stored hay and milk. This cannot be undone.'
+      : 'You will lose this silo and all crops stored inside. This cannot be undone.';
+    if (confirmingDemolition) constructionDemolish.setAttribute('aria-describedby', 'demolitionWarning');
+    else constructionDemolish.removeAttribute('aria-describedby');
+    constructionDemolish.hidden = state.phase !== 'complete';
+    constructionDemolish.textContent = demolishConfirmationId === state.buildingId ? 'Confirm demolish' : 'Demolish';
+    constructionCancel.hidden = state.phase === 'complete';
+    constructionConfirm.hidden = state.phase === 'complete';
     constructionUndo.hidden = state.phase !== 'pen-draft';
     constructionConfirm.textContent = state.primaryLabel;
     constructionConfirm.disabled = state.primaryAction === 'confirm' && !state.canConfirm;
@@ -455,15 +519,16 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     if (Number.isFinite(state.x)) constructionPopup.style.left = `${innerWidth <= horizontalMargin * 2
       ? innerWidth * .5
       : Math.max(horizontalMargin, Math.min(innerWidth - horizontalMargin, state.x))}px`;
-    if (Number.isFinite(state.y)) constructionPopup.style.top = `${Math.max(70, Math.min(innerHeight - 48, state.y))}px`;
+    if (Number.isFinite(state.y)) constructionPopup.style.top = `${Math.max(70, constructionPopup.getBoundingClientRect().height + 20, Math.min(innerHeight - 48, state.y))}px`;
   };
 
   const constructionHint = () => {
     const state = constructionUiState;
     if (!state) {
       if (selectedBuilding) return 'DRAG ON LAND TO PLACE';
-      return 'SELECT A BUILDING · DRAG EMPTY GROUND TO PAN';
+      return '';
     }
+    if (state.phase === 'complete') return 'SELECTED BUILDING · DEMOLISH TO CLEAR THIS SITE';
     if (state.type === 'silo') return 'MOVE SILO OR CONFIRM PLACEMENT';
     return '';
   };
@@ -611,7 +676,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     overlay.hidden = false;
     barnDialog.hidden = dialog !== barnDialog;
     pauseDialog.hidden = dialog !== pauseDialog;
-    celebrationDialog.hidden = dialog !== celebrationDialog;
     setBackgroundInert(true);
     requestAnimationFrame(() => {
       if (dialog === barnDialog) return;
@@ -626,7 +690,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     overlay.hidden = true;
     barnDialog.hidden = true;
     pauseDialog.hidden = true;
-    celebrationDialog.hidden = true;
     setBackgroundInert(cinematicActive);
     const target = restoreFocus?.isConnected ? restoreFocus : document.body;
     restoreFocus = null;
@@ -669,12 +732,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     if (overlayState !== 'barn') return;
     draftLoadout = { ...activeLoadout };
     hideOverlay();
-  };
-
-  const closeCelebration = () => {
-    if (overlayState !== 'celebration') return;
-    hideOverlay();
-    onMilestoneCelebrationDismissed();
   };
 
   const setScreenshotHudHidden = hidden => {
@@ -736,7 +793,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     if (event.code === 'Escape') {
       event.preventDefault();
       if (overlayState === 'barn') closeBarn();
-      else if (overlayState === 'celebration') closeCelebration();
       else if (overlayState) closePause();
       else if (buildMode) setBuildMode(false);
       else openPause();
@@ -754,6 +810,13 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       return;
     }
     if (overlayState) return;
+    if (event.target.closest?.('#zoomControls button') && ['Space', 'Enter'].includes(event.code)) return;
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && ['Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract'].includes(event.code)) {
+      event.preventDefault();
+      onCameraZoom(['Equal', 'NumpadAdd'].includes(event.code) ? 1 / 1.2 : 1.2);
+      return;
+    }
+    if (event.target.closest?.('#siloInventory button') && ['Space', 'Enter'].includes(event.code)) return;
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
     keys.add(event.code);
     if (!buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
@@ -775,12 +838,25 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     setScreenshotHudHidden(false);
   }, { capture: true });
 
+  document.querySelector('#zoomIn').addEventListener('click', () => {
+    if (!inputLocked()) onCameraZoom(1 / 1.2);
+  });
+  document.querySelector('#zoomOut').addEventListener('click', () => {
+    if (!inputLocked()) onCameraZoom(1.2);
+  });
+  panSurface.addEventListener('wheel', event => {
+    if (inputLocked()) return;
+    event.preventDefault();
+    const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
+    onCameraZoom(Math.exp(Math.max(-100, Math.min(100, pixels)) * .002));
+  }, { passive: false });
+
   panSurface.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'touch' && !buildMode && !inputLocked()) {
+    if (event.pointerType === 'touch' && !inputLocked()) {
       event.preventDefault();
       beginCameraGesturePointer(event);
       panSurface.setPointerCapture(event.pointerId);
-      return;
+      if (!buildMode || cameraGestureConsumed) return;
     }
     if (!buildMode || overlayState || panPointer !== null || buildPointer !== null) return;
     if (buildMode && onBuildPointerStart?.({ x: event.clientX, y: event.clientY })) {
@@ -836,10 +912,16 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     stickOrigin.y = rect.height / 2;
     stickBase.classList.add('active');
     stickPointer = event.pointerId;
+    stickPress = { x: event.clientX, y: event.clientY, dragging: false };
     stickZone.setPointerCapture(event.pointerId);
-    updateStick(event);
+    // A tap can select the world beneath the stick; dragging starts driving.
+
   });
-  stickZone.addEventListener('pointermove', event => { if (event.pointerId === stickPointer) updateStick(event); });
+  stickZone.addEventListener('pointermove', event => {
+    if (event.pointerId !== stickPointer || !stickPress) return;
+    if (Math.hypot(event.clientX - stickPress.x, event.clientY - stickPress.y) > 9) stickPress.dragging = true;
+    if (stickPress.dragging) updateStick(event);
+  });
   stickZone.addEventListener('pointerup', event => { if (event.pointerId === stickPointer) clearStick(); });
   stickZone.addEventListener('pointercancel', event => { if (event.pointerId === stickPointer) clearStick(); });
   stickZone.addEventListener('lostpointercapture', clearStick);
@@ -876,8 +958,34 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     renderBuildMode();
   });
   repaintPen.addEventListener('click', () => { if (buildMode) onPenRepaint?.(); });
-  constructionConfirm.addEventListener('click', () => { if (buildMode && !constructionConfirm.disabled) onConstructionPrimaryAction?.(); });
+  constructionConfirm.addEventListener('click', () => {
+    if (!buildMode || constructionConfirm.disabled) return;
+    const completingBuilding = constructionUiState?.primaryAction === 'confirm';
+    const changed = onConstructionPrimaryAction?.();
+    if (changed && completingBuilding) setBuildMode(false);
+  });
   constructionCancel.addEventListener('click', () => { if (buildMode) onConstructionCancel?.(); });
+  constructionDemolish.addEventListener('click', () => {
+    const state = constructionUiState;
+    if (!buildMode || state?.phase !== 'complete') return;
+    if (demolishConfirmationId !== state.buildingId) {
+      demolishConfirmationId = state.buildingId;
+      renderConstructionPopup();
+      return;
+    }
+    demolishConfirmationId = null;
+    onConstructionDemolish?.(state.buildingId);
+    renderConstructionPopup();
+  });
+  document.addEventListener('pointerdown', event => {
+    if (!demolishConfirmationId || constructionDemolish.contains(event.target)) return;
+    demolishConfirmationId = null;
+    renderConstructionPopup();
+  }, { capture: true });
+  constructionDemolish.addEventListener('blur', () => {
+    demolishConfirmationId = null;
+    renderConstructionPopup();
+  });
   constructionUndo.addEventListener('click', () => { if (buildMode) onConstructionUndo?.(); });
   previousSiloCrop.addEventListener('click', () => cycleSiloCrop(-1));
   nextSiloCrop.addEventListener('click', () => cycleSiloCrop(1));
@@ -897,7 +1005,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   applyLoadout.addEventListener('click', equipDraft);
   document.querySelector('#closePause').addEventListener('click', closePause);
   document.querySelector('#resumeGame').addEventListener('click', closePause);
-  celebrationContinue.addEventListener('click', closeCelebration);
   showControls.addEventListener('click', () => {
     const expanded = showControls.getAttribute('aria-expanded') === 'true';
     showControls.setAttribute('aria-expanded', String(!expanded));
@@ -929,11 +1036,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     const unlockable = debugUnlockables.find(item => item.id === button.dataset.unlockId);
     if (unlockable) onUnlockOverride(unlockable.id, !unlockable.overridden);
   });
-  debugMilestoneList.addEventListener('click', event => {
-    const button = event.target.closest('.debugMilestone');
-    if (!button || button.disabled) return;
-    onMilestoneOverride(button.dataset.milestoneId);
-  });
   clearUnlockOverrides.addEventListener('click', onClearUnlockOverrides);
   document.querySelector('#requestRegenerate').addEventListener('click', () => {
     overlayState = 'confirm';
@@ -951,7 +1053,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
 
   overlay.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
-    const dialog = overlayState === 'barn' ? barnDialog : overlayState === 'celebration' ? celebrationDialog : pauseDialog;
+    const dialog = overlayState === 'barn' ? barnDialog : pauseDialog;
     const focusable = [...dialog.querySelectorAll('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')].filter(element => !element.closest('[hidden]'));
     if (!focusable.length) return;
     const first = focusable[0], last = focusable[focusable.length - 1];
@@ -966,19 +1068,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   renderSecondaryAction();
   renderBuildMode();
   renderLoadoutBays();
-
-  const showMilestoneCelebration = milestone => {
-    renderMilestoneCelebration({
-      eyebrow: celebrationEyebrow,
-      heading: celebrationHeading,
-      title: celebrationTitle,
-      copy: celebrationCopy,
-      unlocksLabel: celebrationUnlocksLabel,
-      unlocks: celebrationUnlocks,
-      continueLabel: celebrationContinueLabel,
-    }, milestone);
-    showOverlay('celebration', celebrationDialog);
-  };
 
   return {
     driveInput() {
@@ -1092,7 +1181,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       }
       if (changedViews.has('inventory')) renderInventoryMeter();
       if (changedViews.has('silo')) renderSiloInventory();
-      if (changedViews.has('milestone') && milestoneState) renderMilestone(milestoneState);
     },
     setStoragePopup(nextInventory) {
       if (!nextInventory) {
@@ -1129,7 +1217,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       const cropsInSilo = Array.isArray(nextInventory.items)
         ? nextInventory.items.flatMap(item => {
           const itemId = typeof item?.id === 'string' ? item.id : null;
-          const amount = Math.max(0, Math.floor(Number(item?.amount) || 0));
+          const amount = Math.max(0, Number(item?.amount) || 0);
           const target = Math.max(0, Math.floor(Number(item?.target) || 0));
           if (!itemId || (!crops[itemId] && !['hay-bale', 'milk'].includes(itemId))) return [];
           return [{
@@ -1198,14 +1286,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       else siloInventoryElement.hidden = false;
       positionStoragePopup(nextInventory.x, nextInventory.y, 104, 54);
     },
-    setMilestone: renderMilestone,
     setDebugUnlockables(nextUnlockables) {
       debugUnlockables = Array.isArray(nextUnlockables) ? nextUnlockables.map(unlockable => ({ ...unlockable })) : [];
       renderDebugUnlockables();
-    },
-    setDebugMilestones(nextMilestones) {
-      debugMilestones = Array.isArray(nextMilestones) ? nextMilestones.map(milestone => ({ ...milestone })) : [];
-      renderDebugMilestones();
     },
     setDebugTimeOfDay(nextPhase) {
       const phase = Number(nextPhase);
@@ -1215,7 +1298,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       debugDayPhase = normalized;
       renderDebugTimeOfDay();
     },
-    showMilestoneCelebration,
     setCinematicActive(active) {
       cinematicActive = Boolean(active);
       if (cinematicActive) document.body.dataset.cinematic = 'true';

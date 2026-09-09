@@ -87,6 +87,7 @@ export function serializeIsland(island) {
   return {
     id: island.id,
     seed: island.seed,
+    ...(island.settings ? { settings: { ...island.settings } } : {}),
     role: island.role,
     capabilities: { ...island.capabilities },
     status: island.status,

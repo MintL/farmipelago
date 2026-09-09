@@ -209,6 +209,7 @@ export function addBridgeBetween(
   lanternPositions,
   lightSurfaceQuads,
   connectionGap = null,
+  constructionStart = 'from',
 ) {
   const gap = connectionGap || closestIslandGap(terrain, fromIsland.id, toIsland.id);
   if (!gap || gap.distance / TILE <= BRIDGE_GAP_TILES) return;
@@ -264,6 +265,23 @@ export function addBridgeBetween(
   const deckUp = new THREE.Vector3();
   const localXAxis = new THREE.Vector3(1, 0, 0);
   const localYAxis = new THREE.Vector3(0, 1, 0);
+  const constructionParts = [];
+  const addConstructionPart = (object, progress, detail = false) => {
+    constructionParts.push({ object, progress, detail, y: object.position.y });
+  };
+  bridge.userData.setConstructionProgress = (amount, reducedMotion = false) => {
+    bridge.visible = amount > 0;
+    for (const part of constructionParts) {
+      // Expansion bridges grow from retained land toward the incoming island.
+      // The starter arrival explicitly starts at its Settlement ('to') end.
+      const progress = constructionStart === 'to' ? 1 - part.progress : part.progress;
+      const step = Math.min(plankCount - 1, Math.floor(progress * plankCount));
+      const begin = part.detail ? .62 + step / plankCount * .25 : step / plankCount * .55;
+      const local = THREE.MathUtils.clamp((amount - begin) / .12, 0, 1);
+      part.object.visible = local > 0;
+      part.object.position.y = part.y + (reducedMotion ? 0 : (1 - ease(local)) * .65);
+    }
+  };
   bridge.name = 'bridge';
   bridge.userData.occlusionIgnoreAtVehicle = vehicleState => {
     const along = (vehicleState.x - start.x) * direction.x + (vehicleState.z - start.z) * direction.z;
@@ -303,6 +321,7 @@ export function addBridgeBetween(
     );
     plank.quaternion.copy(segmentRotation);
     bridge.add(plank);
+    addConstructionPart(plank, (index + .5) / plankCount);
     lightSurfaceQuads.push([
       new THREE.Vector3(-BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
       new THREE.Vector3(BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
@@ -330,6 +349,7 @@ export function addBridgeBetween(
         );
         rail.quaternion.copy(segmentRotation);
         railingGroups.get(side).add(rail);
+        addConstructionPart(rail, (index + .5) / plankCount, true);
       }
       bridgeBlocks.push({
         x: x + sideDirection.x * railOffset * side,
@@ -358,6 +378,7 @@ export function addBridgeBetween(
       );
       post.rotation.y = yaw;
       railingGroups.get(side).add(post);
+      addConstructionPart(post, progress, true);
     }
   }
 
@@ -381,6 +402,7 @@ export function addBridgeBetween(
     lanternPositions.push(lantern.position.clone().add(new THREE.Vector3(0, .1, 0)));
     lanternGlowMeshes.push(glowMesh);
     railingGroups.get(side).add(lantern);
+    addConstructionPart(lantern, progress, true);
   }
   return bridge;
 }

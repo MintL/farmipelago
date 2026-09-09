@@ -7,7 +7,7 @@ export function createForageSystem(terrain, group, physics, onChange = () => {},
   forageGroup.name = 'forage';
   group.add(forageGroup);
   const looseGeometry = new THREE.BoxGeometry(.42, .045, .09);
-  const loose = new THREE.InstancedMesh(looseGeometry, mats.cutGrass, terrain.size * 3);
+  let loose = new THREE.InstancedMesh(looseGeometry, mats.cutGrass, terrain.size * 3);
   loose.name = 'loose-cut-grass';
   loose.castShadow = true;
   loose.receiveShadow = true;
@@ -38,6 +38,16 @@ export function createForageSystem(terrain, group, physics, onChange = () => {},
   };
 
   const refreshField = () => {
+    if (terrain.size * 3 > loose.instanceMatrix.count) {
+      const replacement = new THREE.InstancedMesh(looseGeometry, mats.cutGrass, terrain.size * 3);
+      replacement.name = loose.name;
+      replacement.castShadow = replacement.receiveShadow = true;
+      replacement.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      loose.removeFromParent();
+      loose.dispose();
+      loose = replacement;
+      forageGroup.add(loose);
+    }
     let looseCount = 0;
     for (const tile of terrain.values()) {
       const looseLitres = Math.max(0, tile.looseGrassLitres || 0);
@@ -156,6 +166,44 @@ export function createForageSystem(terrain, group, physics, onChange = () => {},
   refreshBales();
 
   return {
+    refreshField,
+    suspendIsland(island) {
+      syncPhysics();
+      const suspended = [];
+      const display = new THREE.Group();
+      display.name = 'released-island-forage';
+      island.group.add(display);
+      for (let index = bales.length - 1; index >= 0; index--) {
+        const bale = bales[index];
+        if (!island.worldTiles.has(gridKey(Math.round(bale.x / TILE), Math.round(bale.z / TILE)))) continue;
+        const mesh = new THREE.Mesh(baleGeometry, mats.bale);
+        mesh.position.set(bale.x - island.group.position.x, bale.y + .28, bale.z - island.group.position.z);
+        mesh.quaternion.copy(bale.rotation);
+        display.add(mesh);
+        suspended.push({ ...bale, x: bale.x - island.group.position.x, z: bale.z - island.group.position.z });
+        physics.removeBale(bale.id);
+        bales.splice(index, 1);
+      }
+      for (const tile of island.terrain.values()) if (tile.looseGrassLitres) {
+        const mesh = new THREE.Mesh(looseGeometry, mats.cutGrass);
+        mesh.position.set(tile.x, tile.topY + .035, tile.z);
+        display.add(mesh);
+      }
+      island.suspendedForage = { bales: suspended, display };
+      refreshBales();
+    },
+    resumeIsland(island) {
+      const suspended = island.suspendedForage;
+      if (!suspended) return;
+      suspended.display.removeFromParent();
+      for (const saved of suspended.bales) {
+        const bale = { ...saved, x: saved.x + island.group.position.x, z: saved.z + island.group.position.z };
+        bales.push(bale);
+        physics.createBale(bale.id, { x: bale.x, y: bale.y + .28, z: bale.z }, bale.rotation, { sleeping: true });
+      }
+      island.suspendedForage = null;
+      refreshBales();
+    },
     hasForage(tile) {
       return Boolean(tile?.looseGrassLitres || 0);
     },

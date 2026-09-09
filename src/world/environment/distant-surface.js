@@ -468,9 +468,9 @@ export function createDistantSurfaceSystem({ anisotropy = 1 } = {}) {
     const directionZ = Number(travelState?.direction?.z) || 0;
     const directionLength = Math.hypot(directionX, directionZ);
     if (directionLength < .0001) return;
-    const distance = Math.max(0, Number(travelState?.distance) || 0) * SURFACE_SPEED;
-    const offsetX = wrapCoordinate(-directionX / directionLength * distance);
-    const offsetZ = wrapCoordinate(-directionZ / directionLength * distance);
+    const distance = Math.max(0, Number(travelState?.distance) || 0);
+    const offsetX = wrapCoordinate(-(travelState?.offsetX ?? directionX / directionLength * distance) * SURFACE_SPEED);
+    const offsetZ = wrapCoordinate(-(travelState?.offsetZ ?? directionZ / directionLength * distance) * SURFACE_SPEED);
     const offsetU = fraction(-offsetX / REPEAT_SPAN);
     const offsetV = fraction(-offsetZ / REPEAT_SPAN);
     resources.texture.offset.set(offsetU, offsetV);

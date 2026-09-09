@@ -78,7 +78,11 @@ export const mats = {
       varying float vWave;
 
       void main() {
-        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vec4 localPosition = vec4(position, 1.0);
+        #ifdef USE_INSTANCING
+          localPosition = instanceMatrix * localPosition;
+        #endif
+        vec4 worldPosition = modelMatrix * localPosition;
         vec2 patternPosition = worldPosition.xz - patternOffset;
         float broadWave = sin(patternPosition.x * 2.2 + patternPosition.y * 1.7 + time * 1.15) * .014;
         float fineWave = sin(patternPosition.x * 8.7 - patternPosition.y * 6.2 + time * 2.4) * .006;

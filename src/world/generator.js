@@ -1,6 +1,14 @@
-import { GRASS_TOP, LAYER_DEPTH, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, createVoxelLantern, createVoxelModel, gridKey, THREE } from '../core/shared.js';
+import { finishPreparation } from '../core/preparation.js';
+import { FARM_GENERATION, SETTLEMENT_GENERATION, resolveIslandSettings } from './islands/generation-settings.js';
+import { batchIslandPropSteps } from './islands/batching.js';
+import { createFieldworksWorkshop } from './workshop/fieldworks.js';
+import { createIslandAttachments } from './islands/attachment.js';
+import { createAttachedContent } from './islands/attached-content.js';
+import { createDriftingIslands } from './islands/drifting.js';
+import { createConnectionChains } from './connection-chains.js';
+import { GRASS_TOP, LAYER_DEPTH, LEVEL_HEIGHT, mats, MODEL_VOXEL, SOIL_DEPTH, TILE, box, gridKey, THREE } from '../core/shared.js';
 import { crops } from '../gameplay/catalog/crops.js';
-import { cargoDeckContains, createCargoPort } from '../gameplay/logistics/cargo-port.js';
+import { createSettlementStorehouse } from '../gameplay/logistics/settlement-storehouse.js';
 import { createForageSystem } from './forage/index.js';
 import {
   FARM_ISLAND_ID,
@@ -32,9 +40,10 @@ import {
   reserveBridgeLandings,
   resolveNorthernIslandPlacement,
 } from './bridges.js';
-import { WATER_DEPTH, addStarterCoastLake } from './water/system.js';
+import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
+import { createWaterfallEffects } from './water/waterfall.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
-import { CROP_STAGE_SECONDS, GRASS_STAGE_SECONDS, TILE_YIELD_LITRES, WEED_CHANCE } from './fields/config.js';
+import { CROP_STAGE_SECONDS, GRASS_STAGE_SECONDS, GRASS_TILE_YIELD_LITRES, CROP_TILE_YIELD_MIN_LITRES, CROP_TILE_YIELD_MAX_LITRES, WEED_CHANCE } from './fields/config.js';
 import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
 import { createSettlementVisual } from './settlement/visual.js';
 
@@ -61,7 +70,37 @@ const SOIL_STRATA_COLORS = [0x896754, 0x8f6b55, 0x83614e, 0x8b6751].map(color =>
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ease = value => value * value * (3 - 2 * value);
 
-export function generateFarm(
+// Omitted settings are independently seed-randomized; overrides are explicit.
+export function generateIsland(seed, settings = {}) {
+  return finishPreparation(generateIslandSteps(seed, settings));
+}
+
+export function* generateIslandSteps(seed, settings = {}) {
+  const generation = resolveIslandSettings(seed, settings);
+  const staging = new THREE.Group();
+  let completed = false;
+  const preparationResources = new Set();
+  try {
+    const island = yield* generateFarmSteps(staging, null, seed, 0, () => {}, { naturalIsland: true, generation, preparationResources });
+    island.group.removeFromParent();
+    completed = true;
+    return island;
+  }
+  finally {
+    if (!completed) {
+      preparationResources.forEach(resource => resource.dispose());
+      staging.traverse(object => { if (object.isInstancedMesh) object.dispose(); });
+      disposeObjectResources(staging);
+      staging.clear();
+    }
+  }
+}
+
+export function generateFarm(...args) {
+  return finishPreparation(generateFarmSteps(...args));
+}
+
+function* generateFarmSteps(
   scene,
   physics,
   seed = (Math.random() * 0xffffffff) >>> 0,
@@ -110,6 +149,8 @@ export function generateFarm(
   const grainSplashMaterials = Object.fromEntries([
     ['corn', 0xf2c84b], ['wheat', 0xd9b65a], ['barley', 0xc9a552], ['canola', 0xf0ce32], ['soybean', 0xb78e48],
   ].map(([cropId, color]) => [cropId, new THREE.MeshBasicMaterial({ color, depthTest: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })]));
+  [bridgeLanternGlowMaterial, soilStrataMaterial, ...Object.values(grainSplashMaterials)]
+    .forEach(resource => options.preparationResources?.add(resource));
   let tallGrassGeometry = null;
   let workshopArea = null;
   let setWorkshopNightAmount = () => {};
@@ -397,7 +438,7 @@ export function generateFarm(
   const buildContactBeds = () => {
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
-    for (const islandId of [FARM_ISLAND_ID, SETTLEMENT_ISLAND_ID]) {
+    for (const islandId of new Set([...terrain.values()].map(tile => tile.islandId))) {
       const placements = contactBedPlacements.filter(placement => placement.tile.islandId === islandId);
       const pieceCount = placements.reduce((sum, placement) => sum + placement.pieces, 0);
       if (!pieceCount) continue;
@@ -441,9 +482,9 @@ export function generateFarm(
     }
   };
 
-  const addLowerLayers = (cells, topY, radius, islandId) => {
-    for (let layer = 1; layer <= 8; layer++) {
-      const maxRadius = radius - layer * 0.34;
+  const addLowerLayers = (cells, topY, radius, islandId, settings) => {
+    for (let layer = 1; layer <= settings.undersideLayers; layer++) {
+      const maxRadius = radius - layer * settings.undersideTaper;
       if (maxRadius < 0.35) break;
       const material = layer < 2 ? mats.soil : (layer % 2 ? mats.stone : mats.stoneDark);
       const y = topY - GRASS_TOP - SOIL_DEPTH - (layer - 0.5) * LAYER_DEPTH;
@@ -487,8 +528,9 @@ export function generateFarm(
     return color.offsetHSL(variation * .006, 0, variation * .012);
   };
 
-  const addLowerLayerInstances = () => {
+  const addLowerLayerInstances = function* () {
     const geometry = new THREE.BoxGeometry(TILE, LAYER_DEPTH, TILE);
+    options.preparationResources?.add(geometry);
     const transform = new THREE.Matrix4();
     const lowerBlockKey = (x, y, z) =>
       `${Math.round(x / TILE)},${Math.round(y / LAYER_DEPTH * 2)},${Math.round(z / TILE)}`;
@@ -497,8 +539,9 @@ export function generateFarm(
       [TILE, 0, 0], [-TILE, 0, 0], [0, 0, TILE], [0, 0, -TILE],
       [0, -LAYER_DEPTH, 0],
     ].some(([dx, dy, dz]) => !occupied.has(lowerBlockKey(block.x + dx, block.y + dy, block.z + dz))));
-    for (const islandId of [FARM_ISLAND_ID, SETTLEMENT_ISLAND_ID]) {
+    for (const islandId of new Set([...terrain.values()].map(tile => tile.islandId))) {
       for (const material of [mats.soil, mats.stone, mats.stoneDark]) {
+        yield;
         const blocks = shellBlocks.filter(block => block.islandId === islandId && block.material === material);
         if (!blocks.length) continue;
         const renderedBlocks = material === mats.soil
@@ -586,13 +629,15 @@ export function generateFarm(
     attribute.needsUpdate = true;
   };
 
-  const addTerrainInstances = () => {
+  const addTerrainInstances = function* () {
     const surfaceGeometry = new THREE.BoxGeometry(TILE, GRASS_TOP, TILE);
     const soilGeometry = new THREE.BoxGeometry(TILE, 1, TILE);
     const surfaceMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
     const surfaceTopMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
     const edgeCapGeometry = new THREE.BoxGeometry(1, GRASS_EDGE_CAP_HEIGHT, 1);
     const edgeCapMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+    [surfaceGeometry, soilGeometry, surfaceMaterial, surfaceTopMaterial, edgeCapGeometry, edgeCapMaterial]
+      .forEach(resource => options.preparationResources?.add(resource));
     const tilesByIsland = new Map();
     const exposedEdges = [];
     for (const tile of terrain.values()) {
@@ -635,7 +680,10 @@ export function generateFarm(
       top.castShadow = false;
       top.receiveShadow = true;
 
-      tiles.forEach((tile, index) => {
+      // Own partially built meshes before yielding so cancellation disposes them.
+      group.add(surface, soil, top);
+      for (const [index, tile] of tiles.entries()) {
+        yield;
         matrix.makeTranslation(tile.x, tile.topY - GRASS_TOP * .5, tile.z);
         surface.setMatrixAt(index, matrix);
         surface.setColorAt(index, tile.normalGrassColor || mats.grass.color);
@@ -675,8 +723,7 @@ export function generateFarm(
         tile.surfaceTopBatch = top;
         tile.surfaceTopColorOffset = tileVertexOffset;
         tile.surfaceTopColorCount = verticesPerTile;
-
-      });
+      }
 
       soilSections.forEach((section, index) => {
         matrix.makeScale(section.width / TILE, section.height, section.depth / TILE);
@@ -701,7 +748,7 @@ export function generateFarm(
       if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(surface, soil, top);
     }
 
-    for (const islandId of [FARM_ISLAND_ID, SETTLEMENT_ISLAND_ID]) {
+    for (const islandId of new Set([...terrain.values()].map(tile => tile.islandId))) {
       const islandEdges = exposedEdges.filter(edge => edge.tile.islandId === islandId);
       const edgeCaps = new THREE.InstancedMesh(edgeCapGeometry, edgeCapMaterial, islandEdges.length);
       const edgeCapTransform = new THREE.Matrix4();
@@ -814,10 +861,6 @@ export function generateFarm(
     const workshop = new THREE.Group();
     const width = TILE * 3;
     const depth = TILE * 3;
-    const wallHeight = 2.25;
-    const wallThickness = .16;
-    const doorwayWidth = TILE * 1.08;
-    const frontWallWidth = (width - doorwayWidth) * .5;
     const yaw = WORKSHOP_YAW;
     workshop.name = 'starter-workshop';
     workshop.position.set(x, y, z);
@@ -838,201 +881,221 @@ export function generateFarm(
         width: boxWidth, height: boxHeight, depth: boxDepth, yaw,
       });
     };
-    const wallEdgeX = width * .5 - wallThickness * .5;
-    const wallEdgeZ = depth * .5 - wallThickness * .5;
-    const windowBase = .86;
-    const windowHeight = .72;
-    const windowTop = windowBase + windowHeight;
-    const windowWallSegments = [
-      { depth: .42, z: -1.29 }, { depth: .72, z: 0 }, { depth: .42, z: 1.29 },
-    ];
-
-    const voxelParts = [];
-    const addVoxels = (material, at, size) => voxelParts.push({ material, at, size });
-
-    // The workshop occupies a 15 x 15 model-voxel footprint. Its stone base,
-    // walls, openings, trim, roof and contents all share that same grid.
-    addVoxels(mats.stoneDark, [-1, 0, -1], [17, 1, 17]);
-    for (let drivewayZ = -6; drivewayZ < -1; drivewayZ++) {
-      addVoxels(drivewayZ % 2 ? mats.stone : mats.stoneDark, [4, 0, drivewayZ], [7, 1, 1]);
-    }
-    for (const [chockX, material] of [[4, mats.bridgeDark], [10, mats.bridge]]) {
-      addVoxels(material, [chockX, 1, -7], [1, 1, 2]);
-    }
-
-    // Four true one-voxel corner posts frame wall runs built around openings.
-    for (const cornerX of [0, 14]) for (const cornerZ of [0, 14]) {
-      addVoxels(mats.bridgeDark, [cornerX, 1, cornerZ], [1, 11, 1]);
-    }
-    addVoxels(mats.red, [1, 1, 0], [4, 10, 1]);
-    addVoxels(mats.red, [10, 1, 0], [4, 10, 1]);
-    addVoxels(mats.red, [5, 9, 0], [5, 2, 1]);
-    addVoxels(mats.bridgeDark, [1, 11, 0], [13, 1, 1]);
-
-    addVoxels(mats.red, [1, 1, 14], [13, 5, 1]);
-    addVoxels(mats.red, [1, 9, 14], [13, 2, 1]);
-    addVoxels(mats.red, [1, 6, 14], [4, 3, 1]);
-    addVoxels(mats.red, [10, 6, 14], [4, 3, 1]);
-    addVoxels(mats.bridgeDark, [1, 11, 14], [13, 1, 1]);
-
-    for (const sideX of [0, 14]) {
-      addVoxels(mats.red, [sideX, 1, 1], [1, 4, 13]);
-      addVoxels(mats.red, [sideX, 9, 1], [1, 2, 13]);
-      for (const [segmentZ, segmentDepth] of [[1, 2], [6, 3], [12, 2]]) {
-        addVoxels(mats.red, [sideX, 5, segmentZ], [1, 4, segmentDepth]);
-      }
-      addVoxels(mats.bridgeDark, [sideX, 11, 1], [1, 1, 13]);
-    }
-
-    // Recessed glazing is surrounded by full-voxel sills, lintels and jambs.
-    for (const sideX of [-1, 15]) for (const windowZ of [3, 9]) {
-      addVoxels(mats.cab, [sideX, 5, windowZ], [1, 4, 3]);
-      addVoxels(mats.bridgeDark, [sideX, 4, windowZ - 1], [1, 1, 5]);
-      addVoxels(mats.bridgeDark, [sideX, 9, windowZ - 1], [1, 1, 5]);
-      addVoxels(mats.bridgeDark, [sideX, 5, windowZ - 1], [1, 4, 1]);
-      addVoxels(mats.bridgeDark, [sideX, 5, windowZ + 3], [1, 4, 1]);
-    }
-    addVoxels(mats.cab, [5, 6, 14], [5, 3, 1]);
-    addVoxels(mats.bridgeDark, [4, 5, 15], [7, 1, 1]);
-    addVoxels(mats.bridgeDark, [4, 9, 15], [7, 1, 1]);
-    addVoxels(mats.bridgeDark, [4, 6, 15], [1, 3, 1]);
-    addVoxels(mats.bridgeDark, [10, 6, 15], [1, 3, 1]);
-
-    // The front bay uses a deep voxel frame and a recessed loft panel.
-    addVoxels(mats.bridgeDark, [4, 1, -1], [1, 8, 1]);
-    addVoxels(mats.bridgeDark, [10, 1, -1], [1, 8, 1]);
-    addVoxels(mats.bridgeDark, [4, 9, -1], [7, 1, 1]);
-    addVoxels(mats.bridgeDark, [6, 10, -1], [3, 2, 1]);
-
-    // Stepped gables and roof courses replace the former rotated roof slabs.
-    for (const [gableY, gableX, gableWidth] of [[12, 1, 14], [13, 3, 10], [14, 5, 6], [15, 7, 2]]) {
-      addVoxels(mats.red, [gableX, gableY, 0], [gableWidth, 1, 1]);
-      addVoxels(mats.red, [gableX, gableY, 14], [gableWidth, 1, 1]);
-    }
-    const roofCourses = [
-      { y: 12, left: -1, right: 15 },
-      { y: 13, left: 1, right: 13 },
-      { y: 14, left: 3, right: 11 },
-      { y: 15, left: 5, right: 9 },
-    ];
-    for (const course of roofCourses) {
-      for (const courseX of [course.left, course.right]) {
-        addVoxels(mats.bridgeDark, [courseX, course.y, 0], [2, 1, 15]);
-        addVoxels(mats.tractorCream, [courseX, course.y, -1], [2, 1, 1]);
-        addVoxels(mats.tractorCream, [courseX, course.y, 15], [2, 1, 1]);
-      }
-    }
-    addVoxels(mats.bridgeDark, [7, 16, 0], [2, 1, 15]);
-    addVoxels(mats.tractorCream, [7, 16, -1], [2, 1, 1]);
-    addVoxels(mats.tractorCream, [7, 16, 15], [2, 1, 1]);
-    addVoxels(mats.metal, [11, 15, 11], [2, 2, 2]);
-    addVoxels(mats.bridgeDark, [10, 17, 10], [4, 1, 4]);
-
-    // Workshop furniture is constructed from the same cells rather than from
-    // isolated furniture-sized boxes.
-    addVoxels(mats.bridge, [1, 4, 10], [6, 1, 2]);
-    addVoxels(mats.bridgeDark, [1, 1, 10], [1, 3, 2]);
-    addVoxels(mats.bridgeDark, [6, 1, 10], [1, 3, 2]);
-    addVoxels(mats.metal, [1, 5, 13], [4, 4, 1]);
-    for (const [toolX, material] of [[1, mats.tire], [3, mats.tractorAccent], [5, mats.tire]]) {
-      addVoxels(material, [toolX, 6, 12], [1, 2, 1]);
-      addVoxels(mats.metal, [toolX, 8, 12], [2, 1, 1]);
-    }
-    addVoxels(mats.tractorDark, [11, 1, 10], [3, 6, 3]);
-    addVoxels(mats.metal, [11, 7, 10], [3, 1, 3]);
-    addVoxels(mats.tractor, [9, 1, 4], [3, 3, 2]);
-    addVoxels(mats.metal, [8, 4, 4], [4, 1, 2]);
-
-    // Exterior service props: fuel pump, voxel-ring tyres, and stepped crates.
-    addVoxels(mats.stone, [-5, 0, 8], [4, 1, 5]);
-    addVoxels(mats.tractor, [-3, 1, 9], [2, 4, 2]);
-    addVoxels(mats.metal, [-4, 5, 8], [4, 1, 4]);
-    addVoxels(mats.headlamp, [-3, 3, 7], [2, 2, 1]);
-    addVoxels(mats.bridgeDark, [16, 0, 8], [5, 1, 5]);
-    for (const tyreY of [1, 2, 3]) {
-      addVoxels(mats.tire, [16, tyreY, 8], [3, 1, 1]);
-      addVoxels(mats.tire, [16, tyreY, 10], [3, 1, 1]);
-      addVoxels(mats.tire, [16, tyreY, 9], [1, 1, 1]);
-      addVoxels(mats.tire, [18, tyreY, 9], [1, 1, 1]);
-    }
-    addVoxels(mats.bridge, [16, 0, -1], [5, 1, 4]);
-    addVoxels(mats.red, [15, 1, 0], [3, 1, 3]);
-    addVoxels(mats.red, [15, 2, 1], [3, 1, 2]);
-    addVoxels(mats.bridgeDark, [15, 2, 0], [3, 1, 1]);
-    addVoxels(mats.tractorAccent, [18, 1, 0], [2, 3, 2]);
-    addVoxels(mats.metal, [18, 2, -1], [2, 1, 1]);
-
-    const workshopModel = createVoxelModel(voxelParts, {
-      name: 'starter-workshop-model',
-      origin: [-7.5, 0, -7.5],
-    });
-    workshop.add(workshopModel);
-    const addWorkshopLightSurface = (left, near, right, far) => {
+    const fieldworks = createFieldworksWorkshop();
+    workshop.add(fieldworks.group);
+    fieldworks.colliders.forEach(collider => addStaticBox(
+      collider.width, collider.height, collider.depth, collider.x, collider.z, collider.y,
+    ));
+    const addWorkshopLightSurface = (left, near, right, far, height = MODEL_VOXEL) => {
       const corners = [[left, near], [right, near], [left, far], [right, far]];
       staticLightSurfaceQuads.push(corners.map(([localX, localZ]) => {
         const position = localToWorld(localX, localZ);
-        return new THREE.Vector3(position.x, y + MODEL_VOXEL + .004, position.z);
+        return new THREE.Vector3(position.x, y + height + .004, position.z);
       }));
     };
     addWorkshopLightSurface(-1.7, -1.7, 1.7, 1.7);
+    addWorkshopLightSurface(-1.3, -1.3, 1.3, 1.3, MODEL_VOXEL * 2);
     addWorkshopLightSurface(-.7, -2.7, .7, -1.7);
 
-    const lanternGlowMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffdfa0,
-      emissive: 0xffa62e,
-      emissiveIntensity: .25,
-      roughness: .38,
-    });
-    const { group: lantern, glowMesh: lanternGlowMesh } = createVoxelLantern({
-      glowMaterial: lanternGlowMaterial,
-      hanging: true,
-      name: 'starter-workshop-lantern',
-    });
-    lantern.position.set(0, 1.85, -1.7);
-    const lanternPosition = localToWorld(lantern.position.x, lantern.position.z);
-    staticLanternPositions.push(new THREE.Vector3(lanternPosition.x, y + lantern.position.y + .1, lanternPosition.z));
-    workshop.add(lantern);
+    const lanternPosition = localToWorld(fieldworks.lightPosition.x, fieldworks.lightPosition.z);
+    staticLanternPositions.push(new THREE.Vector3(lanternPosition.x, y + fieldworks.lightPosition.y, lanternPosition.z));
     setWorkshopNightAmount = amount => {
       const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
-      lanternGlowMesh.material.emissiveIntensity = .25 + nightAmount * 2.75;
+      fieldworks.glowMaterial.emissiveIntensity = .25 + nightAmount * 2.75;
     };
+  };
 
-    for (const side of [-1, 1]) {
-      const doorParts = [
-        { material: mats.bridgeDark, at: [0, 0, 0], size: [2, 1, 1] },
-        { material: mats.bridgeDark, at: [0, 6, 0], size: [2, 1, 1] },
-        { material: mats.bridgeDark, at: [0, 1, 0], size: [1, 5, 1] },
-        { material: mats.red, at: [1, 1, 0], size: [1, 5, 1] },
-      ];
-      const openDoor = createVoxelModel(doorParts, {
-        name: 'starter-workshop-door',
-        origin: [-1, 0, -.5],
-      });
-      openDoor.position.set(side * .72, MODEL_VOXEL, -depth * .5 - MODEL_VOXEL);
-      openDoor.rotation.y = side * .8;
-      workshop.add(openDoor);
-    }
+  const decorateIsland = function* ({ island, cells, waterTiles, settings }, workshopSite = null) {
+    const decorationCells = cells.filter(candidate => {
+      const starterField = island.role === 'farm' && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
+      const tile = terrain.get(gridKey(candidate.gx, candidate.gz));
+      return candidate.dist > 1.1 && candidate.dist < island.r - .15 && !starterField &&
+        !waterTiles.has(gridKey(candidate.gx, candidate.gz)) &&
+        !tile?.reserved && !tile?.noDecoration;
+    });
+    const grassPatches = chooseGrassPatches(decorationCells, random, island.role === 'farm' ? 1 : 2);
+    for (const cell of decorationCells) {
+      yield;
+      const tile = terrain.get(gridKey(cell.gx, cell.gz));
+      const profile = environmentProfile(tile.environment);
+      const rainforest = profile.veryWet * profile.veryShady;
+      const forest = profile.shady * (.35 + profile.moisture * .65) * (1 - profile.veryDry);
+      const dryWoodland = profile.shady * profile.dry;
+      const treeChance = THREE.MathUtils.clamp(
+        .015 + forest * .28 + rainforest * .35 + dryWoodland * .06 + profile.wet * .06 - profile.sunny * .04 - profile.veryDry * .08,
+        0,
+        .60,
+      );
+      const rockChance = THREE.MathUtils.clamp(
+        .025 + profile.dry * .10 + profile.veryDry * .09 + profile.dry * profile.sunny * .05 - profile.wet * .035 - profile.veryWet * .04,
+        .001,
+        .25,
+      );
+      const effectiveTreeChance = Math.min(
+        treeChance * settings.treeDensity + settings.treeBaseChance,
+        TREE_CHANCE_CAP,
+      );
+      const effectiveRockChance = Math.min(rockChance * settings.rockDensity, ROCK_CHANCE_CAP);
+      const groundChance = THREE.MathUtils.clamp(
+        .12 + profile.wet * .20 + rainforest * .34 + profile.wet * profile.sunny * .22 + profile.dry * profile.sunny * .2 + profile.shady * .12,
+        .12,
+        .78,
+      );
+      const effectiveGroundChance = Math.min(
+        groundChance * settings.groundCoverDensity,
+        GROUND_COVER_CHANCE_CAP,
+      );
+      const clusterChance = THREE.MathUtils.clamp(
+        (effectiveTreeChance + effectiveRockChance + effectiveGroundChance) * .35,
+        .08,
+        .45,
+      );
+      const propAttempts = 1 + (random() < clusterChance ? 1 : 0) + (random() < clusterChance * .25 ? 1 : 0);
+      for (let propIndex = 0; propIndex < propAttempts; propIndex++) {
+        const x = cell.gx * TILE + (random() - .5) * PROP_SPREAD;
+        const z = cell.gz * TILE + (random() - .5) * PROP_SPREAD;
+        const y = tile?.topY ?? island.h;
+        const nearWorkshop = workshopSite && island.role === 'farm' &&
+          Math.hypot(x - workshopSite.x, z - workshopSite.z) < WORKSHOP_TREE_CLEARANCE;
+        let blockingDecoration = false;
+        if (!nearWorkshop && random() < effectiveTreeChance) {
+          addTree(x, y, z, chooseTreeSilhouette(profile, random), random() < .25 + rainforest * .5, profile);
+          blockingDecoration = true;
+        }
+        else if (random() < effectiveRockChance) {
+          addStone(x, y, z, .8 + random() * .5);
+          blockingDecoration = true;
+        }
 
-    // Keep the established gameplay obstacles independent from the richer visuals.
-    addStaticBox(.54, .52, .42, .7, -.48, 0);
-    addStaticBox(.34, .92, .34, -2.0, .58, .07);
-    for (let index = 0; index < 3; index++) addStaticBox(.48, .18, .48, 1.98, .62, .06 + index * .17);
-    addStaticBox(.58, .42, .52, 1.8, -1.25, .09);
-    addStaticBox(.38, .56, .42, 2.17, -1.18, .09);
-
-    addStaticBox(width, wallHeight, wallThickness, 0, wallEdgeZ);
-    for (const side of [-1, 1]) {
-      const localX = side * wallEdgeX;
-      addStaticBox(wallThickness, windowBase, depth, localX, 0);
-      addStaticBox(wallThickness, wallHeight - windowTop, depth, localX, 0, windowTop);
-      windowWallSegments.forEach(segment =>
-        addStaticBox(wallThickness, windowHeight, segment.depth, localX, segment.z, windowBase));
-    }
-    for (const side of [-1, 1]) {
-      const localX = side * (doorwayWidth + frontWallWidth) * .5;
-      addStaticBox(frontWallWidth, wallHeight, wallThickness, localX, -wallEdgeZ);
+        if (random() < effectiveGroundChance) {
+          addGroundCover(tile, chooseGroundCover(profile, tile.nearWater, random));
+        }
+        else if (!blockingDecoration &&
+          grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
+          addTallGrass(tile);
+        }
+      }
     }
   };
+
+  const animateNature = (elapsed, travelState, waterfallEffects) => {
+    const windDirection = travelState?.direction;
+    const sharedGust = reducedMotion ? 0 : (Number(travelState?.gust) || 0);
+    for (const tree of trees) {
+      const gust = Math.sin(elapsed * .55 + tree.phase) * .35 + Math.sin(elapsed * 1.3 + tree.phase * 1.7) * .12;
+      tree.sway.rotation.z = Math.sin(elapsed * 1.15 + tree.phase) * tree.strength + gust * .018
+        + (windDirection?.x || 0) * sharedGust * .018;
+      tree.sway.rotation.x = Math.cos(elapsed * .9 + tree.phase * .73) * tree.strength * .62 + gust * .012
+        + (windDirection?.z || 0) * sharedGust * .018;
+    }
+    for (const current of waterMotion) {
+      const travel = ((elapsed * .72 + current.phase) % 1 - .5) * .54;
+      current.mesh.position.set(
+        current.x + current.direction.x * travel,
+        current.y,
+        current.z + current.direction.z * travel,
+      );
+    }
+    waterfallEffects.update(elapsed, travelState);
+  };
+
+  const buildIslandTerrain = function* ({ island, cells, settings }, waterRandom) {
+    for (const cell of cells) {
+      yield;
+      addTile(cell.gx, cell.gz, island.h, island.id, cell.dist / island.r, island.h);
+      const tile = terrain.get(gridKey(cell.gx, cell.gz));
+      tile.environment.moisture = THREE.MathUtils.clamp(tile.environment.moisture + settings.moistureBias, 0, 1);
+      tile.environment.sun = THREE.MathUtils.clamp(tile.environment.sun + settings.sunlightBias, 0, 1);
+    }
+    yield;
+    addLowerLayers(cells, island.h, island.r, island.id, settings);
+    yield;
+    let waterTiles = new Set();
+    if (settings.waterStyle === 'coast') {
+      waterTiles = addStarterCoastLake(cells, island, terrain, water, waterMotion, waterfalls, waterRandom);
+    }
+    if (settings.waterStyle === 'watercourse' || settings.waterStyle === 'coast' && !waterTiles.size && island.role === 'wild') {
+      waterTiles = addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, waterRandom, true);
+      if (!waterTiles.size) waterTiles = addWatercourse(cells, island, terrain, water, waterMotion, waterfalls, waterRandom, false);
+    }
+    yield;
+    if (settings.maxElevation > 0) {
+      const wetCells = [...waterTiles].map(key => terrain.get(key));
+      const clearance = cell => wetCells.length
+        ? Math.min(...wetCells.map(wet => Math.hypot(cell.gx - wet.gx, cell.gz - wet.gz)))
+        : island.r - cell.dist;
+      const plateauCenter = cells.filter(cell => cell.dist < island.r * .65)
+        .sort((first, second) => clearance(second) - clearance(first))[0];
+      const plateau = createOrganicCells(plateauCenter.gx, plateauCenter.gz, island.r * settings.terraceCoverage, seed ^ 0x510e527f);
+      for (const cell of plateau) {
+        const tile = terrain.get(gridKey(cell.gx, cell.gz));
+        if (!tile || tile.islandId !== island.id || tile.water || clearance(cell) < 2) continue;
+        const level = Math.max(1, Math.ceil(settings.maxElevation * (1 - cell.dist / (island.r * settings.terraceCoverage))));
+        const rise = Math.min(settings.maxElevation, level) * LEVEL_HEIGHT;
+        tile.topY += rise;
+        tile.dirtDepth += rise;
+      }
+    }
+    finalizeEnvironment(cells, waterTiles);
+    return waterTiles;
+  };
+
+  // The passing variant returns local collision data before starter infrastructure
+  // and farming gameplay are created. The spawner owns its moving physics body.
+  if (options.naturalIsland) {
+    const settings = options.generation || resolveIslandSettings(seed);
+    const island = { id: `drifting-${seed >>> 0}`, role: 'wild', cx: 0, cz: 0, h: 0, r: settings.radius };
+    const cells = createOrganicCells(0, 0, island.r, seed);
+    const waterTiles = yield* buildIslandTerrain({ island, cells, settings }, random);
+    if (settings.waterStyle !== 'none' && !waterTiles.size) {
+      group.removeFromParent();
+      disposeObjectResources(group);
+      bridgeLanternGlowMaterial.dispose();
+      soilStrataMaterial.dispose();
+      Object.values(grainSplashMaterials).forEach(material => material.dispose());
+      if (attempt >= 8) throw new Error('Unable to generate a drifting island watercourse');
+      return yield* generateFarmSteps(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange, options);
+    }
+    yield* decorateIsland({ island, cells, waterTiles, settings });
+    yield;
+    yield* addLowerLayerInstances();
+    yield;
+    yield* addTerrainInstances();
+    yield;
+    buildGroundCover();
+    yield;
+    buildContactBeds();
+    yield;
+    yield* batchIslandPropSteps(group, water);
+    yield;
+    const waterfallEffects = createWaterfallEffects(water, waterfalls, seededRandom(seed ^ 0x3c6ef372), { reducedMotion });
+    group.name = `drifting-island-${seed}`;
+    // Shared water shaders retain per-island pattern coordinates through the
+    // same offset hook used by the arriving Farm.
+    const radius = Math.max(...cells.map(cell => Math.hypot(cell.gx, cell.gz))) * TILE + 3 * TILE;
+    return {
+      id: island.id,
+      seed,
+      group,
+      terrain,
+      lowerBlocks,
+      obstacles,
+      settings,
+      radius,
+      animate(elapsed, travelState) {
+        water.userData.waterPatternOffset.x = group.position.x;
+        water.userData.waterPatternOffset.z = group.position.z;
+        animateNature(elapsed, travelState, waterfallEffects);
+      },
+      dispose() {
+        group.traverse(object => { if (object.isInstancedMesh) object.dispose(); });
+        disposeObjectResources(group);
+        bridgeLanternGlowMaterial.dispose();
+        Object.values(grainSplashMaterials).forEach(material => material.dispose());
+        group.removeFromParent();
+      },
+    };
+  }
 
   validateIslandConfiguration();
   const attachmentComplete = Boolean(options.attachmentComplete);
@@ -1050,7 +1113,10 @@ export function generateFarm(
   let workshopSite;
   let cargoSite;
   islands.forEach(island => {
-    island.r += (random() - .5) * 0.22;
+    const preset = island.role === 'farm' ? FARM_GENERATION : SETTLEMENT_GENERATION;
+    // Preserve the original radius jitter and its place in the seeded RNG stream.
+    island.r = preset.radius + (random() - .5) * 0.22;
+    island.generation = resolveIslandSettings(seed, { ...preset, radius: island.r });
   });
   const localGeneration = islands.map(island => ({
     island,
@@ -1071,6 +1137,7 @@ export function generateFarm(
   settlementIsland.cz = settlementPlacement.cz;
   const islandGeneration = localGeneration.map(({ island, cells: localCells }) => ({
     island,
+    settings: island.generation,
     cells: localCells.map(cell => ({
       ...cell,
       gx: cell.gx + island.cx,
@@ -1079,24 +1146,21 @@ export function generateFarm(
   }));
 
   islandGeneration.forEach(generation => {
-    const { island, cells } = generation;
-    cells.forEach(cell => addTile(cell.gx, cell.gz, island.h, island.id, cell.dist / island.r, island.h));
-    addLowerLayers(cells, island.h, island.r, island.id);
-    const waterTiles = island.role === 'farm'
-      ? addStarterCoastLake(
-        cells, island, terrain, water, waterMotion, waterfalls, seededRandom(seed ^ 0x6a09e667)
-      )
-      : new Set();
-    finalizeEnvironment(cells, waterTiles);
-    generation.waterTiles = waterTiles;
+    generation.waterTiles = finishPreparation(buildIslandTerrain(generation, seededRandom(seed ^ 0x6a09e667)));
   });
+  const waterfallEffects = createWaterfallEffects(
+    water,
+    waterfalls,
+    seededRandom(seed ^ 0x3c6ef372),
+    { reducedMotion },
+  );
   workshopSite = findWorkshopSite(terrain, farmIsland);
   cargoSite = findCargoSite(terrain, settlementIsland);
   if (!cargoSite) {
     scene.remove(group);
     disposeObjectResources(group);
-    if (attempt >= 20) throw new Error('Unable to generate a clear cargo deck site on the Settlement Island');
-    return generateFarm(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange, options);
+    if (attempt >= 20) throw new Error('Unable to generate a clear settlement yard on the Settlement Island');
+    return yield* generateFarmSteps(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange, options);
   }
   if (workshopSite) reserveWorkshopGround(terrain, workshopSite);
   reserveCargoApproach(terrain, cargoSite, settlementIsland.id);
@@ -1137,6 +1201,7 @@ export function generateFarm(
     terrain,
     cargoSite,
     bridgeLanding: settlementBridgeLanding,
+    reducedMotion,
   });
   const cargoGroundTile = cargoSite
     ? terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)))
@@ -1144,100 +1209,16 @@ export function generateFarm(
   settlement.pathTiles.forEach(tile => addWearPatch(tile, TILE * .82, .82));
   buildBareSoilWear(workshopSite, cargoGroundTile, bridgeGaps, islands);
 
-  islandGeneration.forEach(({ island, cells, waterTiles }) => {
-    const decorationCells = cells.filter(candidate => {
-      const starterField = island.role === 'farm' && Math.abs(candidate.dx) <= 3 && Math.abs(candidate.dz) <= 3;
-      const tile = terrain.get(gridKey(candidate.gx, candidate.gz));
-      return candidate.dist > 1.1 && candidate.dist < island.r - .15 && !starterField &&
-        !waterTiles.has(gridKey(candidate.gx, candidate.gz)) &&
-        !tile?.reserved && !tile?.noDecoration;
-    });
-    const grassPatches = chooseGrassPatches(decorationCells, random, island.role === 'farm' ? 1 : 2);
-    for (const cell of decorationCells) {
-      const tile = terrain.get(gridKey(cell.gx, cell.gz));
-      const profile = environmentProfile(tile.environment);
-      const rainforest = profile.veryWet * profile.veryShady;
-      const forest = profile.shady * (.35 + profile.moisture * .65) * (1 - profile.veryDry);
-      const dryWoodland = profile.shady * profile.dry;
-      const treeChance = THREE.MathUtils.clamp(
-        .015 + forest * .28 + rainforest * .35 + dryWoodland * .06 + profile.wet * .06 - profile.sunny * .04 - profile.veryDry * .08,
-        0,
-        .60,
-      );
-      const rockChance = THREE.MathUtils.clamp(
-        .025 + profile.dry * .10 + profile.veryDry * .09 + profile.dry * profile.sunny * .05 - profile.wet * .035 - profile.veryWet * .04,
-        .001,
-        .25,
-      );
-      const starterDensityScale = island.role === 'farm' ? .16 : .34;
-      const effectiveTreeChance = Math.min(
-        treeChance * starterDensityScale + (island.role === 'farm' ? .006 : 0),
-        TREE_CHANCE_CAP,
-      );
-      const effectiveRockChance = Math.min(rockChance, ROCK_CHANCE_CAP);
-      const groundChance = THREE.MathUtils.clamp(
-        .12 + profile.wet * .20 + rainforest * .34 + profile.wet * profile.sunny * .22 + profile.dry * profile.sunny * .2 + profile.shady * .12,
-        .12,
-        .78,
-      );
-      const effectiveGroundChance = Math.min(
-        groundChance * (island.role === 'farm' ? .70 : .82),
-        GROUND_COVER_CHANCE_CAP,
-      );
-      const clusterChance = THREE.MathUtils.clamp(
-        (effectiveTreeChance + effectiveRockChance + effectiveGroundChance) * .35,
-        .08,
-        .45,
-      );
-      const propAttempts = 1 + (random() < clusterChance ? 1 : 0) + (random() < clusterChance * .25 ? 1 : 0);
-      for (let propIndex = 0; propIndex < propAttempts; propIndex++) {
-        const x = cell.gx * TILE + (random() - .5) * PROP_SPREAD;
-        const z = cell.gz * TILE + (random() - .5) * PROP_SPREAD;
-        const y = tile?.topY ?? island.h;
-        const nearWorkshop = workshopSite && island.role === 'farm' &&
-          Math.hypot(x - workshopSite.x, z - workshopSite.z) < WORKSHOP_TREE_CLEARANCE;
-        let blockingDecoration = false;
-        if (!nearWorkshop && random() < effectiveTreeChance) {
-          addTree(x, y, z, chooseTreeSilhouette(profile, random), random() < .25 + rainforest * .5, profile);
-          blockingDecoration = true;
-        }
-        else if (random() < effectiveRockChance) {
-          addStone(x, y, z, .8 + random() * .5);
-          blockingDecoration = true;
-        }
+  islandGeneration.forEach(generation => finishPreparation(decorateIsland(generation, workshopSite)));
 
-        if (random() < effectiveGroundChance) {
-          addGroundCover(tile, chooseGroundCover(profile, tile.nearWater, random));
-        }
-        else if (!blockingDecoration &&
-          grassPatches.some(patch => Math.hypot(cell.dx - patch.dx, cell.dz - patch.dz) < patch.radius)) {
-          addTallGrass(tile);
-        }
-      }
-    }
-  });
-
-  const cargoAnchor = terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)));
-  if (!cargoAnchor || Math.abs(cargoAnchor.topY - cargoAnchor.baseY) > .01) {
-    throw new Error('Cargo deck must be anchored on the first floor');
-  }
-  if (cargoAnchor.islandId !== settlementIsland.id || cargoAnchor.gx <= settlementIsland.cx ||
-    cargoSite.outward.x !== 1 || cargoSite.outward.z !== 0) {
-    throw new Error('Cargo deck must stay on the Settlement Island receiving edge');
-  }
-  const terrainOverlap = [...terrain.values()].find(tile =>
-    cargoDeckContains(cargoSite, tile.x, tile.z, TILE * .72) && tile.topY > cargoSite.y + .01
-  );
-  if (terrainOverlap) throw new Error(`Cargo deck clearance failed at ${gridKey(terrainOverlap.gx, terrainOverlap.gz)}`);
-
-  addLowerLayerInstances();
+  finishPreparation(addLowerLayerInstances());
 
   if (workshopSite) addWorkshop(workshopSite.x, workshopSite.topY, workshopSite.z);
   group.add(settlement.group);
   obstacles.push(...settlement.colliders);
   staticLanternPositions.push(...settlement.lanternPositions);
   staticLightSurfaceQuads.push(...settlement.lightSurfaceQuads);
-  const cargoPort = createCargoPort(cargoSite, seed);
+  const cargoPort = createSettlementStorehouse(settlement.receivingSite);
   group.add(cargoPort.group);
   cargoPort.lanternPositions.forEach(position => {
     staticLanternPositions.push(cargoPort.group.localToWorld(position.clone()));
@@ -1262,11 +1243,12 @@ export function generateFarm(
       staticLanternPositions,
       staticLightSurfaceQuads,
       gap,
+      'to',
     );
     if (bridge) bridgeRevealObjects.push(bridge);
   }
 
-  addTerrainInstances();
+  finishPreparation(addTerrainInstances());
   for (const tile of terrain.values()) {
     if (tile.water) continue;
     const left = tile.x - TILE * .5;
@@ -1289,7 +1271,7 @@ export function generateFarm(
   if (staticLanternLighting.mesh) group.add(staticLanternLighting.mesh);
   buildGroundCover();
   buildContactBeds();
-  const cropInstances = createCropInstances(terrain.size, group);
+  let cropInstances = createCropInstances(terrain.size, group);
   const fieldEffects = createFieldEffects(group);
   const refreshFurrowInstances = () => {
     cropInstances.refreshFurrows(ploughedTiles);
@@ -1338,7 +1320,14 @@ export function generateFarm(
       decoration.mesh.setMatrixAt(decoration.index, decoration.hidden);
       decoration.mesh.instanceMatrix.needsUpdate = true;
     }
-    for (const stone of tile.stones) group.remove(stone);
+    for (const stone of tile.stones) {
+      const batch = stone.userData.batchedInstance;
+      if (batch) {
+        batch.mesh.setMatrixAt(batch.index, new THREE.Matrix4().makeScale(0, 0, 0));
+        batch.mesh.instanceMatrix.needsUpdate = true;
+      }
+      else stone.removeFromParent();
+    }
     tile.stones.length = 0;
     ploughedTiles.push(tile);
     furrowInstancesDirty = true;
@@ -1353,6 +1342,10 @@ export function generateFarm(
   const farmArrivalEntries = farmRevealObjects.map(object => ({ object, parent: object.parent }));
   farmArrivalVisual.position.z = FARM_APPROACH_START_TILES * TILE;
   group.add(farmArrivalVisual);
+  const bridgeBuildSeconds = reducedMotion ? 1.8 : 3;
+  const arrivalDuration = farmApproachSeconds + bridgeBuildSeconds;
+  const connectionChains = createConnectionChains(group, starterBridgeGap, lowerBlocks, terrain);
+  connectionChains.update(attachmentComplete ? 0 : farmArrivalVisual.position.z, attachmentComplete ? 1 : 0);
   let arrivalComplete = attachmentComplete;
   let arrivalElapsed = 0;
   let arrivalLanternAmount = 0;
@@ -1380,7 +1373,7 @@ export function generateFarm(
       if (entry.object.parent !== parent) parent.add(entry.object);
       entry.object.visible = true;
     });
-    bridgeRevealObjects.forEach(object => { object.visible = attached; });
+    bridgeRevealObjects.forEach(object => object.userData.setConstructionProgress(attached ? 1 : 0, reducedMotion));
     farmArrivalVisual.visible = !attached;
     water.userData.waterPatternOffset.x = attached ? 0 : farmArrivalVisual.position.x;
     water.userData.waterPatternOffset.z = attached ? 0 : farmArrivalVisual.position.z;
@@ -1411,6 +1404,88 @@ export function generateFarm(
   rebuildArrivalColliders(arrivalComplete);
   const islandRecords = createIslandRecords(islands, terrain, seed);
   const connectionRecords = createIslandConnections(islandConnections, bridgeGaps, islandRecords);
+  const driftingIslands = createDriftingIslands(group, terrain, seed, generateIsland, physics, options.camera, {
+    lowerBlocks, obstacles, bridgeBlocks, getObserver: options.getObserver,
+    saved: options.savedEncounters, getExtraIslandBoxes: options.getExtraIslandBoxes,
+    generateIslandSteps, prepareVisuals: options.prepareIslandVisuals,
+  });
+  const fieldsChanged = (island, adding) => {
+    driftingIslands.invalidate();
+    if (terrain.size > cropInstances.capacity) {
+      cropInstances.dispose();
+      cropInstances = createCropInstances(terrain.size, group);
+    }
+    for (let index = ploughedTiles.length - 1; index >= 0; index--) {
+      if (!terrain.has(gridKey(ploughedTiles[index].gx, ploughedTiles[index].gz))) ploughedTiles.splice(index, 1);
+    }
+    growingCrops.clear();
+    plantedCount = readyCount = weedCount = 0;
+    for (const tile of terrain.values()) {
+      if (tile.ploughed && !ploughedTiles.includes(tile)) ploughedTiles.push(tile);
+      if (!tile.crop) continue;
+      plantedCount++;
+      if (tile.crop.weeds) weedCount++;
+      if (tile.crop.stage === 4) readyCount++; else growingCrops.add(tile);
+    }
+    if (adding) forage.resumeIsland(island);
+    else {
+      forage.suspendIsland(island);
+      const display = createCropInstances(island.terrain.size, island.group);
+      display.begin();
+      for (const tile of island.terrain.values()) if (tile.crop) { display.setCrop(tile); renderCropTile(display, tile); }
+      display.finish();
+      display.refreshFurrows([...island.terrain.values()].filter(tile => tile.ploughed));
+      island.departureFields = display;
+    }
+    refreshCropInstances();
+    refreshFurrowInstances();
+    forage.refreshField();
+  };
+  const attachedContent = createAttachedContent({ group, terrain, obstacles, lowerBlocks, bridgeBlocks,
+    records: islandRecords, connections: connectionRecords, islandById, physics, fieldsChanged,
+    beforeDetach: island => options.beforeIslandDetach?.(island),
+    afterAttach: island => options.afterIslandAttach?.(island),
+  });
+  const attachments = createIslandAttachments({ group, terrain, islands: islandRecords, connections: connectionRecords,
+    drifting: driftingIslands, bridgeBlocks, ...attachedContent, onChange, getObserver: options.getObserver || (() => physics.vehicleState()), reducedMotion: options.reducedMotion });
+  // Restore retained topology before construction, crop and vehicle restoration.
+  const pendingIslands = (options.savedWorld?.islands || []).filter(record => record.role === 'wild');
+  while (pendingIslands.length) {
+    let progress = false;
+    for (let index = pendingIslands.length - 1; index >= 0; index--) {
+      const saved = pendingIslands[index];
+      const gaps = (options.savedWorld.connections || []).flatMap(edge => {
+        const endpoint = edge.from.islandId === saved.id ? edge.from : edge.to.islandId === saved.id ? edge.to : null;
+        if (!endpoint) return [];
+        const other = endpoint === edge.from ? edge.to : edge.from;
+        const neighbor = islandRecords.find(record => record.id === other.islandId);
+        if (!neighbor) return [];
+        const from = terrain.get(gridKey(other.anchor.gx + neighbor.gridOrigin.gx, other.anchor.gz + neighbor.gridOrigin.gz));
+        if (!from) throw new Error('Saved island connection has no shore');
+        const to = { gx: endpoint.anchor.gx + saved.transform.x / TILE, gz: endpoint.anchor.gz + saved.transform.z / TILE,
+          x: endpoint.anchor.gx * TILE + saved.transform.x, z: endpoint.anchor.gz * TILE + saved.transform.z,
+          topY: endpoint.anchor.y + saved.transform.y, islandId: saved.id };
+        const centerDistance = Math.hypot(from.x - to.x, from.z - to.z);
+        return [{ from, to, centerDistance, distance: centerDistance - TILE }];
+      });
+      if (!gaps.length) continue;
+      const island = generateIsland(saved.seed, saved.settings);
+      island.id = saved.id;
+      island.terrain.forEach(tile => { tile.islandId = saved.id; });
+      attachments.restore(island, { gx: saved.transform.x / TILE, gz: saved.transform.z / TILE, x: saved.transform.x, z: saved.transform.z, gaps });
+      pendingIslands.splice(index, 1);
+      progress = true;
+    }
+    if (!progress) throw new Error('Saved island graph is disconnected');
+  }
+  if (options.savedWorld?.pendingAttachment) {
+    const saved = options.savedWorld.pendingAttachment;
+    const island = generateIsland(saved.seed, saved.settings);
+    island.id = saved.id;
+    island.terrain.forEach(tile => { tile.islandId = saved.id; });
+    attachments.restorePending(island, saved);
+  }
+  driftingIslands.restore();
   const spawnIsland = islandRecords.find(island => island.id === SETTLEMENT_ISLAND_ID);
   const vehicleSpawnPoints = Object.fromEntries(Object.entries(vehicleSpawnPositions).map(([id, position]) => [id, {
     islandId: spawnIsland.id,
@@ -1437,6 +1512,8 @@ export function generateFarm(
     terrain,
     islands: islandRecords,
     connections: connectionRecords,
+    driftingIslands,
+    attachments,
     cargoPort,
     seed,
     spawn: vehicleSpawnPositions.tractor,
@@ -1446,8 +1523,9 @@ export function generateFarm(
       return {
         complete: arrivalComplete,
         elapsed: arrivalElapsed,
-        duration: farmApproachSeconds,
-        progress: arrivalComplete ? 1 : THREE.MathUtils.clamp(arrivalElapsed / farmApproachSeconds, 0, 1),
+        duration: arrivalDuration,
+        buildingBridge: !arrivalComplete && arrivalElapsed >= farmApproachSeconds,
+        progress: arrivalComplete ? 1 : THREE.MathUtils.clamp(arrivalElapsed / arrivalDuration, 0, 1),
         farmCenter: {
           x: farmIsland.cx * TILE,
           y: farmIsland.h,
@@ -1471,7 +1549,6 @@ export function generateFarm(
     },
     setNightAmount(amount, lanternAmount = amount) {
       setWorkshopNightAmount(lanternAmount);
-      settlement.setNightAmount(lanternAmount);
       cargoPort.setNightAmount(amount, lanternAmount);
       const bridgeLanternAmount = THREE.MathUtils.clamp(Number(lanternAmount) || 0, 0, 1);
       arrivalLanternAmount = bridgeLanternAmount;
@@ -1479,6 +1556,7 @@ export function generateFarm(
       staticLanternLighting.setAmount(arrivalComplete ? bridgeLanternAmount : 0);
     },
     dispose() {
+      driftingIslands.dispose();
       forage.dispose();
       bridgeLanternGlowMaterial.dispose();
       Object.values(grainSplashMaterials).forEach(material => material.dispose());
@@ -1486,40 +1564,26 @@ export function generateFarm(
     },
     animate(elapsed, delta = 0, isWildlifeBlockedAt = () => false, travelState = null) {
       let persistentChange = false;
+      settlement.animate(elapsed, travelState);
+      driftingIslands.update(delta, travelState, arrivalComplete);
+      attachments.update(delta);
+      attachments.attached.forEach(island => island.animate(elapsed, travelState));
       if (!arrivalComplete) {
-        arrivalElapsed = Math.min(farmApproachSeconds, arrivalElapsed + delta);
+        arrivalElapsed = Math.min(arrivalDuration, arrivalElapsed + delta);
         const progress = THREE.MathUtils.smoothstep(arrivalElapsed / farmApproachSeconds, 0, 1);
         farmArrivalVisual.position.z = THREE.MathUtils.lerp(FARM_APPROACH_START_TILES * TILE, 0, progress);
         water.userData.waterPatternOffset.x = farmArrivalVisual.position.x;
         water.userData.waterPatternOffset.z = farmArrivalVisual.position.z;
-        if (arrivalElapsed >= farmApproachSeconds) completeArrival();
+        const chainExtension = THREE.MathUtils.smoothstep(arrivalElapsed / farmApproachSeconds, .3, .5);
+        connectionChains.update(farmArrivalVisual.position.z, chainExtension);
+        const construction = THREE.MathUtils.clamp((arrivalElapsed - farmApproachSeconds) / bridgeBuildSeconds, 0, 1);
+        bridgeRevealObjects.forEach(object => object.userData.setConstructionProgress(construction, reducedMotion));
+        if (arrivalElapsed >= arrivalDuration) completeArrival();
       }
       waterElapsed = elapsed;
       effectElapsed = elapsed;
       mats.water.uniforms.time.value = elapsed;
-      const windDirection = travelState?.direction;
-      const sharedGust = reducedMotion ? 0 : (Number(travelState?.gust) || 0);
-      for (const tree of trees) {
-        const gust = Math.sin(elapsed * .55 + tree.phase) * .35 + Math.sin(elapsed * 1.3 + tree.phase * 1.7) * .12;
-        tree.sway.rotation.z = Math.sin(elapsed * 1.15 + tree.phase) * tree.strength + gust * .018
-          + (windDirection?.x || 0) * sharedGust * .018;
-        tree.sway.rotation.x = Math.cos(elapsed * .9 + tree.phase * .73) * tree.strength * .62 + gust * .012
-          + (windDirection?.z || 0) * sharedGust * .018;
-      }
-      for (const current of waterMotion) {
-        const travel = ((elapsed * .72 + current.phase) % 1 - .5) * .54;
-        current.mesh.position.set(
-          current.x + current.direction.x * travel,
-          current.y,
-          current.z + current.direction.z * travel,
-        );
-      }
-      for (const waterfall of waterfalls) {
-        for (const stream of waterfall.streams) {
-          const progress = (elapsed * .78 + stream.phase) % 1;
-          stream.mesh.position.y = waterfall.topY - progress * waterfall.height;
-        }
-      }
+      animateNature(elapsed, travelState, waterfallEffects);
       for (let index = waterParticles.length - 1; index >= 0; index--) {
         const particle = waterParticles[index];
         const age = elapsed - particle.born;
@@ -1608,6 +1672,7 @@ export function generateFarm(
       return { x: center.x, y: center.topY, z: center.z };
     },
     setBuildingCollider(id, obstacle) {
+      driftingIslands.invalidate();
       const existing = buildingObstacles.get(id);
       if (existing) {
         const index = obstacles.indexOf(existing);
@@ -1615,6 +1680,10 @@ export function generateFarm(
         buildingObstacles.delete(id);
       }
       if (obstacle) {
+        const tile = terrain.get(gridKey(Math.round(obstacle.x / TILE), Math.round(obstacle.z / TILE)))
+          || [...terrain.values()].reduce((nearest, candidate) => !nearest
+            || Math.hypot(candidate.x - obstacle.x, candidate.z - obstacle.z) < Math.hypot(nearest.x - obstacle.x, nearest.z - obstacle.z) ? candidate : nearest, null);
+        obstacle.islandId = tile?.islandId;
         buildingObstacles.set(id, obstacle);
         obstacles.push(obstacle);
       }
@@ -1649,6 +1718,7 @@ export function generateFarm(
     mowAt(x, z, levelY, elapsed) {
       const tile = tileAtLevel(x, z, levelY, terrain);
       if (!islandAllows(tile, 'farming') || tile?.crop?.cropId !== 'grass' || tile.crop.stage !== 4 || forage.hasForage(tile)) return 0;
+      if (!reducedMotion) fieldEffects.mow(tile, effectElapsed);
       tile.crop.stage = 1;
       tile.crop.stageStarted = elapsed;
       tile.crop.animationStarted = elapsed;
@@ -1656,9 +1726,9 @@ export function generateFarm(
       readyCount = Math.max(0, readyCount - 1);
       growingCrops.add(tile);
       cropInstancesDirty = true;
-      forage.addLoose(tile, TILE_YIELD_LITRES);
+      forage.addLoose(tile, GRASS_TILE_YIELD_LITRES);
       onChange();
-      return TILE_YIELD_LITRES;
+      return GRASS_TILE_YIELD_LITRES;
     },
     takeLooseGrassAt(x, z, levelY) {
       return forage.takeLooseAt(x, z, levelY);
@@ -1681,18 +1751,21 @@ export function generateFarm(
     removeBale(id) {
       return forage.removeBale(id);
     },
-    harvestAt(x, z, levelY, acceptedCropId = null) {
+    harvestAt(x, z, levelY, acceptedCropId = null, readHarvestTarget = null) {
       const tile = tileAtLevel(x, z, levelY, terrain);
       if (!islandAllows(tile, 'farming') || tile?.crop?.stage !== 4 || tile.crop.cropId === 'grass') return false;
       const cropId = tile.crop.cropId;
       if (acceptedCropId && cropId !== acceptedCropId) return false;
+      if (!reducedMotion && readHarvestTarget) fieldEffects.harvest(tile, effectElapsed, readHarvestTarget);
       if (tile.crop.weeds) weedCount = Math.max(0, weedCount - 1);
       tile.crop = null;
       plantedCount = Math.max(0, plantedCount - 1);
       readyCount = Math.max(0, readyCount - 1);
       cropInstancesDirty = true;
       onChange();
-      return { cropId, yieldAmount: TILE_YIELD_LITRES, x: tile.x, y: tile.topY, z: tile.z };
+      const yieldAmount = CROP_TILE_YIELD_MIN_LITRES
+        + Math.floor(random() * (CROP_TILE_YIELD_MAX_LITRES - CROP_TILE_YIELD_MIN_LITRES + 1));
+      return { cropId, yieldAmount, x: tile.x, y: tile.topY, z: tile.z };
     },
     persistentState(elapsed) {
       const tiles = [];
@@ -1711,7 +1784,7 @@ export function generateFarm(
         }
         tiles.push(savedTile);
       }
-      return { seed, tiles, forage: forage.persistentState() };
+      return { seed, tiles, forage: forage.persistentState(), pendingAttachment: attachments.pendingState() };
     },
     restorePersistentState(savedState, elapsed, isBlockedAt = () => false) {
       if (!Array.isArray(savedState?.tiles)) return;

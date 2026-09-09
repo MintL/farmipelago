@@ -60,6 +60,46 @@ export function buildTerrainMesh(terrain) {
   return mesh;
 }
 
+// Moving ground uses solid, coplanar rectangles instead of triangle contact
+// manifolds. Merge equal-height neighbors so flat land has few collider seams,
+// retaining exact tile edges, water-basin floors and terrace walls.
+export function buildTerrainCuboids(terrain) {
+  const remaining = new Map(terrain);
+  const blocks = [];
+  const tiles = [...terrain.values()].sort((a, b) => a.gz - b.gz || a.gx - b.gx);
+  for (const tile of tiles) {
+    if (!remaining.has(gridKey(tile.gx, tile.gz))) continue;
+    const matches = (gx, gz) => {
+      const candidate = remaining.get(gridKey(gx, gz));
+      return candidate && candidate.topY === tile.topY && candidate.baseY === tile.baseY;
+    };
+    let width = 1;
+    while (matches(tile.gx + width, tile.gz)) width++;
+    let depth = 1;
+    while (true) {
+      let fullRow = true;
+      for (let x = 0; x < width; x++) {
+        if (!matches(tile.gx + x, tile.gz + depth)) { fullRow = false; break; }
+      }
+      if (!fullRow) break;
+      depth++;
+    }
+    for (let z = 0; z < depth; z++) for (let x = 0; x < width; x++) {
+      remaining.delete(gridKey(tile.gx + x, tile.gz + z));
+    }
+    const bottom = tile.baseY - SOIL_DEPTH - GRASS_TOP;
+    blocks.push({
+      x: tile.x + (width - 1) * TILE * .5,
+      y: (tile.topY + bottom) * .5,
+      z: tile.z + (depth - 1) * TILE * .5,
+      width: width * TILE,
+      height: tile.topY - bottom,
+      depth: depth * TILE,
+    });
+  }
+  return blocks;
+}
+
 export function buildBlockMesh(blocks) {
   const mesh = createMeshBuilder();
   const occupied = new Set(blocks.map(block => blockKey(block.x, block.y, block.z)));

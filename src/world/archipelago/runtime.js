@@ -29,6 +29,7 @@ function islandContent(island, state, terrain) {
 
 export function createArchipelagoRuntime(farm) {
   const islands = new Map(farm.islands.map(island => [island.id, island]));
+  const syncIslands = () => { islands.clear(); farm.islands.forEach(island => islands.set(island.id, island)); };
   const runtime = {
     islands,
     connections: farm.connections,
@@ -36,6 +37,7 @@ export function createArchipelagoRuntime(farm) {
       return islands.get(id) || null;
     },
     islandAtWorld(x, z) {
+      syncIslands();
       const tile = farm.terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
       const island = tile ? islands.get(tile.islandId) : null;
       return island?.status === 'attached' ? island : null;
@@ -55,6 +57,7 @@ export function createArchipelagoRuntime(farm) {
       } : null;
     },
     worldPose(pose) {
+      syncIslands();
       const island = islands.get(pose?.islandId);
       if (!island || !pose?.position) return null;
       return {
@@ -74,6 +77,7 @@ export function createArchipelagoRuntime(farm) {
       return island ? worldToIsland(island.transform, position) : null;
     },
     persistentState(elapsed) {
+      syncIslands();
       const state = farm.persistentState(elapsed);
       return {
         ...state,

@@ -1,4 +1,3 @@
-#milestoneTracker,
 #buildingToggle,
 #inventoryMeter,
 #siloInventory,
@@ -39,10 +38,10 @@
   #loadoutFooter { min-height: 60px; padding: 7px 8px; }
   #loadoutSummary { display: none; }
   #loadoutFooter .button { flex: 1; }
-  #pauseDialog, #celebrationDialog { width: 100%; align-self: center; }
-  #pauseDialog .dialogHeader, #celebrationDialog .dialogHeader { min-height: 52px; padding: 2px 4px 8px 10px; }
-  #pauseDialog .dialogTitle, #celebrationDialog .dialogTitle { font-size: 21px; }
-  #pauseBody, #confirmBody, #celebrationBody { padding: 8px 8px 12px; }
+  #pauseDialog{ width: 100%; align-self: center; }
+  #pauseDialog .dialogHeader{ min-height: 52px; padding: 2px 4px 8px 10px; }
+  #pauseDialog .dialogTitle{ font-size: 21px; }
+  #pauseBody, #confirmBody { padding: 8px 8px 12px; }
   #controlsList { padding-left: 47px; }
   .confirmActions { padding: 0; }
   .confirmActions .button { flex: 1; }
@@ -51,9 +50,8 @@
 @media (max-width: 380px) {
   #topBar, #topLeftGroup, #topActions, #fieldControls { gap: 6px; }
   #topLeftGroup { width: 136px; }
-  #milestoneTracker { padding: 8px 9px; }
-  #milestoneTitle { font-size: 10px; }
   #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
+  #zoomControls { height: 42px; border-radius: 13px; }
   #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 136px; padding: 8px 9px; }
   #performanceBadge { top: calc(var(--safe-top) + 48px); }
   #stickZone { width: 108px; height: 108px; --stick-travel: 30px; }

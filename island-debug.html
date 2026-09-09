@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Farmipelago · Island routes</title>
+  <style id="debug-boot-styles">
+    #debug-boot { position: fixed; inset: 0; z-index: 1000; display: grid; place-content: center; gap: 14px; padding: 28px; background: #111f28; color: #d7e4e6; font: 15px/1.6 system-ui, sans-serif; }
+    #debug-boot[hidden] { display: none; }
+    #debug-boot h2, #debug-boot p { margin: 0; max-width: 580px; }
+    #debug-boot a { color: #71dccb; }
+    #debug-boot button { justify-self: start; padding: 10px 18px; border: 1px solid #647f89; border-radius: 6px; background: #223b45; color: white; font: inherit; cursor: pointer; }
+    #debug-boot-help { font-size: 13px; }
+  </style>
+  <link rel="stylesheet" href="/src/island-debug/styles.css">
+</head>
+<body>
+  <section id="debug-boot" role="status" aria-live="polite">
+    <h2>Island routes</h2>
+    <p id="debug-boot-message">Loading the debugger…</p>
+    <p id="debug-boot-help">Use this page on the same server as the game. To open a downloaded file, use <a href="./island-debug-standalone.html" download>the self-contained debugger</a>.</p>
+    <button id="debug-boot-retry" hidden onclick="location.reload()">Reload</button>
+    <noscript>This debugger needs JavaScript enabled.</noscript>
+  </section>
+  <script>
+    (() => {
+      const panel = document.querySelector('#debug-boot');
+      const message = document.querySelector('#debug-boot-message');
+      const help = document.querySelector('#debug-boot-help');
+      const retry = document.querySelector('#debug-boot-retry');
+      let loaded = false;
+      const fail = text => {
+        panel.hidden = false;
+        message.textContent = text;
+        help.hidden = false;
+        retry.hidden = false;
+      };
+      document.addEventListener('island-debug:ready', () => { loaded = true; panel.hidden = true; });
+      document.addEventListener('island-debug:error', event => fail(event.detail));
+      window.addEventListener('error', event => {
+        if (event.target instanceof HTMLLinkElement) fail('The debugger stylesheet could not be loaded. This HTML file needs its accompanying assets.');
+        else if (event.target instanceof HTMLScriptElement) fail('The debugger code could not be loaded. Open the served page or the self-contained download.');
+        else if (event.message) fail('The debugger stopped: ' + event.message);
+      }, true);
+      window.addEventListener('unhandledrejection', event => fail('The debugger stopped: ' + (event.reason?.message || String(event.reason))));
+      if (location.protocol === 'file:' && document.documentElement.dataset.standalone !== 'true') {
+        fail('This is the source page. It cannot run as a downloaded HTML file; open it through the game server or use the self-contained debugger.');
+      }
+      setTimeout(() => {
+        if (!loaded && retry.hidden) fail('The debugger has not finished loading. Check that its assets are available, or use the self-contained download.');
+      }, 20000);
+    })();
+  </script>
+  <header>
+    <div class="brand"><span class="eyebrow">Farmipelago / Debug</span><h1>Island routes</h1></div>
+    <div class="controls">
+      <button id="pause">Pause</button><button id="step" title="Pause and advance one physics step">Step</button>
+      <label>Speed <select id="speed"><option>.25</option><option>.5</option><option selected>1</option><option>2</option><option>5</option><option>10</option><option>30</option><option>60</option></select> ×</label>
+      <label>Seed <input id="seed" type="number" min="0" max="4294967295" value="7391"></label>
+      <button id="reset">Reset</button><button id="fit">Fit view</button>
+      <label><input id="envelopes" type="checkbox" checked> Safety envelopes</label>
+      <label><input id="cameraBoundary" type="checkbox" checked> Camera boundary</label>
+    </div>
+  </header>
+  <main><canvas id="map" aria-label="Top-down island simulation. Drag to pan, scroll to zoom, drag the observer marker to change the encounter location."></canvas>
+    <aside><div class="eyebrow">Simulation</div><output id="status">Generating islands…</output>
+      <div class="legend"><span class="attached">Retained land</span><span class="encounter">Encounter</span><span class="decorative">Decoration</span><span class="connecting">Connecting / releasing</span></div>
+      <p>Solid lines: intended routes<br>Dashed lines: 60-second forecasts<br>Orange areas: reserved corridors</p>
+      <p><span class="camera-boundary">Purple outline: simulated camera</span><br>16:9 view at ground level. Follows the observer; map zoom does not change it. Visibility checks also include island height and a two-tile buffer.</p>
+      <hr><div class="eyebrow">Selected island</div><output id="details">Select an island to inspect its route.</output>
+      <button id="action" hidden>Connect</button>
+    </aside>
+    <span class="north">N ↑</span>
+  </main>
+  <footer><span>Drag to pan · Wheel / pinch to zoom · Drag the white observer marker on retained land</span><span>Isolated session · Game saves are never accessed</span></footer>
+  <script type="module" src="/src/island-debug/main.js"></script>
+</body>
+</html>

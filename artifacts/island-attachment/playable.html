@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#e8dec4" />
+  <title>Farmipelago</title>
+  <link rel="stylesheet" href="/src/styles/game.css" />
+</head>
+<body data-input-mode="keyboard" data-view-mode="drive">
+  <div id="hud">
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.339</span><span id="fpsValue">-- FPS</span></div>
+    <header id="topBar">
+      <div id="topLeftGroup">
+      </div>
+      <div id="topActions">
+        <div id="zoomControls" role="group" aria-label="Camera zoom">
+          <button id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>
+        </div>
+        <div id="fieldControls">
+          <div id="buildingControl">
+            <button id="buildingToggle" type="button" aria-label="Open building menu" aria-pressed="false" title="Buildings">
+              <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
+            </button>
+          </div>
+        </div>
+        <button id="menuToggle" type="button" aria-label="Open pause menu" title="Menu">
+          <svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+        </button>
+      </div>
+    </header>
+    <div id="viewHint"></div>
+    <aside id="siloInventory" hidden aria-live="polite">
+      <div id="villageNeeds" hidden>
+        <strong class="villageTitle">Village · Tier 1</strong>
+        <div id="villageNeedsGrid" role="group" aria-label="Village needs"></div>
+      </div>
+      <div id="siloActions">
+        <button id="siloLoad" type="button" aria-label="Load selected crop" title="Load selected crop"><svg class="icon" aria-hidden="true"><use href="#icon-load"></use></svg></button>
+        <button id="siloUnload" type="button" aria-label="Unload combine into silo" title="Unload combine into silo"><svg class="icon" aria-hidden="true"><use id="siloUnloadIconUse" href="#icon-silo-unload"></use></svg><span class="villageDeliverLabel">Deliver</span></button>
+      </div>
+      <button id="previousSiloCrop" type="button" aria-label="Previous stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
+      <div class="siloInventoryCrop"><svg id="siloCropIcon" class="icon" role="img" aria-label="Corn"><use id="siloCropIconUse" href="#icon-corn"></use></svg><strong id="siloCropValue">0</strong></div>
+      <button id="nextSiloCrop" type="button" aria-label="Next stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
+      <div id="barnStorageRows" hidden></div>
+    </aside>
+    <div id="constructionPopup" hidden aria-live="polite">
+      <p id="demolitionWarning" hidden></p>
+      <button id="constructionDemolish" type="button" hidden>Demolish</button>
+      <button id="constructionCancel" type="button">Cancel</button>
+      <button id="constructionUndo" type="button" aria-label="Back to building placement" title="Back to building placement">
+        <svg class="icon" aria-hidden="true"><use href="#icon-undo"></use></svg>
+      </button>
+      <button id="constructionConfirm" type="button">Confirm</button>
+    </div>
+    <aside id="buildPalette" hidden aria-label="Building menu">
+      <button id="siloOption" class="buildingOption" type="button" data-building-id="silo" aria-pressed="false">
+        <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
+        <span><strong>Silo</strong><small>Grain storage</small></span><em>Free</em>
+      </button>
+      <button id="cattleBarnOption" class="buildingOption" type="button" data-building-id="cattle-barn" aria-pressed="false" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-cattle-barn"></use></svg>
+        <span><strong>Cattle Barn</strong><small>Barn + custom pen</small></span><em>Free</em>
+      </button>
+      <button id="repaintPen" type="button">Repaint border</button>
+    </aside>
+
+    <div id="stickZone" aria-hidden="true">
+      <div id="stickBase"><div id="stickKnob"></div></div>
+    </div>
+
+    <button id="cycleVehicle" class="actionButton" type="button" aria-label="Cycle vehicle" title="Cycle vehicle">
+      <svg class="icon" aria-hidden="true"><use href="#icon-cycle-vehicle"></use></svg>
+    </button>
+
+    <div id="actionCluster">
+      <div id="inventoryMeter" hidden></div>
+      <div id="equipmentActions">
+        <button id="frontToolToggle" class="actionButton equipmentAction" type="button" aria-label="Lower front tool" aria-pressed="false" title="Lower front tool">
+          <svg class="icon" aria-hidden="true"><use href="#icon-front-action"></use></svg>
+          <span class="toolCopy"><span class="toolName">Front</span><span class="toolState" id="frontToolState">Raised</span></span>
+          <span class="keycap" aria-hidden="true">Q</span>
+        </button>
+        <button id="rearToolToggle" class="actionButton equipmentAction" type="button" aria-label="Lower rear tool" aria-pressed="false" title="Lower rear tool">
+          <svg class="icon" aria-hidden="true"><use href="#icon-rear-action"></use></svg>
+          <span class="toolCopy"><span class="toolName">Rear</span><span class="toolState" id="rearToolState">Raised</span></span>
+          <span class="keycap" aria-hidden="true">E</span>
+        </button>
+      </div>
+      <div id="seedCycleControl" hidden>
+        <span id="seedCropToast" role="status" aria-live="polite"></span>
+        <button id="unloadButton" class="actionButton" type="button" aria-label="Cycle seed" aria-disabled="true" title="Cycle seed">
+          <svg class="icon" aria-hidden="true"><use id="unloadIconUse" href="#icon-corn"></use></svg>
+        </button>
+      </div>
+      <button id="jump" class="actionButton" type="button" aria-label="Jump" title="Jump">
+        <svg class="icon" aria-hidden="true"><use href="#icon-jump"></use></svg>
+      </button>
+    </div>
+
+    <div id="desktopHints" aria-hidden="true">
+      <kbd>WASD</kbd> Drive &nbsp; <kbd>Space</kbd> Jump &nbsp; <kbd>Q</kbd> Front &nbsp; <kbd>E</kbd> Rear &nbsp; <kbd>V</kbd> Vehicle &nbsp; <span id="secondaryHint" hidden><kbd>F</kbd> <span id="secondaryHintLabel">Seed</span> &nbsp; </span><kbd>B</kbd> Build &nbsp; <kbd>Esc</kbd> Menu
+    </div>
+
+    <div id="overlay" hidden>
+      <section id="barnDialog" class="dialog" role="dialog" aria-modal="true" aria-label="Workshop loadout" hidden>
+        <header class="dialogHeader">
+          <button id="closeBarn" class="iconButton" type="button" aria-label="Close workshop loadout">
+            <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </header>
+        <div id="loadoutBays" aria-label="Loadout selection">
+          <section class="loadoutBay" data-category="vehicles" aria-labelledby="vehicleBayLabel">
+            <h2 class="bayLabel" id="vehicleBayLabel">Current vehicle</h2>
+            <div class="optionPresentation">
+              <canvas class="previewCanvas" id="vehiclePreview" aria-hidden="true"></canvas>
+              <div id="vehicleIdentity"><span><strong id="vehicleName">Farm Tractor</strong><small>Loadout being configured</small></span></div>
+            </div>
+          </section>
+          <section class="loadoutBay" data-category="equipment" aria-labelledby="equipmentBayLabel">
+            <h2 class="bayLabel" id="equipmentBayLabel">Rear tool</h2>
+            <div class="optionPresentation">
+              <canvas class="previewCanvas" id="equipmentPreview" aria-hidden="true"></canvas>
+              <div class="optionGrid" id="equipmentOptions" role="group" aria-label="Rear tool options"></div>
+            </div>
+          </section>
+          <section class="loadoutBay" data-category="frontTools" aria-labelledby="frontToolBayLabel">
+            <h2 class="bayLabel" id="frontToolBayLabel">Front tool</h2>
+            <div class="optionPresentation">
+              <canvas class="previewCanvas" id="frontToolPreview" aria-hidden="true"></canvas>
+              <div class="optionGrid" id="frontToolOptions" role="group" aria-label="Front tool options"></div>
+            </div>
+          </section>
+        </div>
+        <footer id="loadoutFooter">
+          <div id="loadoutSummary"></div>
+          <button id="cancelLoadout" class="button" type="button">Cancel</button>
+          <button id="applyLoadout" class="button primary" type="button">Equip &amp; leave</button>
+        </footer>
+      </section>
+
+      <section id="pauseDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="pauseTitle" hidden>
+        <header class="dialogHeader">
+          <div><span class="eyebrow">Farmipelago</span><h1 class="dialogTitle" id="pauseTitle">Paused</h1></div>
+          <button id="closePause" class="iconButton" type="button" aria-label="Resume game">
+            <svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </header>
+        <div id="pauseBody">
+          <div class="pauseActions">
+            <button id="resumeGame" class="pauseAction" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-play"></use></svg>
+              <span><strong>Resume</strong><small>Return to the farm</small></span>
+            </button>
+            <button id="showControls" class="pauseAction" type="button" aria-expanded="false" aria-controls="controlsList">
+              <svg class="icon" aria-hidden="true"><use href="#icon-controls"></use></svg>
+              <span><strong>Controls</strong><small>Keyboard and touch reference</small></span>
+            </button>
+            <div id="controlsList" hidden>
+              <strong>Drive</strong><span>WASD, arrow keys, or the fixed touch joystick</span>
+              <strong>Jump</strong><span>Space or jump button</span>
+              <strong>Camera</strong><span>Two-finger swipe left or right over the world, or use [ and ], to rotate 90°. Pinch over the world, scroll, or use + / − to zoom in driving and construction views.</span>
+              <strong>Front tool</strong><span>Q or the front action button</span>
+              <strong>Rear tool</strong><span>E or the rear action button</span>
+              <strong>Vehicle</strong><span>V or the button above the touch joystick cycles between owned vehicles</span>
+              <strong>Storage / cargo</strong><span>Use nearby popups to transfer silo crops, feed a carried bale, load barn milk, or deliver eligible cargo</span>
+              <strong>Buildings</strong><span>Use the build button to choose a structure from the bottom tray</span>
+              <strong>Screenshot</strong><span>H hides the HUD; press H, Escape, or tap anywhere to restore it</span>
+              <strong>Menu</strong><span>Escape or menu button; Escape leaves building view first</span>
+            </div>
+            <button id="hideHud" class="pauseAction" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-camera"></use></svg>
+              <span><strong>Hide HUD</strong><small>Take a clean screenshot; tap or press H to restore</small></span>
+            </button>
+            <button id="showDebug" class="pauseAction" type="button" aria-expanded="false" aria-controls="debugPanel">
+              <svg class="icon" aria-hidden="true"><use href="#icon-field"></use></svg>
+              <span><strong>Debug</strong><small>Scrub daylight, compare cameras, and override progression</small></span>
+            </button>
+            <div id="debugPanel" hidden>
+              <strong class="debugSectionLabel">Time of day</strong>
+              <div class="debugTimeControl">
+                <div class="debugTimeHeader"><label for="debugTimeSlider">Farm clock</label><output id="debugTimeValue" for="debugTimeSlider">10:00 · Day</output></div>
+                <input id="debugTimeSlider" type="range" min="0" max="1439" step="15" value="600" aria-label="Time of day" aria-valuetext="10:00, Day">
+                <div class="debugTimeTicks" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+              </div>
+              <strong class="debugSectionLabel">Camera</strong>
+              <p class="debugIntro">Compare perspective compression while keeping the active vehicle approximately the same size.</p>
+              <div id="debugCameraPresets" aria-label="Drive camera preset">
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="38" data-camera-label="38 degrees, original camera">
+                  <span><strong>38°</strong><small>Original</small></span><small class="debugUnlockState">Select</small>
+                </button>
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="30" data-camera-label="30 degrees, mild diorama">
+                  <span><strong>30°</strong><small>Mild diorama</small></span><small class="debugUnlockState">Select</small>
+                </button>
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="28" data-camera-label="28 degrees, default camera">
+                  <span><strong>28°</strong><small>Default</small></span><small class="debugUnlockState">Active</small>
+                </button>
+                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="24" data-camera-label="24 degrees, strong diorama">
+                  <span><strong>24°</strong><small>Strong diorama</small></span><small class="debugUnlockState">Select</small>
+                </button>
+              </div>
+              <strong class="debugSectionLabel">Unlocks</strong>
+              <p class="debugIntro">Preview capabilities planned for future islands. Starter and previously earned capabilities remain unlocked.</p>
+              <div id="debugUnlockList" aria-label="Unlockable overrides"></div>
+              <button id="clearUnlockOverrides" class="button" type="button" hidden>Clear overrides</button>
+            </div>
+            <button id="requestRegenerate" class="pauseAction" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+              <span><strong>Restart game</strong><small>Delete this farm and start over</small></span>
+            </button>
+          </div>
+        </div>
+        <div id="confirmBody" hidden>
+          <p>This permanently deletes the saved Farmipelago, including its fields, crops, buildings, deliveries, vehicles, equipment, and storage.</p>
+          <div class="confirmActions">
+            <button id="cancelRegenerate" class="button" type="button">Keep this farm</button>
+            <button id="confirmRegenerate" class="button danger" type="button">Delete save &amp; restart</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14" /></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" /></symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" /></symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>
+    <symbol id="icon-field" viewBox="0 0 24 24"><path d="M4 19 9 5M10 19l5-14M16 19l4-11M3 19h18" /></symbol>
+    <symbol id="icon-corn" viewBox="0 0 24 24"><path d="M12 21V9" stroke="#5e4c2c" /><path d="M11.7 18c-4.2-.2-6.5-2.7-6.3-6.4 3.9.2 6.1 2.2 6.3 6.4Z" fill="#76a64c" stroke="#4e6f37" /><path d="M12.3 16.5c.2-4.3 2.5-6.5 6.2-6.8.1 3.9-2.1 6.2-6.2 6.8Z" fill="#4d8d45" stroke="#3d6c36" /><path d="M11.2 14.8V5.7c0-2.3 1.7-3.5 3.1-1.8 1.2 1.4.8 3.2.8 5.4v5.5" fill="#f0bd43" stroke="#795e2d" /><path d="M12 6.7h2.2M12 9.4h2.5M12 12.1h2.2" stroke="#d58d2d" /></symbol>
+    <symbol id="icon-barley" viewBox="0 0 24 24"><path d="M12 21V6" stroke="#5d5330" /><path d="M11.8 8 7.4 4.2M11.8 11 6.5 7.4M11.8 14l-5.5-2.7M12.8 9.5l3.8-5M12.8 12.5l5-3.8M12.8 15.5l5-2.6" stroke="#7f6531" /><path d="m11.7 9.1-3.6-3.2M11.7 12.1l-4.4-3M11.7 15l-4.7-2.1M12.7 10.5l3-4M12.7 13.5l4.3-3.1M12.7 16.3l4.6-1.9" stroke="#b9a046" /></symbol>
+    <symbol id="icon-canola" viewBox="0 0 24 24"><path d="M12 21V10M12 15 7 11M12 13l5-4M12 18l5-3" stroke="#4e8040" /><circle cx="7" cy="8" r="2.3" fill="#f2cf44" stroke="#84632b" /><circle cx="12" cy="7" r="2.3" fill="#f7dd58" stroke="#84632b" /><circle cx="17" cy="6" r="2.3" fill="#f2c737" stroke="#84632b" /><circle cx="18" cy="13" r="2.3" fill="#f6d84c" stroke="#84632b" /><circle cx="7" cy="8" r=".55" fill="#db9131" stroke="none" /><circle cx="12" cy="7" r=".55" fill="#db9131" stroke="none" /><circle cx="17" cy="6" r=".55" fill="#db9131" stroke="none" /><circle cx="18" cy="13" r=".55" fill="#db9131" stroke="none" /></symbol>
+    <symbol id="icon-soybean" viewBox="0 0 24 24"><path d="M12 21V7" stroke="#4b6d3c" /><path d="M12 11C7 11 5 9 5 6c4 0 7 1 7 5Z" fill="#72a656" stroke="#3f683b" /><path d="M12 15c5 0 7-2 7-5-4 0-7 1-7 5Z" fill="#4f9148" stroke="#3f683b" /><path d="M9.2 13c-2 2-2 5 0 7M14.8 9c2 2 2 5 0 7" stroke="#8a6936" /><ellipse cx="8.7" cy="18" rx="1.4" ry="1.8" fill="#c9bd5a" stroke="#76672f" /><ellipse cx="15.3" cy="14" rx="1.4" ry="1.8" fill="#d7c968" stroke="#76672f" /></symbol>
+    <symbol id="icon-ready" viewBox="0 0 24 24"><path d="M12 3v18M12 7c-3-2-5-1-6 1 2 2 4 2 6 0M12 12c3-2 5-1 6 1-2 2-4 2-6 0M8 21h8" /></symbol>
+    <symbol id="icon-silo" viewBox="0 0 24 24"><path d="M6 20V9a6 6 0 0 1 12 0v11M4 20h16M7 9h10M12 3v2M9 20v-7h6v7M5 9h14" /><path d="M17 8v5M15 8v5" /></symbol>
+    <symbol id="icon-load" viewBox="0 0 24 24"><path d="M4 12h11M11 8l4 4-4 4M16 5h4v14h-4z" /></symbol>
+    <symbol id="icon-silo-unload" viewBox="0 0 24 24"><path d="M20 12H9M13 8l-4 4 4 4M4 5h4v14H4z" /></symbol>
+    <symbol id="icon-unload" viewBox="0 0 24 24"><path d="M5 4v10h10M9 10l6 6 6-6M15 16v4M4 20h16" /></symbol>
+    <symbol id="icon-weeds" viewBox="0 0 24 24"><path d="M12 21v-9M12 16c-4 0-7-2-7-6 4 0 7 2 7 6ZM12 13c0-4 2-7 6-8 1 4-1 7-6 8ZM8 21h8" /></symbol>
+    <symbol id="icon-jump" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6M12 5v14" /></symbol>
+    <symbol id="icon-cycle-vehicle" viewBox="0 0 24 24"><path d="M4 7a9 9 0 0 1 13-2l2 2M19 3v4h-4M20 17a9 9 0 0 1-13 2l-2-2M5 21v-4h4" /><path d="M8.5 14.5h1l1-3.5h3.5l1 2h1.5l1 1.5M11 11V9.5h2.5L15 11" /><circle cx="10.5" cy="15.5" r="1.35" /><circle cx="15.5" cy="15.5" r="1.05" /></symbol>
+    <symbol id="icon-plough" viewBox="0 0 24 24"><path d="M5 5v8c0 4 3 6 7 6h7M5 9h8l3 3M9 19l2-5M15 19l2-5" /></symbol>
+    <symbol id="icon-seeder" viewBox="0 0 24 24"><path d="M5 7h9l2 7H7L5 7ZM8 14v4M15 14v4M7 20h2M14 20h2M16 10h3v8" /></symbol>
+    <symbol id="icon-sprayer" viewBox="0 0 24 24"><path d="M8 6h8v10H8zM10 3h4M4 12h4M16 12h4M4 12v4M20 12v4M3 19h2M11 19h2M19 19h2" /></symbol>
+    <symbol id="icon-mower" viewBox="0 0 24 24"><path d="M4 15h16M6 15l2-6h8l2 6M8 18h8M6 20l3-2M18 20l-3-2M10 9V6h4v3" /></symbol>
+    <symbol id="icon-baler" viewBox="0 0 24 24"><path d="M5 8h12l2 4v7H5zM8 11h7v5H8zM3 16h2M19 16h2M6 6h8" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
+    <symbol id="icon-bale-fork" viewBox="0 0 24 24"><path d="M6 4v13M18 4v13M6 7h12M6 17h12M9 17v5M15 17v5" /></symbol>
+    <symbol id="icon-hay-bale" viewBox="0 0 24 24"><path d="M4 7h16v12H4z" fill="#d1ae52" stroke="#80652f" /><path d="M8 7v12M16 7v12" stroke="#6f8b45" stroke-width="2" /><path d="M6 10h2M10 10h4M17 10h1M5 15h3M10 15h4M17 15h2" stroke="#f0d277" /></symbol>
+    <symbol id="icon-cow" viewBox="0 0 24 24">
+      <path d="M7 9c0-2.2 1.8-3.8 4-3.8h2c2.2 0 4 1.6 4 3.8v6.2c0 3-2.1 4.8-5 4.8s-5-1.8-5-4.8Z" fill="#f1e6ca" stroke="currentColor" />
+      <path d="M7.2 9.2 3.8 7.5c-.3 2.2.7 3.5 3.2 3.7M16.8 9.2l3.4-1.7c.3 2.2-.7 3.5-3.2 3.7M8.2 6.4 6.7 3.8M15.8 6.4l1.5-2.6" />
+      <path d="M8.4 8.2c1.4-.8 2.7-.3 3.2 1.3-.8 1.2-2.1 1.7-3.6 1.1Z" fill="#765345" stroke="none" />
+      <circle cx="9.5" cy="12.4" r=".75" fill="currentColor" stroke="none" /><circle cx="14.5" cy="12.4" r=".75" fill="currentColor" stroke="none" />
+      <path d="M8.7 15.1c0-1.1 1.1-1.8 3.3-1.8s3.3.7 3.3 1.8v1.2c0 1.2-1.2 2-3.3 2s-3.3-.8-3.3-2Z" fill="#d9a38d" stroke="currentColor" />
+      <circle cx="10.6" cy="15.8" r=".5" fill="currentColor" stroke="none" /><circle cx="13.4" cy="15.8" r=".5" fill="currentColor" stroke="none" />
+    </symbol>
+    <symbol id="icon-cattle-barn" viewBox="0 0 24 24"><path d="M3 10 12 3l9 7v11H3zM8 21v-8h8v8M8 8h8M10 13l4 4M14 13l-4 4" /></symbol>
+    <symbol id="icon-milk" viewBox="0 0 24 24"><path d="M8 4h8l1 4v12H7V8zM8 8h9M10 4V2h4v2" /><path d="M9 13c2-2 4 2 6 0v4c-2 2-4-2-6 0z" fill="#eef4ee" /></symbol>
+    <symbol id="icon-milk-tank" viewBox="0 0 24 24"><path d="M5 8h12a4 4 0 0 1 0 8H5zM3 12h2M17 16v2M8 16v2M5 18h14" /><circle cx="8" cy="19" r="2" /><circle cx="17" cy="19" r="2" /></symbol>
+    <symbol id="icon-grass" viewBox="0 0 24 24"><path d="M4 21c1-7 3-11 5-15M9 21c0-8 1-13 3-18M14 21c0-7 2-12 5-16M6 21c1-4 3-7 6-9M12 21c2-4 5-7 8-8" stroke="#4f8f45" /></symbol>
+    <symbol id="icon-wheat" viewBox="0 0 24 24"><path d="M12 21V4" stroke="#69512d" /><path d="m12 8-3.8-2.9c-.7 2.2.6 3.6 3.8 4.2ZM12 11l4-3c.7 2.3-.8 3.7-4 4.2ZM12 14l-4-3c-.5 2.3 1.1 3.6 4 4.1ZM12 17l3.8-2.8c.6 2.2-.8 3.5-3.8 4" fill="#e8bf55" stroke="#80602d" /><path d="M12 7.8 9.8 6.1M12 12l2.4-1.8M12 15.1l-2.3-1.7" stroke="#d79635" /></symbol>
+    <symbol id="icon-sunflower" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3" /><path d="M12 5V3M12 13v8M9 8H7M17 8h-2M9.8 5.8 8.4 4.4M14.2 10.2l1.4 1.4M14.2 5.8l1.4-1.4M9.8 10.2l-1.4 1.4M12 17c-3 0-5-1-6-3 3 0 5 1 6 3Z" /></symbol>
+    <symbol id="icon-tractor" viewBox="0 0 24 24"><path d="M4 16h2l2-7h6l2 4h3l2 3M9 9V5h4l2 4M3 16h18" /><circle cx="7" cy="17" r="3" /><circle cx="17" cy="17" r="2" /></symbol>
+    <symbol id="icon-utility" viewBox="0 0 24 24"><path d="M3 15h18l-2-6h-5l-2-3H7L5 15M7 9h7M4 15v2h17v-2" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></symbol>
+    <symbol id="icon-front-action" viewBox="0 0 24 24"><path d="M8 8h9l2 6H8zM8 11H5l-2 3v4h5M3 18h5" /><circle cx="10" cy="17" r="2" /><circle cx="18" cy="17" r="2" /></symbol>
+    <symbol id="icon-rear-action" viewBox="0 0 24 24"><path d="M6 8h9l2 6H6zM17 12h3l1 3v3h-4M17 18h4" /><circle cx="7" cy="17" r="2" /><circle cx="15" cy="17" r="2" /></symbol>
+    <symbol id="icon-harvester" viewBox="0 0 24 24"><path d="M4 15h13V7H9l-3 4v4M17 11h3l1 4h-4M3 15h18M3 12l3 3" /><circle cx="8" cy="17" r="3" /><circle cx="18" cy="17" r="2" /></symbol>
+    <symbol id="icon-lock" viewBox="0 0 24 24"><rect x="6" y="10" width="12" height="10" rx="2" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6Z" /></symbol>
+    <symbol id="icon-camera" viewBox="0 0 24 24"><path d="M4 8h4l2-3h4l2 3h4v11H4z" /><circle cx="12" cy="13" r="3.5" /></symbol>
+    <symbol id="icon-controls" viewBox="0 0 24 24"><path d="M8 9h8a5 5 0 0 1 5 5v2a3 3 0 0 1-5 2l-2-2h-4l-2 2a3 3 0 0 1-5-2v-2a5 5 0 0 1 5-5Z" /><path d="M7 13h4M9 11v4M16 12h.01M18 14h.01" /></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 9a7 7 0 0 1 12-2l2 5M18 15a7 7 0 0 1-12 2l-2-5" /></symbol>
+    <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M4 12h9a6 6 0 0 1 6 6" /></symbol>
+  </svg>
+
+  <script type="module" src="./playable.js"></script>
+</body>
+</html>

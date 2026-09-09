@@ -1,5 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { buildBlockMesh, buildTerrainMesh } from './mesh-builders.js';
+import { IslandReferenceFrame } from './reference-frame.js';
+import { buildBlockMesh, buildTerrainCuboids, buildTerrainMesh } from './mesh-builders.js';
 
 const FIXED_TIMESTEP = 1 / 60;
 const MAX_FRAME_TIME = 0.1;
@@ -27,8 +28,13 @@ class FarmPhysics {
   constructor() {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
     this.world.timestep = FIXED_TIMESTEP;
+    this.frame = new IslandReferenceFrame();
+    this.staticBody = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    this.frame.add(this.staticBody);
+    this.frame.select(this.staticBody.handle);
     this.staticColliders = [];
     this.vehicles = new Map();
+    this.movingIslands = new Map();
     this.bales = new Map();
     this.supportResolver = () => null;
     this.activeVehicleId = null;
@@ -82,7 +88,7 @@ class FarmPhysics {
           .setTranslation(bridge.x, bridge.y, bridge.z)
           .setRotation(rotation)
           .setFriction(0.9)
-          .setRestitution(0)
+          .setRestitution(0), this.staticBody
       );
       this.staticColliders.push(collider);
     }
@@ -95,7 +101,7 @@ class FarmPhysics {
             .setTranslation(obstacle.x, obstacle.y + obstacle.height * .5, obstacle.z)
             .setRotation({ x: 0, y: Math.sin(yaw * .5), z: 0, w: Math.cos(yaw * .5) })
             .setFriction(0.9)
-            .setRestitution(0)
+            .setRestitution(0), this.staticBody
         );
         this.staticColliders.push(collider);
         continue;
@@ -104,14 +110,15 @@ class FarmPhysics {
         RAPIER.ColliderDesc.cylinder(obstacle.height * 0.5, obstacle.radius)
           .setTranslation(obstacle.x, obstacle.y + obstacle.height * 0.5, obstacle.z)
           .setFriction(0.9)
-          .setRestitution(0)
+          .setRestitution(0), this.staticBody
       );
       this.staticColliders.push(collider);
     }
-    // Rapier refreshes its spatial query pipeline during a world step. Static
-    // geometry is already motionless, so this is safe and makes regenerated
-    // terrain available to the character controller immediately.
+    // Rebuilding performs a real Rapier step to refresh queries. It must use
+    // the same island safety gate as ordinary fixed steps.
+    this.beforeIslandStep?.(FIXED_TIMESTEP);
     this.world.step();
+    this.frame.advance(FIXED_TIMESTEP);
   }
 
   addStaticMesh(vertices, indices, friction) {
@@ -123,18 +130,138 @@ class FarmPhysics {
         new Float32Array(vertices),
         new Uint32Array(indices),
         flags
-      ).setFriction(friction).setRestitution(0)
+      ).setFriction(friction).setRestitution(0), this.staticBody
     );
     this.staticColliders.push(collider);
+  }
+
+  addMovingIsland(island, position, collidable = true) {
+    const local = this.frame.toPhysics(position);
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.kinematicVelocityBased().setTranslation(local.x, local.y, local.z)
+    );
+    try {
+      if (collidable) {
+        for (const block of buildTerrainCuboids(island.terrain)) {
+          this.world.createCollider(
+            RAPIER.ColliderDesc.cuboid(block.width * .5, block.height * .5, block.depth * .5)
+              .setTranslation(block.x, block.y, block.z)
+              .setFriction(.82), body
+          );
+        }
+        const flags = (RAPIER.TriMeshFlags?.FIX_INTERNAL_EDGES ?? 0)
+          | (RAPIER.TriMeshFlags?.MERGE_DUPLICATE_VERTICES ?? 0);
+        const mesh = buildBlockMesh(island.lowerBlocks);
+        if (mesh.indices.length) {
+          this.world.createCollider(RAPIER.ColliderDesc.trimesh(
+            new Float32Array(mesh.vertices), new Uint32Array(mesh.indices), flags
+          ).setFriction(.82), body);
+        }
+        for (const obstacle of island.obstacles) {
+          const yaw = obstacle.yaw || 0;
+          const desc = obstacle.shape === 'box'
+            ? RAPIER.ColliderDesc.cuboid(obstacle.width / 2, obstacle.height / 2, obstacle.depth / 2)
+            : RAPIER.ColliderDesc.cylinder(obstacle.height / 2, obstacle.radius);
+          this.world.createCollider(desc
+            .setTranslation(obstacle.x, obstacle.y + obstacle.height / 2, obstacle.z)
+            .setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) })
+            .setFriction(.9), body);
+        }
+      }
+      this.movingIslands.set(body.handle, { body, id: island.id });
+      this.frame.add(body);
+      return body;
+    } catch (error) {
+      this.world.removeRigidBody(body);
+      throw error;
+    }
+  }
+
+  movingIslandPosition(body) {
+    return this.frame.toWorld(body.translation());
+  }
+
+  setMovingIslandVelocity(body, velocity) {
+    this.frame.setVelocity(body, velocity);
+    if (this.frame.activeHandle === body.handle) this.selectReference(body.handle);
+  }
+
+  isReferenceIsland(body) {
+    return this.frame.activeHandle === body.handle;
+  }
+
+  selectReference(handle) {
+    const delta = this.frame.select(handle);
+    if (!delta || (!delta.x && !delta.z)) return;
+    // Preserve physical momentum when changing coordinates. Grounded driving
+    // remains relative to the newly selected surface.
+    for (const { body } of this.bales.values()) {
+      if (!body.isDynamic()) continue;
+      const velocity = body.linvel();
+      body.setLinvel({ x: velocity.x - delta.x, y: velocity.y, z: velocity.z - delta.z }, true);
+    }
+  }
+
+  removeMovingIsland(body) {
+    if (this.isReferenceIsland(body)) this.selectReference(this.staticBody.handle);
+    for (const [id, vehicle] of this.vehicles) {
+      if (vehicle.transientIsland === body.handle) this.resetVehicle(id, vehicle.spawn);
+    }
+    this.movingIslands.delete(body.handle);
+    this.frame.bodies.delete(body.handle);
+    this.world.removeRigidBody(body);
+  }
+
+  updateMovingSupport(vehicle, grounded, position) {
+    // Query the actual surface below the feet, never a world-grid approximation.
+    const hit = grounded ? this.world.castRayAndGetNormal(
+      new RAPIER.Ray({ x: position.x, y: position.y + .12, z: position.z }, { x: 0, y: -1, z: 0 }),
+      .46, true, undefined, undefined, vehicle.collider, vehicle.body
+    ) : null;
+    const handle = hit?.normal.y > .62 ? hit.collider.parent()?.handle : undefined;
+    if (hit || !grounded) vehicle.movingSupport = this.movingIslands.has(handle) ? handle : null;
+    if (vehicle.movingSupport !== null) vehicle.transientIsland = vehicle.movingSupport;
+    else if (handle === this.staticBody.handle) vehicle.transientIsland = null;
+    if (this.movingIslands.has(handle) || handle === this.staticBody.handle) vehicle.referenceBody = handle;
+  }
+
+  stepParkedVehicles(dt) {
+    for (const [id, vehicle] of this.vehicles) {
+      if (id === this.activeVehicleId) continue;
+      if (vehicle.grounded) {
+        const support = this.frame.bodies.get(vehicle.referenceBody)?.body;
+        if (support) {
+          // A parked vehicle keeps its local pose on its supporting island.
+          const position = vehicle.body.translation();
+          const velocity = support.linvel();
+          vehicle.body.setNextKinematicTranslation({
+            x: position.x + velocity.x * dt, y: position.y, z: position.z + velocity.z * dt,
+          });
+          continue;
+        }
+      }
+      vehicle.parkedVerticalSpeed = vehicle.grounded ? -1 : (vehicle.parkedVerticalSpeed || 0) + GRAVITY * dt;
+      const before = vehicle.body.translation();
+      this.characterController.computeColliderMovement(vehicle.collider, { x: 0, y: vehicle.parkedVerticalSpeed * dt, z: 0 });
+      const movement = this.characterController.computedMovement();
+      vehicle.grounded = this.characterController.computedGrounded();
+      const next = { x: before.x + movement.x, y: before.y + movement.y, z: before.z + movement.z };
+      if (next.y < -12) this.resetVehicle(id, vehicle.spawn);
+      else {
+        vehicle.body.setNextKinematicTranslation(next);
+        this.updateMovingSupport(vehicle, vehicle.grounded, next);
+      }
+    }
   }
 
   createVehicle(id, spawn) {
     const existing = this.vehicles.get(id);
     if (existing) this.world.removeRigidBody(existing.body);
     const becomesActive = this.activeVehicleId === null || this.activeVehicleId === id;
+    const local = this.frame.toPhysics(spawn);
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased()
-        .setTranslation(spawn.x, spawn.y + 0.02, spawn.z)
+        .setTranslation(local.x, local.y + 0.02, local.z)
     );
     const collider = this.world.createCollider(
       RAPIER.ColliderDesc.capsule(TRACTOR_CAPSULE_HALF_HEIGHT, TRACTOR_COLLIDER_RADIUS)
@@ -143,7 +270,7 @@ class FarmPhysics {
         .setRestitution(0),
       body
     );
-    this.vehicles.set(id, { body, collider, grounded: true, touchingWall: false });
+    this.vehicles.set(id, { body, collider, spawn: { ...spawn }, referenceBody: this.staticBody.handle, grounded: true, touchingWall: false, movingSupport: null, transientIsland: null });
     this.activeVehicleId ||= id;
     this.world.propagateModifiedBodyPositionsToColliders();
     if (becomesActive) {
@@ -169,6 +296,7 @@ class FarmPhysics {
     const vehicle = this.vehicles.get(id);
     this.grounded = vehicle.grounded;
     this.touchingWall = vehicle.touchingWall;
+    this.selectReference(vehicle.referenceBody);
     if (this.grounded) this.groundGrace = CONTACT_GRACE_TIME;
     if (this.touchingWall) this.wallGrace = CONTACT_GRACE_TIME;
     return true;
@@ -177,8 +305,15 @@ class FarmPhysics {
   resetVehicle(id, spawn) {
     const vehicle = this.vehicles.get(id);
     if (!vehicle) return;
-    vehicle.body.setTranslation({ x: spawn.x, y: spawn.y + 0.02, z: spawn.z }, true);
-    vehicle.body.setNextKinematicTranslation({ x: spawn.x, y: spawn.y + 0.02, z: spawn.z });
+    const local = this.frame.toPhysics(spawn);
+    vehicle.body.setTranslation({ x: local.x, y: local.y + 0.02, z: local.z }, true);
+    vehicle.body.setNextKinematicTranslation({ x: local.x, y: local.y + 0.02, z: local.z });
+    vehicle.referenceBody = this.staticBody.handle;
+    if (id === this.activeVehicleId) this.selectReference(this.staticBody.handle);
+    vehicle.spawn = { ...spawn };
+    vehicle.movingSupport = null;
+    vehicle.transientIsland = null;
+    vehicle.parkedVerticalSpeed = 0;
     vehicle.grounded = true;
     vehicle.touchingWall = false;
     this.world.propagateModifiedBodyPositionsToColliders();
@@ -192,9 +327,13 @@ class FarmPhysics {
   placeVehicle(id, position, grounded = false) {
     const vehicle = this.vehicles.get(id);
     if (!vehicle || ![position?.x, position?.y, position?.z].every(Number.isFinite)) return false;
-    const next = { x: position.x, y: position.y, z: position.z };
+    const next = this.frame.toPhysics(position);
+    vehicle.referenceBody = this.staticBody.handle;
+    if (id === this.activeVehicleId) this.selectReference(this.staticBody.handle);
     vehicle.body.setTranslation(next, true);
     vehicle.body.setNextKinematicTranslation(next);
+    vehicle.movingSupport = null;
+    vehicle.transientIsland = null;
     vehicle.grounded = Boolean(grounded);
     vehicle.touchingWall = false;
     this.world.propagateModifiedBodyPositionsToColliders();
@@ -214,11 +353,12 @@ class FarmPhysics {
       : { x: 0, y: 0, z: 0, w: 1 };
     const linearVelocity = motion.linearVelocity || {};
     const angularVelocity = motion.angularVelocity || {};
+    const local = this.frame.toPhysics(position);
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(position.x, position.y, position.z)
+        .setTranslation(local.x, local.y, local.z)
         .setRotation(quaternion)
-        .setLinvel(linearVelocity.x || 0, linearVelocity.y || 0, linearVelocity.z || 0)
+        .setLinvel((linearVelocity.x || 0) - this.frame.velocity.x, linearVelocity.y || 0, (linearVelocity.z || 0) - this.frame.velocity.z)
         .setAngvel({ x: angularVelocity.x || 0, y: angularVelocity.y || 0, z: angularVelocity.z || 0 })
         .setLinearDamping(.55)
         .setAngularDamping(1.05)
@@ -242,9 +382,10 @@ class FarmPhysics {
     const bale = this.bales.get(id);
     if (!bale || ![position?.x, position?.y, position?.z, rotation?.x, rotation?.y, rotation?.z, rotation?.w].every(Number.isFinite)) return false;
     if (!bale.body.isKinematic()) bale.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
-    bale.body.setTranslation(position, true);
+    const local = this.frame.toPhysics(position);
+    bale.body.setTranslation(local, true);
     bale.body.setRotation(rotation, true);
-    bale.body.setNextKinematicTranslation(position);
+    bale.body.setNextKinematicTranslation(local);
     bale.body.setNextKinematicRotation(rotation);
     bale.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
     bale.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
@@ -258,9 +399,10 @@ class FarmPhysics {
     const linearVelocity = motion.linearVelocity || {};
     const angularVelocity = motion.angularVelocity || {};
     bale.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
-    bale.body.setTranslation(position, true);
+    const local = this.frame.toPhysics(position);
+    bale.body.setTranslation(local, true);
     bale.body.setRotation(rotation, true);
-    bale.body.setLinvel({ x: linearVelocity.x || 0, y: linearVelocity.y || 0, z: linearVelocity.z || 0 }, true);
+    bale.body.setLinvel({ x: (linearVelocity.x || 0) - this.frame.velocity.x, y: linearVelocity.y || 0, z: (linearVelocity.z || 0) - this.frame.velocity.z }, true);
     bale.body.setAngvel({ x: angularVelocity.x || 0, y: angularVelocity.y || 0, z: angularVelocity.z || 0 }, true);
     this.world.propagateModifiedBodyPositionsToColliders();
     return true;
@@ -269,7 +411,7 @@ class FarmPhysics {
   baleState(id) {
     const bale = this.bales.get(id);
     if (!bale) return null;
-    const position = bale.body.translation();
+    const position = this.frame.toWorld(bale.body.translation());
     const rotation = bale.body.rotation();
     return {
       position: { x: position.x, y: position.y, z: position.z },
@@ -321,8 +463,13 @@ class FarmPhysics {
   }
 
   fixedStep(dt) {
+    this.beforeIslandStep?.(dt);
     const vehicle = this.vehicles.get(this.activeVehicleId);
-    if (!vehicle) return;
+    if (!vehicle) {
+      this.world.step();
+      this.frame.advance(dt);
+      return;
+    }
 
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     this.groundGrace = Math.max(0, this.groundGrace - dt);
@@ -358,6 +505,8 @@ class FarmPhysics {
       z: this.velocity.z * dt,
     };
     const before = vehicle.body.translation();
+    // Rapier applies moving-platform velocity through its ground-contact
+    // handling. Adding island displacement here would carry the vehicle twice.
     this.characterController.computeColliderMovement(vehicle.collider, desiredMovement);
     const movement = this.characterController.computedMovement();
 
@@ -367,6 +516,16 @@ class FarmPhysics {
       const collision = this.characterController.computedCollision(i);
       if (collision.normal1.y > 0.62) {
         this.grounded = true;
+        const handle = collision.collider?.parent()?.handle;
+        if (this.movingIslands.has(handle)) {
+          vehicle.movingSupport = handle;
+          vehicle.transientIsland = handle;
+          vehicle.referenceBody = handle;
+        } else if (handle === this.staticBody.handle) {
+          vehicle.referenceBody = handle;
+          vehicle.transientIsland = null;
+          vehicle.movingSupport = null;
+        }
       } else if (Math.abs(collision.normal1.y) < 0.55) {
         this.touchingWall = true;
       }
@@ -384,18 +543,23 @@ class FarmPhysics {
       y: before.y + movement.y,
       z: before.z + movement.z,
     });
+    this.updateMovingSupport(vehicle, this.grounded, { x: before.x + movement.x, y: before.y + movement.y, z: before.z + movement.z });
+    const supportVelocity = this.grounded ? this.frame.bodies.get(vehicle.referenceBody)?.body.linvel() : null;
+    this.stepParkedVehicles(dt);
     this.world.step();
+    this.frame.advance(dt);
+    if (this.grounded) this.selectReference(vehicle.referenceBody);
     this.measuredVelocity = {
-      x: movement.x / dt,
+      x: movement.x / dt - (supportVelocity?.x || 0),
       y: movement.y / dt,
-      z: movement.z / dt,
+      z: movement.z / dt - (supportVelocity?.z || 0),
     };
   }
 
   vehicleState(id = this.activeVehicleId) {
     const vehicle = this.vehicles.get(id);
     if (!vehicle) return null;
-    const position = vehicle.body.translation();
+    const position = this.frame.toWorld(vehicle.body.translation());
     const active = id === this.activeVehicleId;
     return {
       x: position.x,
@@ -405,9 +569,13 @@ class FarmPhysics {
       verticalSpeed: active ? this.measuredVelocity.y : 0,
       grounded: active ? this.grounded : vehicle.grounded,
       touchingWall: active ? this.touchingWall : vehicle.touchingWall,
-      supportIslandId: (active ? this.grounded : vehicle.grounded)
+      activeIslandId: this.movingIslands.get(this.frame.activeHandle)?.id || this.supportResolver(position.x, position.z),
+      frameX: this.frame.origin.x,
+      frameZ: this.frame.origin.z,
+      transientIsland: vehicle.transientIsland !== null,
+      supportIslandId: this.movingIslands.get(vehicle.movingSupport)?.id || ((active ? this.grounded : vehicle.grounded)
         ? this.supportResolver(position.x, position.z)
-        : null,
+        : null),
     };
   }
 }

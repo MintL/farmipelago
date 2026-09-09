@@ -1,4 +1,5 @@
 import { THREE, TILE, box, mats } from '../../core/shared.js';
+import { barnPenConnectorSegments, cornerToWorld } from './pen-geometry.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const cowWhite = new THREE.MeshStandardMaterial({ color: 0xe8dfc6, roughness: .9 });
@@ -238,10 +239,16 @@ export function createPenPreview(vertices, levelY, valid = false) {
   return group;
 }
 
-export function createCowVisual(stage = 'adult') {
+export function createCowVisual(stage = 'adult', spawn = false) {
   const group = new THREE.Group();
-  const body = box(1.02, .58, .58, cowWhite); body.position.y = .7; group.add(body);
-  const patch = box(.35, .6, .6, cowBrown); patch.position.set(-.22, .71, 0); group.add(patch);
+  // Adjacent torso sections replace the overlapping patch shell. All three
+  // move together, so breathing cannot expose coincident colored surfaces.
+  const body = new THREE.Group(); body.position.y = .7; group.add(body);
+  for (const [width, x, material] of [[.115, -.4525, cowWhite], [.35, -.22, cowBrown], [.555, .2325, cowWhite]]) {
+    const section = box(width, .58, .58, material);
+    section.position.x = x;
+    body.add(section);
+  }
   const head = box(.48, .46, .48, cowBrown); head.position.set(0, .77, -.47); group.add(head);
   const muzzle = box(.36, .22, .25, cowMuzzle); muzzle.position.set(0, .65, -.78); group.add(muzzle);
   const legs = [];
@@ -252,6 +259,18 @@ export function createCowVisual(stage = 'adult') {
     const ear = box(.22, .09, .13, cowBrown); ear.position.set(x, 1.0, -.48); group.add(ear);
   }
   const tail = box(.08, .52, .08, cowBrown); tail.position.set(0, .61, .43); tail.rotation.x = -.25; group.add(tail);
+  // Put the model origin at the soles so landing squash stays on the ground.
+  const model = new THREE.Group();
+  for (const part of [...group.children]) model.add(part);
+  model.position.y = -.04;
+  group.add(model);
+  group.visible = false;
+  const dropHeight = TILE;
+  const gravity = 48; // Match the world's downward acceleration.
+  const fallSeconds = Math.sqrt(2 * dropHeight / gravity);
+  const squashSeconds = .09, recoverSeconds = .28;
+  const spawnSeconds = fallSeconds + squashSeconds + recoverSeconds;
+  let spawnAge = spawn && !reducedMotion ? 0 : spawnSeconds;
   const setStage = nextStage => {
     group.userData.stage = nextStage;
     group.scale.setScalar(nextStage === 'calf' ? .62 : 1);
@@ -260,7 +279,25 @@ export function createCowVisual(stage = 'adult') {
   return {
     group,
     setStage,
-    animate(elapsed, moving) {
+    get spawning() { return spawnAge < spawnSeconds; },
+    animate(elapsed, moving, dt = 0) {
+      group.visible = true;
+      spawnAge = Math.min(spawnSeconds, spawnAge + dt);
+      let height = 0, squash = 0;
+      if (spawnAge < fallSeconds) {
+        height = Math.max(0, dropHeight - .5 * gravity * spawnAge * spawnAge);
+      } else if (spawnAge < fallSeconds + squashSeconds) {
+        squash = Math.sin((spawnAge - fallSeconds) / squashSeconds * Math.PI * .5);
+      } else if (spawnAge < spawnSeconds) {
+        const recovery = (spawnAge - fallSeconds - squashSeconds) / recoverSeconds;
+        squash = (1 - recovery) ** 2;
+      }
+      const size = group.userData.stage === 'calf' ? .62 : 1;
+      const scaleY = 1 - squash * .42;
+      const scaleXZ = 1 / Math.sqrt(scaleY);
+      group.scale.set(size * scaleXZ, size * scaleY, size * scaleXZ);
+      group.position.y += height;
+      moving = moving && spawnAge >= spawnSeconds;
       body.position.y = .7 + Math.sin(elapsed * (moving ? 7 : 2.1) + group.id) * (moving ? .025 : .012);
       legs.forEach(leg => { leg.rotation.x = moving ? Math.sin(elapsed * 7 + leg.userData.phase) * .28 : 0; });
       head.rotation.x = moving ? 0 : Math.sin(elapsed * 1.4 + group.id) * .1;
@@ -268,4 +305,3 @@ export function createCowVisual(stage = 'adult') {
     },
   };
 }
-

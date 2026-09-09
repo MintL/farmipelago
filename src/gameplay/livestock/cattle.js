@@ -125,8 +125,9 @@ function newCalf(building, context) {
     id: `cow-${building.nextCowId++}`, stage: 'calf', age: 0,
     tileKey: gridKey(tile.gx, tile.gz), targetTileKey: null, moveProgress: 0,
     heading: 0, idleSeconds: 1.2, jitterX: .08, jitterZ: -.06,
-    targetJitterX: .08, targetJitterZ: -.06, visual: null,
+    targetJitterX: .08, targetJitterZ: -.06, visual: createCowVisual('calf', true),
   };
+  context.parent?.add(animal.visual.group);
   building.animals.push(animal);
   reconcileCattleBarnAnimals(building, context);
 }
@@ -157,9 +158,10 @@ export function updateCattleBarn(building, dt, elapsed, context = {}) {
       }
     }
     const current = context.terrain?.get(animal.tileKey) || nearestValidTile(building, animal.tileKey);
+    const movementDt = animal.visual?.spawning ? 0 : dt;
     let moving = Boolean(animal.targetTileKey);
     if (!moving) {
-      animal.idleSeconds -= dt;
+      animal.idleSeconds -= movementDt;
       if (animal.idleSeconds <= 0) {
         let choices = cowRouteChoices(building, current, animal, elapsed, COW_ROUTE_MIN_DISTANCE);
         if (!choices.length) choices = cowRouteChoices(building, current, animal, elapsed, TILE * .75);
@@ -181,7 +183,7 @@ export function updateCattleBarn(building, dt, elapsed, context = {}) {
       const targetX = target.x + animal.targetJitterX;
       const targetZ = target.z + animal.targetJitterZ;
       const distance = Math.max(.001, Math.hypot(targetX - x, targetZ - z));
-      animal.moveProgress += dt * (animal.stage === 'calf' ? .55 : .45) / distance;
+      animal.moveProgress += movementDt * (animal.stage === 'calf' ? .55 : .45) / distance;
       const amount = Math.min(1, animal.moveProgress);
       x = THREE.MathUtils.lerp(x, targetX, amount);
       z = THREE.MathUtils.lerp(z, targetZ, amount);
@@ -200,7 +202,7 @@ export function updateCattleBarn(building, dt, elapsed, context = {}) {
     if (animal.visual) {
       animal.visual.group.position.set(x, current.topY + .02, z);
       animal.visual.group.rotation.y = animal.heading;
-      animal.visual.animate(elapsed, moving);
+      animal.visual.animate(elapsed, moving, dt);
     }
   }
 }

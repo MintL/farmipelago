@@ -186,6 +186,8 @@ export function createWindParticleSystem({ reducedMotion = false } = {}) {
   const transform = new THREE.Object3D();
   const dustTint = new THREE.Color();
   const leafTint = new THREE.Color();
+  let sources = null;
+  let sourceSector = -1;
   let airDistance = 0;
   let lastTravelDistance = 0;
 
@@ -194,8 +196,18 @@ export function createWindParticleSystem({ reducedMotion = false } = {}) {
     const leafPool = pool.kind === 'leaves';
     for (let index = 0; index < pool.mesh.count; index++) {
       const record = pool.records[index];
-      const anchor = record.anchor;
       const progress = fraction(record.phase + airDistance * record.speed / record.pathLength);
+      if (record.lastProgress != null && progress < record.lastProgress && record.nextAnchor !== undefined) {
+        record.anchor = record.nextAnchor;
+        delete record.nextAnchor;
+      }
+      record.lastProgress = progress;
+      const anchor = record.anchor;
+      if (!anchor) {
+        transform.scale.set(0, 0, 0); transform.updateMatrix();
+        pool.mesh.setMatrixAt(index, transform.matrix);
+        continue;
+      }
       const edgeAmount = Math.min(1, Math.min(progress, 1 - progress) / .16);
       const envelope = smoothstep01(edgeAmount);
       const along = progress * record.pathLength;
@@ -259,6 +271,17 @@ export function createWindParticleSystem({ reducedMotion = false } = {}) {
     const lateralX = -motionZ;
     const lateralZ = motionX;
     const heading = Math.atan2(motionX, motionZ);
+    const sector = Math.floor((heading + Math.PI) / (Math.PI / 8));
+    if (sources && sector !== sourceSector) {
+      sourceSector = sector;
+      // Recheck emission corridors; existing particles finish their lifecycle.
+      for (const pool of [dust, leaves]) for (const record of pool.records) record.nextAnchor = null;
+      const options = { ...sources, motionX, motionZ };
+      for (const pool of [dust, leaves]) {
+        const anchors = createAnchors({ ...options, kind: pool.kind });
+        pool.records.forEach((record, index) => { record.nextAnchor = anchors[index % anchors.length] || null; });
+      }
+    }
     const distance = Math.max(0, Number(travelState?.distance) || 0);
     const gust = reducedMotion ? 0 : clamp01(Number(travelState?.gust) || 0);
     const deltaDistance = Math.max(0, distance - lastTravelDistance);
@@ -284,6 +307,8 @@ export function createWindParticleSystem({ reducedMotion = false } = {}) {
       const motionX = -directionX / directionLength;
       const motionZ = -directionZ / directionLength;
       const sourceOptions = { terrain, seed: seed >>> 0, motionX, motionZ, presentationOffsetForIsland, isBlockedAt };
+      sources = sourceOptions;
+      sourceSector = -1;
       const dustAnchors = createAnchors({ ...sourceOptions, kind: 'dust' });
       const leafAnchors = createAnchors({ ...sourceOptions, kind: 'leaves' });
       assignAnchors(dust, dustAnchors, seed, 307);

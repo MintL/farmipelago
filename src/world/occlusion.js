@@ -6,7 +6,7 @@ export function createOcclusionSystem(group, additionalObjects = []) {
   const hitPoint = new THREE.Vector3();
   let refreshElapsed = Infinity;
   const entries = [];
-  const excludedNames = new Set(['tall-grass', 'water', 'field-effects', 'forage', 'cargo-port', 'forest-wildlife', 'settlement']);
+  const excludedNames = new Set(['tall-grass', 'water', 'field-effects', 'forage', 'settlement-storehouse', 'forest-wildlife', 'settlement']);
   const register = object => {
     if (!object || entries.some(entry => entry.object === object)) return false;
     entries.push({

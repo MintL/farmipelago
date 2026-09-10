@@ -40,7 +40,8 @@ export function createSettlementStorehouse(site) {
   // Stepped gables, roof courses, and ridge above the open loading doorway.
   for (let course = 0; course < 3; course++) {
     const inset = course * 2;
-    for (const z of [0, 8]) run(mats.tractorCream, [inset, 7 + course, z], [11 - inset * 2, 1, 1]);
+    // Keep gables between the roof runs so their top faces cannot z-fight.
+    for (const z of [0, 8]) run(mats.tractorCream, [inset + 1, 7 + course, z], [9 - inset * 2, 1, 1]);
     for (const x of [inset - 1, 10 - inset]) run(mats.red, [x, 7 + course, -1], [2, 1, 11]);
   }
   run(mats.red, [5, 10, -1], [1, 1, 11]);

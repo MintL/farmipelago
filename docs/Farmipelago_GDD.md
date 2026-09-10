@@ -541,7 +541,8 @@ Crop durations are catalog-driven. Wheat, Barley, Canola and Soybeans take **3 a
 | Crop type | Target growth time |
 | --- | ---: |
 | Early grains and oilseeds | **~3 min** |
-| Corn, grass and root crops | **~4–5 min** |
+| Grass | **~3 min** |
+| Corn and root crops | **~4–5 min** |
 | Cotton, rice and other later annual crops | **~5–6 min** |
 | Persistent orchards and vineyards | **~6–8 min between harvests** |
 
@@ -550,9 +551,9 @@ These are design targets rather than final balance values. Later crops should no
 With a relevant passing-island target near 20 seconds, a three-minute starter crop creates room for roughly nine island encounters during one growth cycle.
 
 The **Fast growth** Debug toggle is **on by default**, retaining the prototype
-speed: 3 seconds per ordinary crop stage (9 seconds to maturity) and 10 seconds
-per grass stage (30 seconds per cycle). Turning it off selects normal catalog
-durations. Its saved setting defaults on when absent. Switching modes preserves
+speed: 3 seconds per ordinary crop stage, including grass (9 seconds to maturity).
+Turning it off gives grass the same 180-second cycle as the four starter crops.
+Grass retains its mow/bale loop with no ted/dry step. Its saved setting defaults on when absent. Switching modes preserves
 the current stage and its fractional progress; mature crops stay mature. Growth
 pauses while the game is paused or hidden, and there is no offline catch-up.
 Released islands freeze field growth until they are reattached, preserving

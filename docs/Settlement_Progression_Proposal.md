@@ -505,7 +505,7 @@ Keep implementation status, build versions, approvals, migration assumptions and
 
 ### Implementation record
 
-Steps 0–8 are approved. Step 9 is prepared for review.
+Steps 0–9 are approved. Step 10 is next for planning.
 Weed damage and sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
 committed as `17e9dcd` on `feature/drifting-islands`.
 
@@ -953,12 +953,19 @@ remains manual.
 stock and the 180-pixel Windmill/cattle popup widths. No automated gameplay
 checks were run; both production builds and diff checks pass.
 
-**Next task: Step 9 — Finish the Hay route.** Grass/hay unlocks, mowing, baling,
-fork handling and four-bale settlement delivery are already implemented. Review
-the current field-pass loop; decide whether ted/dry adds value before adding it.
-Grass currently takes 30 seconds in both normal and Fast growth modes. Plan a
-normal 4–5-minute growth target while retaining the existing Fast growth speed.
-Do not implement this pacing change or add a tedder until the next plan is agreed.
+**Step 9 — Grass timing, build 0.402; approved for commit.** User requested the
+same growth timing as starter crops: 180 seconds normally and 9 seconds with the
+existing default-on Fast growth option. The shared catalog applies to planting
+and regrowth; existing progress-preserving toggle and save behavior are retained.
+No ted/dry step is added. Grass/hay unlocks, mowing, baling, fork handling and the
+four-bale settlement requirement are already implemented. Both production builds
+and diff checks pass; timing, toggle, reload and mow/regrowth checks remain manual.
+
+**Next task: Step 10 — Oil Press islands.** Add Tier 2 Oil Press islands,
+Canola-to-Vegetable-oil processing and normal transport/settlement delivery.
+Reuse the continuous processor system and shared transfer UI established by
+Windmills. Plan the conversion rate, storage/transport units, encounter mix and
+limited opportunity fallback before implementation. Ted/dry and weeds stay paused.
 
 **Step 7 manual checklist:** in Tier 2 connect an Old Miller island normally, Trade
 one full grain input, return with Flatbed, Load four pallets and Deliver them.
@@ -1201,10 +1208,10 @@ Stop for approval before commit or Step 8.
 **Implementation:**
 
 - Bring the existing grass/mower/baler prototype into the normal Tier 2 unlock path.
-- Add the intended **ted/dry** step only if it remains valuable after testing the current mow/bale loop; do not add a realism step automatically if it does not improve play.
+- Keep the current mow/bale loop; the user explicitly deferred ted/dry.
 - Ensure Tier 2 opening grants the essential hay equipment rather than requiring RNG.
 - Settlement accepts physical hay/bales as the Hay requirement.
-- Set grass growth in the current ~4–5 minute target band only after the user has accepted the 3-minute crop rhythm.
+- Match starter crop timing: 180 seconds normally, 9 seconds with Fast growth.
 
 **User verification gate:**
 

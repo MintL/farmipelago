@@ -6,7 +6,7 @@ export const crops = {
   barley: { name: 'Barley', growthSeconds: 180, fastGrowthSeconds: 9 },
   canola: { name: 'Canola', growthSeconds: 180, fastGrowthSeconds: 9 },
   soybean: { name: 'Soybeans', growthSeconds: 180, fastGrowthSeconds: 9 },
-  grass: { name: 'Grass', growthSeconds: 30, fastGrowthSeconds: 30 },
+  grass: { name: 'Grass', growthSeconds: 180, fastGrowthSeconds: 9 },
 };
 
 // Three timed transitions: planting at stage 1 through maturity at stage 4.

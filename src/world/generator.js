@@ -1,3 +1,4 @@
+import { chooseIslandService, restoreIslandServices, islandServicePorts } from './services/index.js';
 import { cropProgress, paintFieldTile, restoreCrop, saveFieldTiles } from './fields/state.js';
 import { finishPreparation } from '../core/preparation.js';
 import { FARM_GENERATION, SETTLEMENT_GENERATION, resolveIslandSettings } from './islands/generation-settings.js';
@@ -1114,6 +1115,7 @@ function* generateFarmSteps(
         animateNature(elapsed, travelState, waterfallEffects);
       },
       dispose() {
+        this.serviceTextures?.forEach(texture => texture.dispose());
         group.traverse(object => { if (object.isInstancedMesh) object.dispose(); });
         disposeObjectResources(group);
         bridgeLanternGlowMaterial.dispose();
@@ -1429,6 +1431,7 @@ function* generateFarmSteps(
   const islandRecords = createIslandRecords(islands, terrain, seed);
   const connectionRecords = createIslandConnections(islandConnections, bridgeGaps, islandRecords);
   const driftingIslands = createDriftingIslands(group, terrain, seed, generateIsland, physics, options.camera, {
+    chooseService: islandSeed => chooseIslandService(islandSeed, options.getSettlementTier?.() || 1),
     lowerBlocks, obstacles, bridgeBlocks, getObserver: options.getObserver,
     fastIslands: options.fastIslands, saved: options.savedEncounters, getExtraIslandBoxes: options.getExtraIslandBoxes,
     generateIslandSteps, prepareVisuals: options.prepareIslandVisuals,
@@ -1506,6 +1509,7 @@ function* generateFarmSteps(
       const island = generateIsland(saved.seed, saved.settings);
       island.id = saved.id;
       island.terrain.forEach(tile => { tile.islandId = saved.id; });
+      restoreIslandServices(island, saved.services);
       attachments.restore(island, { gx: saved.transform.x / TILE, gz: saved.transform.z / TILE, x: saved.transform.x, z: saved.transform.z, gaps });
       pendingIslands.splice(index, 1);
       progress = true;
@@ -1518,6 +1522,7 @@ function* generateFarmSteps(
     island.id = saved.id;
     island.terrain.forEach(tile => { tile.islandId = saved.id; });
     if (saved.fields) island.restoreFields(saved.fields);
+    restoreIslandServices(island, saved.services);
     attachments.restorePending(island, saved);
   }
   driftingIslands.restore();
@@ -1547,6 +1552,7 @@ function* generateFarmSteps(
     terrain,
     islands: islandRecords,
     connections: connectionRecords,
+    servicePorts: () => islandServicePorts(islandRecords),
     driftingIslands,
     attachments,
     cargoPort,

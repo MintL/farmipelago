@@ -11,7 +11,7 @@ export const REAR_EQUIPMENT = [
   { id: 'rear-mower', name: 'Rear Mower', icon: 'mower', description: 'Cuts mature grass in an offset swath on the tractor’s right.', gate: 'equipment:hay', working: true },
   { id: 'baler', name: 'Baler', icon: 'baler', description: 'Picks up loose cut grass and compresses each 3,600 L into one bale.', gate: 'equipment:hay', working: true, articulation: { type: 'tow', axleOffset: 1.16 }, inventory: { kind: 'grass', capacity: BALER_STORAGE_CAPACITY, icon: 'grass', stateKey: 'balerLitres' } },
   { id: 'liquid-tank', name: 'Water / Milk Tank', icon: 'milk-tank', description: 'Carries liquid products such as milk between livestock buildings and the Settlement Storehouse.', gate: 'equipment:livestock', working: false, articulation: { type: 'tow', axleOffset: 1.85 }, inventory: { kind: 'liquid', capacity: LIQUID_TANK_CAPACITY, icon: 'milk' } },
-  { id: 'flatbed', name: 'Flatbed', icon: 'flour', description: 'Carries four whole pallets. Load and unload at compatible buildings; Debug stock is available for review.', working: false, articulation: { type: 'tow', axleOffset: 2.04 }, inventory: { kind: 'pallet', capacity: FLATBED_CAPACITY, icon: 'flour' } },
+  { id: 'flatbed', name: 'Flatbed', icon: 'flour', description: 'Carries four whole pallets. Load at island services and deliver to the Settlement Storehouse.', working: false, articulation: { type: 'tow', axleOffset: 2.04 }, inventory: { kind: 'pallet', capacity: FLATBED_CAPACITY, icon: 'flour' } },
 ].map(item => ({ slot: 'tool', working: item.working ?? !['trailer', 'liquid-tank'].includes(item.id), ...item }));
 
 export const FRONT_EQUIPMENT = [

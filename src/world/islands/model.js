@@ -85,6 +85,7 @@ export function createIslandConnections(connections, bridgeGaps, islandRecords) 
 
 export function serializeIsland(island) {
   return {
+    services: structuredClone(island.source?.services || []),
     id: island.id,
     seed: island.seed,
     ...(island.settings ? { settings: { ...island.settings } } : {}),

@@ -15,8 +15,6 @@ export function queryUiDom() {
     hideHud: query('#hideHud'),
     showDebug: query('#showDebug'),
     debugPanel: query('#debugPanel'),
-    debugAddFlour: query('#debugAddFlour'),
-    debugFlourStatus: query('#debugFlourStatus'),
     debugTimeSlider: query('#debugTimeSlider'),
     debugFastGrowth: query('#debugFastGrowth'),
     debugFastIslands: query('#debugFastIslands'),

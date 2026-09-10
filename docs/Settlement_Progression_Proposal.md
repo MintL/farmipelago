@@ -505,7 +505,7 @@ Keep implementation status, build versions, approvals, migration assumptions and
 
 ### Implementation record
 
-Steps 0–6 are approved. Step 6 is approved as a Debug-only logistics prototype; Step 7 is next and has not started.
+Steps 0–7 are approved. Step 8 is prepared for review, not implemented.
 Weed damage and sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
 committed as `17e9dcd` on `feature/drifting-islands`.
 
@@ -841,6 +841,93 @@ were not separately reported; automated gameplay checks were not run.
 
 **Step 6 approved for commit. Prepare the Step 7 summary before implementation.**
 
+**Step 7 — Reusable island opportunities, build 0.380; approved for commit.**
+
+- Added data-defined island services with alternative inputs, output stock, tier
+  eligibility and trade limits. Old Miller is the first definition: Tier 2,
+  seeded 50% chance, 1,800 L Wheat OR Barley for four Flour pallets, once per island.
+- Service generation uses a clear, level small-island preset; the voxel stall,
+  sign, collider runs and reserved access area exist before route planning.
+  Existing islands retain their saved service state or absence; no rerolls.
+- Normal selection and connection controls are unchanged. A connected service's
+  local stock port becomes available within five tiles. Trade recognizes a full
+  grain load, animates it and commits payment/output atomically. Surplus remains.
+- Flatbed Load uses the general service ports. Flour settlement delivery is now
+  available and commits single pallets up to the four-pallet target. Empty/full,
+  range, grounded, equipment and interruption checks guard each transaction.
+- Service completion/stock serialize in attached, drifting and pending-attachment
+  records. Releasing/reconnecting cannot reset a completed trade. No Windmill
+  production, Step 8 work or weed changes are included.
+- Removed Debug inventories, receiver and Add Flour control. Old stock merges
+  into a load-only Workshop recovery inventory, hidden after depletion. Existing
+  flatbed cargo stays aboard; migration deduplicates old manual pallet records.
+- Verification: both production builds and `git diff --check` pass; the existing
+  large-bundle warning remains. Gameplay remains manual; no browser automation,
+  scripted input or synthetic saves were used.
+
+**Trading UI refinement — build 0.386; approved for commit.** The stall now uses
+the settlement panel’s compact sizing, crop cards and typography, with an explicit
+Receive row and silo-style action controls beneath. Completed trades show green
+status and remaining stock. Mobile positioning includes the external controls.
+
+**Settlement UI correction — build 0.387; approved for commit.** Flour now uses
+the existing four-requirement settlement panel and round Deliver control.
+Flatbed cargo is recognized automatically; the control becomes Cancel during
+pallet delivery. The separate Flour delivery popup is removed.
+
+**Transfer button consistency — build 0.388; approved for commit.** Pallet Load,
+Unload and Cancel share the silo’s round icon-only button styles, retaining
+tooltips and accessible labels. Trade retains its text label.
+
+**Hay delivery — build 0.389; approved for commit.** Enabled the existing Tier 2
+Hay requirement through the normal settlement Deliver button. One carried bale
+on a bale fork supplies 3,600 L; delivery consumes it immediately and records
+completion. Grounded state, receiving range, whole-bale capacity and already
+completed requirements are checked. Manual checks: deliver a bale, retry after
+completion, reload, and verify grain/Flour delivery still use the same panel.
+
+**Enable all settlement requirements — build 0.390; approved for commit.** All
+current delivery requirements are enabled, with normal progress states and
+product icons instead of Unavailable labels and locks. Eggs and Vegetable oil
+production remain future work. Both production builds and `git diff --check`
+pass; gameplay verification remains manual.
+
+**Flour display units — build 0.391; approved for commit.** Show Flour in litres
+throughout the settlement, offer, stock and loaded flatbed HUDs: 1,000 L per
+pallet, 4,000 L for Old Miller and the requirement. Physical transfers and saved
+counts stay in whole pallets, preserving existing cargo and progress.
+
+**Hay target — build 0.392; approved for commit.** Increase Hay to four bales
+(14,400 L), delivered one at a time. Existing completed requirements remain
+earned under the normal save rules; incomplete progress retains its litres.
+Both production builds and `git diff --check` pass; the four-bale delivery check
+remains manual.
+
+**Bale fork orientation — build 0.393; approved for commit.** Rotate carried bales
+90° around the vertical axis. Release preserves that orientation while keeping
+the vehicle-relative drop motion. Builds and diff checks pass; pickup, turning
+and release alignment remain manual checks.
+
+**Step 7 approved for commit**, including the subsequent UI, delivery, quantity
+and bale-orientation refinements. Build and diff checks pass; only user-performed
+gameplay checks apply, and no automated gameplay verification was run.
+
+**Next: Step 8 — Windmill specialist island.** Reuse island service definitions
+and persistent local ports for a Tier 2 island with repeatable Wheat-or-Barley
+to Flour production. Operate only while connected; collect 1,000 L pallets with
+the flatbed and deliver through the normal settlement panel. Preserve Old Miller
+as the one-time fallback. Batch quantities, production duration and encounter
+weight need to be settled during Step 8 planning. Do not implement until approved.
+
+**Step 7 manual checklist:** in Tier 2 connect an Old Miller island normally, Trade
+one full grain input, return with Flatbed, Load four pallets and Deliver them.
+Repeat on another island with the alternative crop. Verify wrong/insufficient
+cargo, surplus, capacity, canceled/reloaded animations, release/reconnect at all
+stages, independent service stocks, old-save recovery and disappearance when
+empty. Check stall/bridge collision and access, trailer alignment, existing crop,
+hay and milk interactions, desktop/phone UI and the contributor regression list.
+Stop for approval before commit or Step 8.
+
 ### Step 0 — Establish a clean baseline
 
 **Goal:** make sure later progression changes can be judged against a known-good drifting-islands build.
@@ -1026,7 +1113,9 @@ were not separately reported; automated gameplay checks were not run.
 
 - Give eligible passing islands an optional opportunity descriptor with two accepted inputs, required quantities, one output/reward, completion state and one-shot/batch limit.
 - Add a compact contextual opportunity UI near the selected island/building; do not create a global quest log.
-- First prototype: **Old Miller** accepts Wheat **or** Barley and gives a limited batch of Flour.
+- First prototype: **Old Miller**, on 50% of new Tier 2 encounters, accepts a full
+  1,800 L Wheat **or** Barley load once and provides four Flour pallets. Connect
+  normally before trading; do not add a separate connection/trade interaction.
 - The output should be physical cargo or enter an appropriate nearby inventory; avoid abstract reward currency.
 - Completed opportunities persist while the island remains relevant and cannot be farmed repeatedly by reconnect/reload exploits.
 - Let the player complete the opportunity and still release/ignore the island.

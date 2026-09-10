@@ -1,3 +1,5 @@
+import { HAY_BALE_LITRES } from '../livestock/config.js';
+
 // Proposal section 4. Tier 2 targets are provisional until its routes are playable.
 export const SETTLEMENT_TIERS = [
   {
@@ -20,10 +22,10 @@ export const SETTLEMENT_TIERS = [
     unlockSummary: ['Hay farming & equipment'],
     islandCategories: ['chicken-farm', 'windmill', 'oil-press'],
     requirements: [
-      { id: 'hay-bale', name: 'Hay', icon: 'hay-bale', unit: 'litres', target: 3600 },
-      { id: 'eggs', name: 'Eggs', icon: 'lock', unit: 'items', target: 24 },
-      { id: 'flour', name: 'Flour', icon: 'lock', unit: 'pallets', target: 4 },
-      { id: 'vegetable-oil', name: 'Vegetable oil', icon: 'lock', unit: 'litres', target: 3600 },
-    ].map(requirement => ({ ...requirement, available: false })),
+      { id: 'hay-bale', name: 'Hay', icon: 'hay-bale', unit: 'litres', target: 4 * HAY_BALE_LITRES, available: true },
+      { id: 'eggs', name: 'Eggs', icon: 'eggs', unit: 'items', target: 24 },
+      { id: 'flour', name: 'Flour', icon: 'flour', unit: 'pallets', target: 4, available: true },
+      { id: 'vegetable-oil', name: 'Vegetable oil', icon: 'vegetable-oil', unit: 'litres', target: 3600 },
+    ].map(requirement => ({ ...requirement, available: true })),
   },
 ];

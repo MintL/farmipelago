@@ -1,4 +1,4 @@
-import { goodDefinition, siloGoodIds, storageAcceptsGood } from '../gameplay/catalog/goods.js';
+import { goodDefinition, goodDisplayAmount, siloGoodIds, storageAcceptsGood } from '../gameplay/catalog/goods.js';
 import { cropIds, crops } from '../gameplay/catalog/crops.js';
 import { FRONT_EQUIPMENT, REAR_EQUIPMENT, equipmentDefinition } from '../gameplay/catalog/equipment.js';
 import { DEFAULT_DAY_PHASE } from '../world/environment/index.js';
@@ -48,7 +48,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     clearUnlockOverrides: onClearUnlockOverrides = () => {},
     changeCameraPreset: onCameraPresetChange = () => true,
     changeTimeOfDay: onTimeOfDayChange = () => true,
-    addDebugFlour: onAddDebugFlour = () => '',
     changeFastGrowth: onFastGrowthChange = () => {},
     changeFastIslands: onFastIslandsChange = () => {},
     rotateCameraStep: onCameraRotateStep = () => true,
@@ -102,7 +101,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   const {
     topBar, overlay, barnDialog, pauseDialog, pauseBody,
     confirmBody, pauseTitle, controlsList, showControls, hideHud, showDebug, debugPanel,
-    debugAddFlour, debugFlourStatus, debugTimeSlider, debugTimeValue, debugFastGrowth, debugFastIslands, debugCameraPresets, debugUnlockList,
+    debugTimeSlider, debugTimeValue, debugFastGrowth, debugFastIslands, debugCameraPresets, debugUnlockList,
     clearUnlockOverrides, stickZone, stickBase, stickKnob,
     actionCluster, cycleVehicleButton, desktopHints, secondaryHint, secondaryHintLabel,
     frontToolToggle, rearToolToggle, seedCycleControl, seedCropToast, unloadButton,
@@ -292,13 +291,15 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     const displayAmount = inventoryHud.unit === 'pallets' ? inventoryHud.amount
       : tickerValue(`inventory:${inventoryHud.id}`, inventoryHud.amount, inventoryHud.amount, METER_TICKS_PER_SECOND, 'inventory');
     const percent = inventoryHud.capacity ? Math.round(displayAmount / inventoryHud.capacity * 100) : 0;
+    const displayed = goodDisplayAmount(inventoryHud.iconId, displayAmount, inventoryHud.unit);
+    const displayedCapacity = goodDisplayAmount(inventoryHud.iconId, inventoryHud.capacity, inventoryHud.unit).amount;
     renderCropMeter(inventoryMeter, {
       cropId: inventoryHud.iconId,
       label: inventoryHud.label,
-      value: inventoryHud.unit === 'pallets' ? `${inventoryHud.amount} / ${inventoryHud.capacity} pallets` : `${formatLitres(displayAmount)} / ${formatLitres(inventoryHud.capacity)}`,
+      value: displayed.unit === 'pallets' ? `${displayed.amount} / ${displayedCapacity} pallets` : `${formatLitres(displayed.amount)} / ${formatLitres(displayedCapacity)}`,
       percent,
       ariaLabel: `${inventoryHud.label} inventory`,
-      ariaValueText: inventoryHud.unit === 'pallets' ? `${inventoryHud.amount} of ${inventoryHud.capacity} pallets in ${inventoryHud.label}` : `${formatLitres(displayAmount)} of ${formatLitres(inventoryHud.capacity)} in ${inventoryHud.label.toLowerCase()}`,
+      ariaValueText: displayed.unit === 'pallets' ? `${displayed.amount} of ${displayedCapacity} pallets in ${inventoryHud.label}` : `${formatLitres(displayed.amount)} of ${formatLitres(displayedCapacity)} in ${inventoryHud.label.toLowerCase()}`,
     });
   };
 
@@ -340,9 +341,11 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
         card = { element, amount, status };
         villageCards.set(need.id, card);
       }
-      const amountText = `${need.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} / ${need.target.toLocaleString('en-US')}${need.unit === 'items' ? '' : need.unit === 'pallets' ? ' pallets' : ' L'}`;
+      const display = goodDisplayAmount(need.id, need.amount, need.unit);
+      const displayTarget = goodDisplayAmount(need.id, need.target, need.unit).amount;
+      const amountText = `${display.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} / ${displayTarget.toLocaleString('en-US')}${display.unit === 'items' ? '' : display.unit === 'pallets' ? ' pallets' : ' L'}`;
       const optional = settlement.complete && !need.complete;
-      const statusText = need.complete ? '✓ Complete' : optional ? '' : need.locked ? 'Unavailable' : need.amount > 0 ? 'In progress' : 'Not started';
+      const statusText = need.complete ? '✓ Complete' : optional ? '' : need.amount > 0 ? 'In progress' : 'Not started';
       card.amount.textContent = amountText;
       card.status.style.visibility = optional ? 'hidden' : '';
       card.status.textContent = optional ? '\u00a0' : statusText;
@@ -350,14 +353,19 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       card.element.dataset.complete = String(need.complete);
       card.element.setAttribute('aria-label', `${need.name}: ${amountText}, ${optional ? 'optional' : statusText}`);
     }
-    const carriedId = Object.keys(machine.contents).find(id => machine.contents[id] > 0);
+    const carriedId = machine.carriedBale ? 'hay-bale' : Object.keys(machine.contents).find(id => machine.contents[id] > 0);
     const carried = needs.find(need => need.id === carriedId);
     siloLoadButton.hidden = true;
-    siloUnloadButton.disabled = !carried || !carried.accepting || !machine.canTransfer || !['crop', 'bulk'].includes(machine.storageKind)
-      || !(machine.contents[carried.id] > 0);
-    siloUnloadButton.setAttribute('aria-label', `Deliver ${carried?.name || 'carried crop'} to settlement`);
-    siloUnloadButton.title = `Deliver ${carried?.name || 'carried crop'}`;
-    siloUnloadIconUse.setAttribute('href', '#icon-silo-unload');
+    const palletDelivery = siloInventory.palletDelivery;
+    const canceling = Boolean(palletDelivery?.active);
+    siloUnloadButton.disabled = machine.carriedBale ? !machine.canDeliverBale : machine.storageKind === 'pallet'
+      ? !canceling && !palletDelivery?.canDeliver
+      : !carried || !carried.accepting || !machine.canTransfer || !['crop', 'bulk'].includes(machine.storageKind)
+        || !(machine.contents[carried.id] > 0);
+    const actionLabel = canceling ? 'Cancel delivery' : `Deliver ${carried?.name || 'carried goods'}`;
+    siloUnloadButton.setAttribute('aria-label', canceling ? actionLabel : `${actionLabel} to settlement`);
+    siloUnloadButton.title = actionLabel;
+    siloUnloadIconUse.setAttribute('href', canceling ? '#icon-close' : '#icon-silo-unload');
     siloInventoryElement.setAttribute('aria-label', villageTitle.textContent);
   };
 
@@ -365,9 +373,28 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   const palletLoad = document.querySelector('#palletLoad');
   const palletUnload = document.querySelector('#palletUnload');
   const palletCancel = document.querySelector('#palletCancel');
+  const palletTrade = document.querySelector('#palletTrade');
+  palletTrade.addEventListener('click', () => commands.palletTransfer(siloInventory.id, 'trade'));
   palletLoad.addEventListener('click', () => commands.palletTransfer(siloInventory.id, 'load'));
   palletUnload.addEventListener('click', () => commands.palletTransfer(siloInventory.id, 'unload'));
   palletCancel.addEventListener('click', () => commands.cancelPalletTransfer());
+
+  const renderPalletItems = (selector, items, cards = false) => {
+    const container = document.querySelector(selector);
+    container.hidden = !items.length;
+    container.replaceChildren(...items.map(item => {
+      const row = document.createElement('div');
+      row.className = cards ? 'villageNeedCard' : 'palletStockRow';
+      const name = document.createElement('strong');
+      name.textContent = item.name;
+      const amount = document.createElement('span');
+      amount.className = cards ? 'villageNeedAmount' : 'palletAmount';
+      amount.textContent = item.unit === 'litres' ? formatLitres(item.amount)
+        : `${item.amount}${item.target == null ? '' : ` / ${item.target}`} pallets`;
+      row.append(cropIcon(item.icon, item.name), name, amount);
+      return row;
+    }));
+  };
 
   const renderSiloInventory = () => {
     const cropsInSilo = siloInventory?.crops || [];
@@ -386,12 +413,23 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       document.querySelector('.siloInventoryCrop').hidden = true;
       previousSiloCrop.hidden = nextSiloCrop.hidden = true;
       document.querySelector('#palletStockTitle').textContent = siloInventory.label;
-      document.querySelector('#palletStockAmount').textContent = `Flour: ${siloInventory.amount}${siloInventory.capacity ? ` / ${siloInventory.capacity}` : ''} pallets`;
+      renderPalletItems('#palletInputs', siloInventory.inputs, true);
+      renderPalletItems('#palletOutputs', siloInventory.outputs);
+      renderPalletItems('#palletStockAmount', siloInventory.stockItems);
+      document.querySelector('#palletOffer').hidden = !siloInventory.inputs.length;
+      palletPanel.dataset.complete = String(siloInventory.tradeComplete);
+      palletTrade.hidden = !siloInventory.showTrade || siloInventory.tradeComplete || siloInventory.active;
+      palletTrade.disabled = !siloInventory.canTrade;
+      palletLoad.hidden = !siloInventory.showLoad || (siloInventory.showTrade && !siloInventory.tradeComplete) || siloInventory.active;
+      palletUnload.hidden = !siloInventory.showUnload || siloInventory.active;
+      palletUnload.setAttribute('aria-label', siloInventory.unloadLabel);
+      palletUnload.title = siloInventory.unloadLabel;
       document.querySelector('#palletStockHint').textContent = siloInventory.hint;
+      document.querySelector('#palletStockHint').hidden = !siloInventory.hint;
       palletLoad.disabled = !siloInventory.canLoad;
       palletUnload.disabled = !siloInventory.canUnload;
       palletCancel.hidden = !siloInventory.active;
-      siloInventoryElement.setAttribute('aria-label', `${siloInventory.label}: ${siloInventory.amount} Flour pallets`);
+      siloInventoryElement.setAttribute('aria-label', `${siloInventory.label}: ${siloInventory.stockLabel}`);
       return;
     }
     const machine = siloInventory.machine;
@@ -481,7 +519,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       const centerX = Math.max(left + popupHalfWidth, Math.min(innerWidth - right - popupHalfWidth, x));
       const minAnchorY = top + bounds.height + 8;
       // The silo-style delivery action sits below the popup's own bounds.
-      const actionHeight = siloInventory.kind === 'pallet' ? 0 : siloUnloadButton.getBoundingClientRect().height + 8;
+      const actionHeight = (siloInventory.kind === 'pallet'
+        ? document.querySelector('.palletActions').getBoundingClientRect().height
+        : siloUnloadButton.getBoundingClientRect().height) + 8;
       let anchorY = Math.max(minAnchorY, Math.min(innerHeight - top - actionHeight, y));
       // Hidden desktop controls have empty rectangles; they must not push the
       // popup to the top. Only avoid controls that intersect its actual bounds.
@@ -1047,7 +1087,13 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   siloUnloadButton.addEventListener('click', () => {
     if (!siloInventory) return;
     if (siloInventory.kind === 'cattle-barn') onBarnFeed?.(siloInventory.id);
-    else if (siloInventory.kind === 'cargo') onCargoDropOff();
+    else if (siloInventory.kind === 'cargo') {
+      if (!siloInventory.machine.carriedBale && siloInventory.machine.storageKind === 'pallet') {
+        if (siloInventory.palletDelivery?.active) commands.cancelPalletTransfer();
+        else commands.palletTransfer('settlement', 'unload');
+      }
+      else onCargoDropOff();
+    }
     else onSiloUnload(siloInventory.id);
   });
   document.querySelector('#menuToggle').addEventListener('click', openPause);
@@ -1070,9 +1116,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   debugFastIslands.addEventListener('change', () => {
     onFastIslandsChange(debugFastIslands.checked);
     onPersistentStateChange();
-  });
-  debugAddFlour.addEventListener('click', () => {
-    debugFlourStatus.textContent = onAddDebugFlour();
   });
   debugFastGrowth.addEventListener('change', () => {
     onFastGrowthChange(debugFastGrowth.checked);
@@ -1255,7 +1298,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
         return;
       }
       if (nextInventory.kind === 'pallet') {
-        const signature = JSON.stringify([nextInventory.id, nextInventory.amount, nextInventory.capacity,
+        const signature = JSON.stringify([nextInventory.id, nextInventory.stockLabel, nextInventory.inputs, nextInventory.outputs, nextInventory.stockItems, nextInventory.canTrade, nextInventory.tradeComplete,
           nextInventory.canLoad, nextInventory.canUnload, nextInventory.active, nextInventory.hint]);
         const changed = siloInventory?.kind !== 'pallet' || siloInventory.signature !== signature;
         siloInventory = { ...nextInventory, signature };
@@ -1274,6 +1317,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
           contents: { ...nextInventory.machine?.contents },
           canTransfer: Boolean(nextInventory.machine?.canTransfer),
           carriedBale: Boolean(nextInventory.machine?.carriedBale),
+        canDeliverBale: Boolean(nextInventory.machine?.canDeliverBale),
           storageKind: nextInventory.machine?.storageKind || null,
         };
         const barn = {
@@ -1318,6 +1362,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
         contents: { ...nextInventory.machine?.contents },
         canTransfer: Boolean(nextInventory.machine?.canTransfer),
         carriedBale: Boolean(nextInventory.machine?.carriedBale),
+        canDeliverBale: Boolean(nextInventory.machine?.canDeliverBale),
         storageKind: nextInventory.machine?.storageKind || null,
       };
       const carriedCropId = machine.carriedBale
@@ -1330,11 +1375,14 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       const signature = [
         nextInventory.kind,
         JSON.stringify(settlement),
+        JSON.stringify(nextInventory.palletDelivery),
+        machine.storageKind,
         cropsInSilo.map(crop => `${crop.id}:${crop.unit}:${crop.amount}:${crop.target || ''}:${crop.accepting}:${crop.locked}:${crop.complete}`).join('|'),
         machine.type,
         machine.capacity,
         machine.canTransfer,
         machine.carriedBale,
+        machine.canDeliverBale,
         Object.entries(machine.contents).map(([itemId, amount]) => `${itemId}:${amount}`).sort().join('|'),
       ].join(';');
       const changed = siloInventory?.id !== nextInventory.id || siloInventory?.signature !== signature;
@@ -1356,6 +1404,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
         kind: nextInventory.kind,
         crops: cropsInSilo,
         settlement,
+        palletDelivery: nextInventory.palletDelivery || null,
         machine,
         signature,
         carriedCropId,

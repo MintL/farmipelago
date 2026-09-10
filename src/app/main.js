@@ -738,7 +738,7 @@ function initializeFarm(savedState) {
     savedState?.world?.seed,
     0,
     scheduleSave,
-    { attachmentComplete, reducedMotion, camera, fastGrowth: savedState?.ui?.fastGrowth !== false, fastIslands: savedState?.ui?.fastIslands === true, savedWorld: savedState?.world,
+    { getSettlementTier: () => progression?.state().tier || 1, attachmentComplete, reducedMotion, camera, fastGrowth: savedState?.ui?.fastGrowth !== false, fastIslands: savedState?.ui?.fastIslands === true, savedWorld: savedState?.world,
       prepareIslandVisuals: island => {
         createIslandOutline(island);
         return renderer.compileAsync(island.group, camera, scene);
@@ -931,10 +931,10 @@ function syncCargoPort() {
 }
 
 const palletTransfers = createPalletTransfers({
-  scene, getVehicle: activeVehicle, getState: activeVehicleState, getFarm: () => farm,
-  isBlocked: () => viewMode !== 'drive' || Boolean(openingCinematic || vehicleTransition || farm?.attachments.state())
+  scene, getVehicle: activeVehicle, getState: activeVehicleState, getFarm: () => farm, getProgression: () => progression,
+  isBlocked: () => viewMode !== 'drive' || Boolean(openingCinematic || vehicleTransition || farm?.attachments.pendingState())
     || ui.isGameplayBlocked() || transferController.isActive(),
-  onChange: () => { syncInventoryUi(); scheduleSave(); }, reducedMotion,
+  onChange: () => { syncInventoryUi(); syncProgressionUi(); syncCargoPort(); scheduleSave(); }, reducedMotion,
 });
 
 const transferController = createTransferController({
@@ -1045,7 +1045,6 @@ const transferController = createTransferController({
   clearUnlockOverrides,
   changeCameraPreset: setDriveCameraPreset,
   changeTimeOfDay: setTimeOfDay,
-  addDebugFlour: () => palletTransfers.addDebugStock(),
   palletTransfer: (id, direction) => palletTransfers.start(id, direction),
   cancelPalletTransfer: () => palletTransfers.cancel(),
   changeFastGrowth: enabled => farm.setFastGrowth(enabled, elapsed),
@@ -1126,7 +1125,7 @@ function vehicleToolPoint(vehicle, state, localX, localZ) {
 function baleForkPose(vehicle, state) {
   const point = vehicleToolPoint(vehicle, state, 0, -1.72);
   const lift = vehicle.visual.frontToolLift();
-  return { ...point, y: state.y - .02 + lift * .44, heading: vehicle.heading };
+  return { ...point, y: state.y - .02 + lift * .44, heading: vehicle.heading + Math.PI / 2 };
 }
 
 function dropCarriedBale(vehicle, state) {
@@ -1138,9 +1137,9 @@ function dropCarriedBale(vehicle, state) {
   }
   const pose = baleForkPose(vehicle, state);
   const groundY = farm.farmingLevelNear(pose.x, pose.z);
-  const sidewaysX = Math.cos(pose.heading), sidewaysZ = -Math.sin(pose.heading);
+  const sidewaysX = Math.cos(vehicle.heading), sidewaysZ = -Math.sin(vehicle.heading);
   farm.releaseBale(baleId, pose.x, groundY ?? state.y - .02, pose.z, pose.heading, {
-    linearVelocity: { x: Math.sin(pose.heading) * .18, y: .05, z: Math.cos(pose.heading) * .18 },
+    linearVelocity: { x: Math.sin(vehicle.heading) * .18, y: .05, z: Math.cos(vehicle.heading) * .18 },
     angularVelocity: { x: sidewaysX * .45, y: 0, z: sidewaysZ * .45 },
   });
   vehicle.equipmentState.carriedBaleId = null;
@@ -1362,13 +1361,13 @@ function updateMap(dt) {
 }
 
 function updateStoragePopup() {
-  if (viewMode !== 'drive' || openingCinematic || vehicleTransition || farm.attachments.state()) {
+  if (viewMode !== 'drive' || openingCinematic || vehicleTransition || farm.attachments.pendingState()) {
     ui.setStoragePopup(null);
     return;
   }
   const state = activeVehicleState();
   const pallet = palletTransfers.context();
-  if (pallet) {
+  if (pallet && pallet.id !== 'settlement') {
     siloPopupWorld.set(pallet.point.x, pallet.point.y + 1.3, pallet.point.z).project(camera);
     if (siloPopupWorld.z >= -1 && siloPopupWorld.z <= 1) {
       ui.setStoragePopup({ ...pallet, x: (siloPopupWorld.x * .5 + .5) * innerWidth,
@@ -1376,6 +1375,7 @@ function updateStoragePopup() {
       return;
     }
   }
+  if (farm.attachments.state()) { ui.setStoragePopup(null); return; }
   const machine = {
     type: activeVehicle().type,
     capacity: activeVehicle().storage.capacity,
@@ -1385,7 +1385,7 @@ function updateStoragePopup() {
     storageKind: vehicleStorageKind(),
     storageItemId: storageItemId(),
   };
-  if (farm.cargoPort.isNear(state.x, state.z)) {
+  if (pallet?.id === 'settlement' || farm.cargoPort.isNear(state.x, state.z)) {
     const village = progression.state();
     if (!village.needs.length) {
       ui.setStoragePopup(null);
@@ -1400,6 +1400,7 @@ function updateStoragePopup() {
     ui.setStoragePopup({
       kind: 'cargo',
       id: village.id,
+      palletDelivery: pallet?.id === 'settlement' ? { canDeliver: pallet.canUnload, active: pallet.active } : null,
       settlement: {
         tier: village.tier,
         complete: village.complete,
@@ -1418,7 +1419,10 @@ function updateStoragePopup() {
         accepting: requirement.accepting,
         locked: !requirement.available,
       })),
-      machine,
+      machine: { ...machine, canDeliverBale: state.grounded && activeVehicle().loadout.frontTool === 'bale-fork'
+        && farm.hasBale(activeVehicle().equipmentState.carriedBaleId) && !transferController.isActive()
+        && !pallet?.active && village.needs.some(need => need.itemId === 'hay-bale' && need.accepting
+          && need.target - need.amount >= HAY_BALE_LITRES) },
       x: (siloPopupWorld.x * .5 + .5) * innerWidth,
       y: (-siloPopupWorld.y * .5 + .5) * innerHeight,
     });

@@ -250,6 +250,22 @@ export function createTransferController({
       const progression = getProgression();
       if (!farm.cargoPort.isNear(state.x, state.z)) return;
       const village = progression.state();
+      const baleId = vehicle.equipmentState.carriedBaleId;
+      if (baleId) {
+        const requirement = village.needs.find(entry => entry.itemId === 'hay-bale');
+        if (activeTransfer || !state.grounded || vehicle.loadout.frontTool !== 'bale-fork'
+          || !requirement?.accepting || requirement.target - requirement.amount < HAY_BALE_LITRES
+          || !farm.hasBale(baleId) || !farm.removeBale(baleId)) return;
+        progression.accept({ 'hay-bale': HAY_BALE_LITRES });
+        vehicle.equipmentState.carriedBaleId = null;
+        vehicle.baleReleasePending = false;
+        vehicle.balePickupCooldown = getElapsed() + .65;
+        syncInventoryUi();
+        syncProgressionUi();
+        syncCargoPort();
+        scheduleSave();
+        return;
+      }
       if (!canTransferCargo(vehicle) || !['crop', 'bulk'].includes(vehicleStorageKind(vehicle)) || !storageAmount()) return;
       const storage = vehicle.storage;
       const itemId = storageItemId(vehicle);

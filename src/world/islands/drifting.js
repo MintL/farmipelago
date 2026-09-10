@@ -1,3 +1,4 @@
+import { addIslandService, restoreIslandServices } from '../services/index.js';
 import { advancePreparation, finishPreparation } from '../../core/preparation.js';
 import { TILE, THREE } from '../../core/shared.js';
 import { ATTACHMENT_RULES, attachmentCandidateSteps } from './attachment-placement.js';
@@ -109,9 +110,11 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     let island;
     try {
       const islandSeed = (seed + Math.imul(++sequence, 0x9e3779b9)) >>> 0;
-      const settings = fallback ? { radius: 4, maxElevation: 0, terraceCoverage: .2, treeDensity: 0, treeBaseChance: 0, rockDensity: 0 } : {};
+      const serviceId = options.chooseService?.(islandSeed) || null;
+      const settings = serviceId ? { radius: 5.5, maxElevation: 0, terraceCoverage: .2, treeDensity: 0, treeBaseChance: 0, rockDensity: 0, groundCoverDensity: 0, waterStyle: 'none' } : fallback ? { radius: 4, maxElevation: 0, terraceCoverage: .2, treeDensity: 0, treeBaseChance: 0, rockDensity: 0 } : {};
       island = options.generateIslandSteps
         ? yield* options.generateIslandSteps(islandSeed, settings) : createIsland(islandSeed, settings);
+      if (!addIslandService(island, serviceId)) { island.dispose(); retryAt = elapsed + 2; return null; }
     } catch (error) {
       console.error('Unable to generate a passing island:', error);
       retryAt = elapsed + 2;
@@ -456,6 +459,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         if (!DECORATIVE_ISLANDS_ENABLED && saved.encounter === false) continue;
         const island = createIsland(saved.seed, saved.settings);
         if (saved.fields) island.restoreFields(saved.fields);
+        restoreIslandServices(island, saved.services);
         island.id = saved.id;
         island.terrain.forEach(tile => { tile.islandId = saved.id; });
         island.group.position.copy(saved.position);
@@ -485,7 +489,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       sinceEncounter, elapsed, decorationElapsed, retryAt, sequence, lastArrival, initialized: populationInitialized,
       islands: active.map(island => ({
         id: island.id, seed: island.seed, settings: { ...island.settings },
-        fields: island.persistentFields(),
+        fields: island.persistentFields(), services: structuredClone(island.services || []),
         position: copy(physics.movingIslandPosition(island.body)), status: island.status,
         encounter: Boolean(island.encounter), arrived: Boolean(island.arrived),
         route: island.route.map(copy), routeIndex: island.routeIndex, routeComplete: Boolean(island.routeComplete),

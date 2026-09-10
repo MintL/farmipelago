@@ -9,7 +9,7 @@ export function migratePalletState(saved) {
   const strip = (records, duplicates = seen) => (records || []).filter(record => {
     if (record?.itemId !== 'flour') return true;
     if (!duplicates.has(record.id) && Number.isFinite(record.amount) && record.amount > 0) {
-      recovered += Math.max(1, Math.floor(record.amount));
+      recovered += record.unit === 'pallets' ? Math.max(1, Math.floor(record.amount)) : Math.max(1, Math.ceil(record.amount / 1000));
       duplicates.add(record.id);
       seen.add(record.id);
     }
@@ -18,9 +18,9 @@ export function migratePalletState(saved) {
   state.world.forage.bales = strip(state.world.forage.bales);
   for (const island of state.world.islands) island.content.forage.bales = strip(island.content.forage.bales);
   const pending = state.world.pendingAttachment;
-  if (pending) { strip(pending.pallets, new Set()); delete pending.pallets; }
+  if (pending) { strip(pending.pallets); delete pending.pallets; }
   for (const island of state.environment.encounters?.islands || []) {
-    strip(island.pallets, new Set()); delete island.pallets;
+    strip(island.pallets); delete island.pallets;
   }
   const bulk = contents => {
     if (Number.isFinite(contents?.flour) && contents.flour > 0) recovered += Math.ceil(contents.flour / 1000);

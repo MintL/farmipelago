@@ -1,4 +1,4 @@
-import { addIslandService, restoreIslandServices } from '../services/index.js';
+import { addIslandService, restoreIslandServices, serviceIslandSettings } from '../services/index.js';
 import { advancePreparation, finishPreparation } from '../../core/preparation.js';
 import { TILE, THREE } from '../../core/shared.js';
 import { ATTACHMENT_RULES, attachmentCandidateSteps } from './attachment-placement.js';
@@ -65,6 +65,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
   const measureVisuals = island => {
     island.visualBounds = bounds.setFromObject(island.group).clone()
       .translate(island.group.position.clone().negate());
+    if (island.serviceBounds) island.visualBounds.union(island.serviceBounds);
     island.visualSphere = island.visualBounds.getBoundingSphere(new THREE.Sphere());
   };
   const inView = (island, at = island.group.position, margin = VIEW_MARGIN) => {
@@ -111,7 +112,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     try {
       const islandSeed = (seed + Math.imul(++sequence, 0x9e3779b9)) >>> 0;
       const serviceId = options.chooseService?.(islandSeed) || null;
-      const settings = serviceId ? { radius: 5.5, maxElevation: 0, terraceCoverage: .2, treeDensity: 0, treeBaseChance: 0, rockDensity: 0, groundCoverDensity: 0, waterStyle: 'none' } : fallback ? { radius: 4, maxElevation: 0, terraceCoverage: .2, treeDensity: 0, treeBaseChance: 0, rockDensity: 0 } : {};
+      const settings = serviceId ? serviceIslandSettings(serviceId) : fallback ? { radius: 4, maxElevation: 0, terraceCoverage: .2, treeDensity: 0, treeBaseChance: 0, rockDensity: 0 } : {};
       island = options.generateIslandSteps
         ? yield* options.generateIslandSteps(islandSeed, settings) : createIsland(islandSeed, settings);
       if (!addIslandService(island, serviceId)) { island.dispose(); retryAt = elapsed + 2; return null; }

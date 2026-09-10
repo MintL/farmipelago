@@ -389,7 +389,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       name.textContent = item.name;
       const amount = document.createElement('span');
       amount.className = cards ? 'villageNeedAmount' : 'palletAmount';
-      amount.textContent = item.unit === 'litres' ? formatLitres(item.amount)
+      amount.textContent = item.unit === 'litres' ? `${formatLitres(item.amount)}${item.target == null ? '' : ` / ${formatLitres(item.target)}`}`
         : `${item.amount}${item.target == null ? '' : ` / ${item.target}`} pallets`;
       row.append(cropIcon(item.icon, item.name), name, amount);
       return row;
@@ -401,9 +401,11 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     siloInventoryElement.hidden = !siloInventory;
     if (!siloInventory) {
       delete siloInventoryElement.dataset.kind;
+      delete siloInventoryElement.dataset.serviceKind;
       return;
     }
     siloInventoryElement.dataset.kind = siloInventory.kind;
+    siloInventoryElement.dataset.serviceKind = siloInventory.serviceKind || '';
     const pallet = siloInventory.kind === 'pallet';
     palletPanel.hidden = !pallet;
     document.querySelector('#siloActions').hidden = pallet;
@@ -417,6 +419,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       renderPalletItems('#palletOutputs', siloInventory.outputs);
       renderPalletItems('#palletStockAmount', siloInventory.stockItems);
       document.querySelector('#palletOffer').hidden = !siloInventory.inputs.length;
+      const capacity = document.querySelector('#palletCapacity');
+      capacity.hidden = !siloInventory.capacityLabel;
+      capacity.textContent = siloInventory.capacityLabel || '';
       palletPanel.dataset.complete = String(siloInventory.tradeComplete);
       palletTrade.hidden = !siloInventory.showTrade || siloInventory.tradeComplete || siloInventory.active;
       palletTrade.disabled = !siloInventory.canTrade;
@@ -1299,7 +1304,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       }
       if (nextInventory.kind === 'pallet') {
         const signature = JSON.stringify([nextInventory.id, nextInventory.stockLabel, nextInventory.inputs, nextInventory.outputs, nextInventory.stockItems, nextInventory.canTrade, nextInventory.tradeComplete,
-          nextInventory.canLoad, nextInventory.canUnload, nextInventory.active, nextInventory.hint]);
+          nextInventory.canLoad, nextInventory.canUnload, nextInventory.active, nextInventory.hint, nextInventory.capacityLabel]);
         const changed = siloInventory?.kind !== 'pallet' || siloInventory.signature !== signature;
         siloInventory = { ...nextInventory, signature };
         if (changed) renderSiloInventory();

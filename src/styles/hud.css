@@ -83,7 +83,7 @@ body[data-hud-hidden="true"] #hud > :not(#overlay) { opacity: 0; visibility: hid
   -webkit-backdrop-filter: blur(16px) saturate(120%);
 }
 #siloInventory[data-kind="cattle-barn"] {
-  width: min(260px, calc(100vw - 24px));
+  width: min(180px, calc(100vw - 24px));
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
 }
@@ -311,6 +311,7 @@ body[data-view-mode="build"] #viewHint { display: block; }
   padding: 8px;
   gap: 6px;
 }
+#siloInventory[data-service-kind="processor"] { width: min(180px, calc(100vw - var(--safe-left) - var(--safe-right) - 16px)); }
 .villageTitle { display: block; margin-bottom: 4px; font-size: 12px; }
 .settlementRule { font-size: 13px; font-weight: 400; }
 .settlementProgress { margin: 3px 0 8px; font-size: 10px; color: var(--muted); }
@@ -358,6 +359,6 @@ body[data-view-mode="build"] #viewHint { display: block; }
 .palletStockRow { display: grid; grid-template-columns: 20px minmax(0, 1fr) max-content; align-items: center; gap: 5px; font-size: 10px; }
 .palletStockRow .icon { width: 20px; height: 20px; }
 .palletAmount { color: var(--muted); font-variant-numeric: tabular-nums; }
-#palletStockHint { color: var(--muted); font-size: 10px; }
+#palletCapacity, #palletStockHint { color: var(--muted); font-size: 10px; }
 #palletStock[data-complete="true"] #palletStockHint { color: #35572a; }
 #palletStock #palletTrade { display: flex; gap: 5px; width: auto; padding: 0 10px; border-radius: 13px; font-size: 11px; font-weight: 750; }

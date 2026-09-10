@@ -94,9 +94,9 @@ Long-term play revolves around making the persistent Farmipelago capable of prod
 
 The game implements permanent Tier 1 requirements for **Wheat, Barley, Canola and Soybeans**, all available from the start with unlimited seeds. Each requires **3,600 L**. Completing any three immediately opens **Tier 2**. Tier 1 records remain saved; the storehouse moves to the new requirements and stops taking Tier 1 crops. Completed requirements never drain, and deliveries stop at the target, leaving surplus cargo in the vehicle.
 
-Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. All Tier 2 delivery requirements are enabled and display normal progress states. Eggs and Vegetable oil still await production routes; their cards do not show an Unavailable state. Flour is available through Old Miller opportunities and flatbed delivery; the current build still cannot complete all of Tier 2. Targets are provisional: 14,400 L Hay (four bales) and 3,600 L Vegetable oil, 4,000 L Flour (four pallets), and 24 Eggs. The existing mow/bale loop supplies settlement hay: deliver four 3,600 L bales, one at a time on the bale fork, using Deliver in the normal settlement panel. Carried bales sit at a 90° yaw offset to the vehicle on the fork and retain that orientation on release. The bale is consumed immediately on delivery; completed requirements reject further bales. A tedder is not implemented. Pallet Forks remain unavailable; packaged goods use automatic flatbed transfers.
+Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. All Tier 2 delivery requirements are enabled and display normal progress states. Eggs and Vegetable oil still await production routes; their cards do not show an Unavailable state. Flour is available through continuous Windmill production, existing Old Miller opportunities and flatbed delivery; the current build still cannot complete all of Tier 2. Targets are provisional: 14,400 L Hay (four bales) and 3,600 L Vegetable oil, 4,000 L Flour (four pallets), and 24 Eggs. The existing mow/bale loop supplies settlement hay: deliver four 3,600 L bales, one at a time on the bale fork, using Deliver in the normal settlement panel. Carried bales sit at a 90° yaw offset to the vehicle on the fork and retain that orientation on release. The bale is consumed immediately on delivery; completed requirements reject further bales. A tedder is not implemented. Pallet Forks remain unavailable; packaged goods use automatic flatbed transfers.
 
-Opening Tier 2 also records eligibility for chicken-farm, windmill and oil-press islands. These categories are reserved for later content; new Tier 2 encounters also have a seeded 50% chance to carry an Old Miller trading service; no permanent processor is granted. Corn and livestock still require retained earned gates or Debug overrides. Tier opening earns only its defined capabilities, regardless of any other Debug settings.
+Opening Tier 2 also records eligibility for chicken-farm, windmill and oil-press islands. Windmills now arrive as permanent processor islands; chicken farms and oil presses remain future content. For feature testing, 100% of newly generated Tier 2 encounters carry a Windmill. Existing islands, including Old Miller trades, retain their content. The Windmill is acquired through normal connection. Corn and livestock still require retained earned gates or Debug overrides. Tier opening earns only its defined capabilities, regardless of any other Debug settings.
 
 ### Permanent 3-of-4 tiers
 
@@ -689,8 +689,9 @@ in the workshop for this prototype without a progression gate. A loaded flatbed
 cannot be unequipped. Pallet Forks are unavailable, and packaged goods have no
 manual pickup, drop or loose physics bodies.
 
-**Island opportunities:** after Tier 2 opens, each newly generated encounter has
-an independent seeded 50% chance to host an **Old Miller** trading stall. Service
+**Island opportunities:** Old Miller retains a seeded 50% definition for normal
+encounter balancing. The current Windmill testing override takes precedence for
+new Tier 2 islands; existing **Old Miller** trading stalls remain usable. Service
 islands use a small flat, clear terrain preset so the voxel stall has an accessible
 yard. Its structure is included in route bounds, collision data and reserved land.
 Island selection and Connect/Release work normally, without a separate trade
@@ -735,15 +736,51 @@ and trailer cargo, cancels the unfinished animation and never transfers offline.
 Reduced motion retains a shorter, lower transfer animation.
 
 Building inventories, service completion and flatbed cargo persist. Services
-survive attached, released and pending-attachment saves. Old Debug Workshop and
-Storehouse stock merge into a **Workshop · Recovered stock** load-only inventory.
-Legacy bulk Flour converts at one pallet per 1,000 L, rounded up per inventory;
-former manual pallet records recover once, deduplicating world/island copies.
-Existing compatible flatbed cargo remains aboard; capacity overflow recovers to
-the Workshop. Recovery cannot generate or receive stock and disappears when empty.
-The next save omits the obsolete Debug inventories so recovery cannot repeat.
+survive attached, released and pending-attachment saves. Workshop recovery stock
+is removed completely, including its popup and saved inventory. Loading an older
+save discards obsolete Debug/recovery stock, unsupported legacy bulk Flour and
+manual Flour props. Valid flatbed cargo and island service stock remain intact;
+legacy stock is never converted into new Workshop inventory.
 
-Windmill production and other specialist processors remain future content.
+### Windmill islands
+
+New Tier 2 encounters currently carry Windmills 100% of the time for testing.
+Tier 1 receives ordinary islands; existing saved islands are never rerolled.
+Each Windmill is a voxel building with thick walls, constructed openings, stepped
+roof and rotating sails. The complete sail rotation envelope participates in
+collision, route planning and visibility bounds. A reserved clear yard provides
+access to separate stable island-local grain input and Flour output ports.
+
+The Windmill automatically processes stored Wheat, then Barley, continuously at
+1,000 L per minute with 1:1 input/output conversion. There are no batches, minimum
+production amounts or Start control. Both grain types share an 8,000 L input
+capacity, and Flour has a separate 8,000 L capacity. Processing stops when input
+runs out or output fills and resumes automatically. Sails rotate while processing.
+Only fully connected islands process. Release and connection movement suspend
+production; reconnection resumes it. Driving away and build mode do not interrupt
+processing. Pause/hidden tabs freeze it; reload retains exact fractional stocks
+without offline production.
+
+Windmill and cattle barn popups are capped at 180 pixels wide, retaining their
+stock rows and controls. The compact Windmill HUD follows the cattle barn’s stock-row presentation and uses the
+shared round, icon-only Load, Unload and Cancel actions with accessible labels.
+It displays each grain stock, their shared capacity, Flour litres/capacity and
+Processing, Needs grain or Storage full. Display quantities round down to whole
+litres so a partial pallet never appears ready before it is collectable.
+
+Combine and Grain Trailer unloading recognizes carried grain automatically and
+commits each animated delivery on arrival, stopping at available input space.
+A flatbed collects only complete 1,000 L pallets. Flour below one pallet remains
+in the Windmill, and collecting pallets preserves any fractional remainder.
+Flour cannot be returned, and input grain cannot be withdrawn in this step.
+Transfers use the existing five-tile, grounded, fully-connected and cancellation
+rules. Processor stock is saved in litres, while flatbed and Old Miller stock
+retain physical pallet counts; input-capacity remainders aboard vehicles also
+retain fractional litres through reload. Definitions keep conversion rate,
+capacities, input alternatives, visual type and terrain requirements separate
+from each island’s saved stock.
+
+Other specialist processors remain future content.
 
 ### Grain Silos
 
@@ -983,7 +1020,7 @@ The current save includes:
 - active settlement tier, permanent requirement histories for each tier, retained earned capabilities and separate Debug unlock overrides
 - vehicle positions
 - vehicle loadouts
-- vehicle storage, including whole-pallet flatbed cargo and separate Debug building stock
+- vehicle storage, including whole-pallet flatbed cargo and fractional processor input/output litres
 - active vehicle
 - relevant UI state, including the default-on Fast growth Debug preference
 

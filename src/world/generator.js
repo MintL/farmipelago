@@ -1,4 +1,4 @@
-import { chooseIslandService, restoreIslandServices, islandServicePorts } from './services/index.js';
+import { chooseIslandService, restoreIslandServices, islandServicePorts, updateIslandServices } from './services/index.js';
 import { cropProgress, paintFieldTile, restoreCrop, saveFieldTiles } from './fields/state.js';
 import { finishPreparation } from '../core/preparation.js';
 import { FARM_GENERATION, SETTLEMENT_GENERATION, resolveIslandSettings } from './islands/generation-settings.js';
@@ -1553,6 +1553,7 @@ function* generateFarmSteps(
     islands: islandRecords,
     connections: connectionRecords,
     servicePorts: () => islandServicePorts(islandRecords),
+    updateServices: dt => updateIslandServices(islandRecords, dt),
     driftingIslands,
     attachments,
     cargoPort,
@@ -1845,10 +1846,6 @@ function* generateFarmSteps(
     },
     cropStats() {
       return { planted: plantedCount, ready: readyCount, weeds: weedCount };
-    },
-    workshopStockPoint() {
-      if (!workshopArea) return null;
-      return { x: workshopArea.x + 1.6, y: workshopArea.y + .5, z: workshopArea.z };
     },
     insideWorkshop(x, z) {
       if (!workshopArea) return false;

@@ -190,7 +190,6 @@ function persistentState() {
     world: farm.persistentState(elapsed),
     environment: { ...environment.persistentState(), travel: travel.persistentState(), encounters: farm.driftingIslands.persistentState() },
     buildings: savedBuildings,
-    palletStock: palletTransfers.snapshot(),
     progression: progression.persistentState(),
     vehicles: fleet.map(vehicle => {
       const state = physics.vehicleState(vehicle.id);
@@ -702,13 +701,11 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
     let remaining = vehicle.storage.capacity;
     const storageKind = vehicleStorageKind(vehicle);
     for (const [itemId, savedAmount] of Object.entries(saved.storage || {})) {
-      if (!storageAcceptsGood(storageKind, itemId) || remaining <= 0) {
-        if (storageAcceptsGood('pallet', itemId)) palletTransfers.recover(itemId, Math.max(0, Math.floor(savedAmount)));
-        continue;
-      }
-      const amount = Math.min(remaining, Math.max(0, Math.floor(Number(savedAmount) || 0)));
+      if (!storageAcceptsGood(storageKind, itemId) || remaining <= 0) continue;
+      // Processor input capacity can leave fractional litres aboard; preserve them.
+      const savedQuantity = Number.isFinite(Number(savedAmount)) ? Math.max(0, Number(savedAmount)) : 0;
+      const amount = Math.min(remaining, storageKind === 'pallet' ? Math.floor(savedQuantity) : savedQuantity);
       if (!amount) continue;
-      if (storageKind === 'pallet' && savedAmount > amount) palletTransfers.recover(itemId, Math.floor(savedAmount) - amount);
       vehicle.storage.contents[itemId] = amount;
       remaining -= amount;
     }
@@ -730,7 +727,7 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
 
 function initializeFarm(savedState) {
   savedState = migratePalletState(savedState);
-  palletTransfers.restore(savedState?.palletStock);
+  palletTransfers.cancel();
   const attachmentComplete = savedState?.world?.connections?.[0]?.status === 'attached';
   farm = createArchipelagoRuntime(generateFarm(
     scene,
@@ -1484,6 +1481,7 @@ function update(dt) {
   farm?.cargoPort.update(dt);
   syncFleetVisuals(dt);
   palletTransfers.update(dt);
+  farm?.updateServices(dt);
   const travelState = travel.update(dt);
   const environmentState = environment.update(dt, currentEnvironmentFocus(), travelState);
   applyNightLighting(environmentState);

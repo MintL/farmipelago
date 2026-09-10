@@ -505,7 +505,7 @@ Keep implementation status, build versions, approvals, migration assumptions and
 
 ### Implementation record
 
-Steps 0–7 are approved. Step 8 is prepared for review, not implemented.
+Steps 0–8 are approved. Step 9 is prepared for review.
 Weed damage and sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
 committed as `17e9dcd` on `feature/drifting-islands`.
 
@@ -912,12 +912,53 @@ and release alignment remain manual checks.
 and bale-orientation refinements. Build and diff checks pass; only user-performed
 gameplay checks apply, and no automated gameplay verification was run.
 
-**Next: Step 8 — Windmill specialist island.** Reuse island service definitions
-and persistent local ports for a Tier 2 island with repeatable Wheat-or-Barley
-to Flour production. Operate only while connected; collect 1,000 L pallets with
-the flatbed and deliver through the normal settlement panel. Preserve Old Miller
-as the one-time fallback. Batch quantities, production duration and encounter
-weight need to be settled during Step 8 planning. Do not implement until approved.
+**Step 8 — Continuous Windmill production, build 0.398; approved for commit.**
+
+- Approved design revision: continuous 1:1 Wheat-or-Barley processing at 1,000 L
+  per minute, Wheat first, with 8,000 L shared grain and 8,000 L Flour storage.
+  No batches or Start action. Only complete 1,000 L pallets can be collected.
+- New Tier 2 encounters temporarily use 100% Windmills. Old Miller’s definition
+  remains available for later balancing; existing islands retain their content.
+- Extend reusable service definitions and stable input/output ports. Processor
+  stocks use litres; existing Old Miller and flatbed inventories keep pallet units.
+- Add voxel Windmill geometry, reserved access yard and collision/route/visibility
+  bounds covering the full rotating sail envelope. Grain and pallet transfers use
+  the shared round icon controls and commit on arrival. HUD follows storage rows,
+  with shared grain capacity, output capacity and production status.
+- Connected production runs while away/building; pause, hidden tabs and release
+  freeze it. Reconnect/reload resumes exact fractional stocks without offline work.
+  Fractional grain surplus aboard vehicles survives restore as well.
+- Verification: both production builds and `git diff --check`; gameplay checks
+  remain manual. Check continuous conversion/crop switching, full storage, partial
+  pallet rejection, surplus and cancellation, independent mills, reload and
+  release/reconnect, sails/yard collision, desktop/mobile controls and existing
+  Old Miller, Flour and hay deliveries. No synthetic saves or automated gameplay.
+- Stop for review before committing or starting Step 9. Weed work stays paused.
+
+**Workshop recovery removal — build 0.399; approved for commit.** User requested
+complete removal. Removed the recovery port, popup, snapshot and stock creation
+paths. Older Debug/recovery stock and obsolete Flour props are discarded on load;
+valid flatbed cargo and island service stock stay intact. Both builds and diff
+checks pass; verify absence of the Workshop popup and reload behavior manually.
+
+**Compact stock popups — build 0.400; approved for commit.** Narrow Windmill and
+cattle barn popups to 200 pixels. Settlement and Old Miller widths retain their
+existing sizing. Builds and diff checks pass; visual checks remain manual.
+
+**Further popup narrowing — build 0.401; approved for commit.** Reduce Windmill
+and cattle barn widths to 180 pixels. Builds and diff checks pass; visual review
+remains manual.
+
+**Step 8 approved for commit and push**, including removal of Workshop recovery
+stock and the 180-pixel Windmill/cattle popup widths. No automated gameplay
+checks were run; both production builds and diff checks pass.
+
+**Next task: Step 9 — Finish the Hay route.** Grass/hay unlocks, mowing, baling,
+fork handling and four-bale settlement delivery are already implemented. Review
+the current field-pass loop; decide whether ted/dry adds value before adding it.
+Grass currently takes 30 seconds in both normal and Fast growth modes. Plan a
+normal 4–5-minute growth target while retaining the existing Fast growth speed.
+Do not implement this pacing change or add a tedder until the next plan is agreed.
 
 **Step 7 manual checklist:** in Tier 2 connect an Old Miller island normally, Trade
 one full grain input, return with Flatbed, Load four pallets and Deliver them.
@@ -1138,7 +1179,8 @@ Stop for approval before commit or Step 8.
 
 - Extend passing-island generation with tier-gated content descriptors separate from terrain generation.
 - Add the first specialist content type: a small Windmill/farm island.
-- The Windmill converts Wheat or Barley into Flour in batches.
+- The Windmill continuously converts Wheat or Barley into Flour at 1,000 L/min,
+  1:1, with 8,000 L input/output storage and complete-pallet collection.
 - It only functions while the island is connected as playable Farmipelago land.
 - Keep the Windmill and its interaction physically readable and compact; follow the building voxel construction standard.
 - Tier 2 enables Windmill islands in the encounter pool; Tier 1 does not need them.

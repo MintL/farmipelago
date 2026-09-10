@@ -1,11 +1,10 @@
 import { THREE, TILE, mats } from '../../core/shared.js';
 import { goodDefinition, goodDisplayAmount, storageAcceptsGood } from '../catalog/goods.js';
+import { processorStatus, quantity, stockTotal } from '../../world/services/processor.js';
 import { createPalletVisual } from '../../world/forage/pallet-visual.js';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 const total = contents => Object.values(contents).reduce((sum, amount) => sum + count(amount), 0);
-const contentsOf = contents => Object.fromEntries(Object.entries(contents || {})
-  .filter(([id, amount]) => storageAcceptsGood('pallet', id) && count(amount)));
 const displayItem = (id, amount, target) => {
   const good = goodDefinition(id);
   const display = goodDisplayAmount(id, amount);
@@ -14,7 +13,7 @@ const displayItem = (id, amount, target) => {
 };
 
 export function createPalletTransfers({ scene, getVehicle, getState, getFarm, getProgression, isBlocked, onChange, reducedMotion }) {
-  let recovery = {}, active = null;
+  let active = null;
   const flying = createPalletVisual(new THREE.BoxGeometry(1, 1, 1));
   flying.visible = false; flying.scale.setScalar(.92); scene.add(flying);
   const grain = new THREE.Group(), grainGeometry = new THREE.BoxGeometry(.09, .06, .12);
@@ -27,8 +26,6 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
   const ports = () => {
     const requirements = getProgression().state().needs.filter(need => need.available && storageAcceptsGood('pallet', need.id));
     return [...getFarm().servicePorts(),
-      ...(total(recovery) ? [{ id: 'recovery', label: 'Workshop · Recovered stock', point: getFarm().workshopStockPoint(),
-        stock: recovery, capacity: Infinity, accepts: Object.keys(recovery), canLoad: true, canUnload: false }] : []),
       ...(requirements.length ? [{ id: 'settlement', label: 'Settlement', point: getFarm().cargoPort.unloadTarget(),
         stock: {}, capacity: Infinity, accepts: requirements.map(need => need.id), canLoad: false, canUnload: true, requirements }] : []),
     ];
@@ -42,17 +39,22 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
       && Math.hypot(bed.x - port.point.x, bed.z - port.point.z) <= 5 * TILE;
   };
   const compatibleGrainVehicle = () => getVehicle().type === 'harvester' || getVehicle().loadout.tool === 'trailer';
-  const payment = port => port?.definition?.inputs.find(input => count(getVehicle().storage.contents[input.itemId]) >= input.amount);
-  const canTrade = port => Boolean(port?.definition) && !isBlocked() && inRange(port) && compatibleGrainVehicle()
+  const payment = port => port?.definition?.inputs.find(input => quantity(getVehicle().storage.contents[input.itemId]) >= input.amount);
+  const canTrade = port => port?.definition?.kind === 'trade' && !isBlocked() && inRange(port) && compatibleGrainVehicle()
     && port.service?.completedTrades < port.definition.tradeLimit && Boolean(payment(port))
     && total(port.stock) + total(port.definition.outputs) <= port.capacity;
+  const palletSize = (port, itemId) => port.stockUnit === 'litres' ? goodDefinition(itemId)?.litresPerPallet || 1 : 1;
+  const carriedInput = port => port.accepts.find(id => quantity(getVehicle().storage.contents[id]) > 0);
+  const canSupply = (port, itemId = port && carriedInput(port)) => port?.role === 'input'
+    && !isBlocked() && inRange(port) && compatibleGrainVehicle() && port.accepts.includes(itemId)
+    && quantity(getVehicle().storage.contents[itemId]) > 0 && stockTotal(port.stock) < port.capacity;
   const allowed = (port, direction, itemId) => {
     const vehicle = getVehicle();
     if (isBlocked() || !inRange(port) || vehicle.loadout.tool !== 'flatbed'
       || !storageAcceptsGood('pallet', itemId) || !port.accepts.includes(itemId)) return false;
     const cargo = vehicle.storage.contents;
     if (Object.keys(cargo).some(id => cargo[id] > 0 && id !== itemId)) return false;
-    if (direction === 'load') return port.canLoad && count(port.stock[itemId]) > 0 && total(cargo) < vehicle.storage.capacity;
+    if (direction === 'load') return port.canLoad && quantity(port.stock[itemId]) >= palletSize(port, itemId) && total(cargo) < vehicle.storage.capacity;
     if (!port.canUnload || !count(cargo[itemId])) return false;
     if (port.id === 'settlement') return port.requirements.some(need => need.id === itemId && need.accepting && need.amount < need.target);
     return total(port.stock) < port.capacity;
@@ -64,24 +66,32 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
   };
   return {
     cancel,
-    restore(saved) {
-      cancel(); recovery = contentsOf(saved?.recovery);
-      // Old Debug source/receiver stock becomes load-only recovery exactly once.
-      for (const contents of [saved?.source, saved?.destination]) for (const [id, amount] of Object.entries(contentsOf(contents))) {
-        recovery[id] = count(recovery[id]) + amount;
-      }
-    },
-    snapshot: () => ({ version: 1, recovery: { ...recovery } }),
-    recover(itemId, amount) {
-      if (count(amount) && storageAcceptsGood('pallet', itemId)) recovery[itemId] = count(recovery[itemId]) + amount;
-    },
     context() {
       const vehicle = getVehicle();
-      const candidates = ports().filter(port => inRange(port) && (port.definition || vehicle.loadout.tool === 'flatbed'));
+      const candidates = ports().filter(port => inRange(port) && (port.definition || vehicle.loadout.tool === 'flatbed')
+        && (port.definition?.kind !== 'processor' || port.role === (vehicle.loadout.tool === 'flatbed' ? 'output' : 'input')));
       const port = candidates.find(port => port.id === active?.id) || candidates.sort((a, b) =>
         Math.hypot(getState().x - a.point.x, getState().z - a.point.z) - Math.hypot(getState().x - b.point.x, getState().z - b.point.z))[0];
       if (!port) return null;
-      const offer = port.definition;
+      const processor = port.definition?.kind === 'processor' ? port.definition : null;
+      const offer = port.definition?.kind === 'trade' ? port.definition : null;
+      if (processor) {
+        const stockItems = [
+          ...processor.inputs.map(input => displayItem(input.itemId, quantity(port.service.inputStock[input.itemId]))),
+          { id: processor.outputItemId, name: goodDefinition(processor.outputItemId).name, icon: goodDefinition(processor.outputItemId).icon,
+            unit: 'litres', amount: quantity(port.service.stock[processor.outputItemId]), target: processor.capacity },
+        ];
+        // HUD values are whole litres rounded down; a partial pallet never looks loadable.
+        stockItems.forEach(item => { item.amount = Math.floor(item.amount); });
+        return { kind: 'pallet', serviceKind: 'processor', id: port.id, label: port.label, point: port.point, stockItems, inputs: [], outputs: [],
+          stockLabel: stockItems.map(item => `${item.name}: ${item.amount.toLocaleString()} L`).join(' · '),
+          showTrade: false, tradeComplete: false, canTrade: false,
+          showLoad: port.role === 'output', showUnload: port.role === 'input', unloadLabel: 'Unload grain',
+          canLoad: !active && allowed(port, 'load', itemFor(port, 'load')), canUnload: !active && canSupply(port),
+          active: Boolean(active), hint: active ? 'Transferring…' : processorStatus(port.service, processor),
+          capacityLabel: `Grain ${Math.floor(stockTotal(port.service.inputStock)).toLocaleString()} / ${processor.inputCapacity.toLocaleString()} L`,
+        };
+      }
       const complete = offer && port.service.completedTrades >= offer.tradeLimit;
       const stockLabel = port.id === 'settlement' ? port.requirements.map(need => `${need.name}: ${goodDisplayAmount(need.id, need.amount).amount.toLocaleString()} / ${goodDisplayAmount(need.id, need.target).amount.toLocaleString()} ${goodDisplayAmount(need.id, need.amount).unit === 'litres' ? 'L' : 'pallets'}`).join(' · ')
         : port.accepts.map(id => `${goodDefinition(id)?.name || id}: ${goodDisplayAmount(id, count(port.stock[id])).amount.toLocaleString()} ${goodDisplayAmount(id, 0).unit === 'litres' ? 'L' : 'pallets'}`).join(' · ');
@@ -100,35 +110,49 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
     start(id, direction) {
       const port = ports().find(entry => entry.id === id);
       if (active || !port || !['load', 'unload', 'trade'].includes(direction)) return;
+      const supplying = direction === 'unload' && port.role === 'input';
       const input = direction === 'trade' ? payment(port) : null;
-      const itemId = input?.itemId || itemFor(port, direction);
-      if (direction === 'trade' ? !canTrade(port) : !allowed(port, direction, itemId)) return;
-      active = { id, direction, itemId, input, vehicle: getVehicle(), tool: getVehicle().loadout.tool, frontTool: getVehicle().loadout.frontTool, time: 0 };
+      const itemId = supplying ? carriedInput(port) : input?.itemId || itemFor(port, direction);
+      if (supplying ? !canSupply(port, itemId) : direction === 'trade' ? !canTrade(port) : !allowed(port, direction, itemId)) return;
+      active = { id, direction, itemId, input, supplying, vehicle: getVehicle(), tool: getVehicle().loadout.tool, frontTool: getVehicle().loadout.frontTool, time: 0 };
     },
     update(dt) {
       if (!active) return;
-      const { vehicle, direction, itemId, input } = active;
+      const { vehicle, direction, itemId, input, supplying } = active;
       const port = ports().find(entry => entry.id === active.id);
       if (!port || vehicle !== getVehicle() || vehicle.loadout.tool !== active.tool || vehicle.loadout.frontTool !== active.frontTool
-        || (direction === 'trade' ? !canTrade(port) || count(vehicle.storage.contents[itemId]) < input.amount : !allowed(port, direction, itemId))) { cancel(); return; }
+        || (supplying ? !canSupply(port, itemId) : direction === 'trade' ? !canTrade(port) || quantity(vehicle.storage.contents[itemId]) < input.amount : !allowed(port, direction, itemId))) { cancel(); return; }
+      if (supplying && active.deliveryAmount == null) active.deliveryAmount = Math.min(600, quantity(vehicle.storage.contents[itemId]), port.capacity - stockTotal(port.stock));
+      const isGrain = direction === 'trade' || supplying;
       const amount = total(vehicle.storage.contents), slot = direction === 'load' ? amount : amount - 1;
       const building = new THREE.Vector3(port.point.x, port.point.y, port.point.z);
-      const bed = direction === 'trade' ? vehicle.visual.transferPort('output', itemId) : vehicle.visual.palletSlotPoint(slot);
+      const bed = isGrain ? vehicle.visual.transferPort('output', itemId) : vehicle.visual.palletSlotPoint(slot);
       if (!bed) { cancel(); return; }
       const from = direction === 'load' ? building : bed, to = direction === 'load' ? bed : building;
       active.time += dt;
-      const t = Math.min(1, active.time / (reducedMotion ? .35 : direction === 'trade' ? 1.2 : .8));
-      const visual = direction === 'trade' ? grain : flying;
+      const duration = supplying ? .5 : reducedMotion ? .35 : direction === 'trade' ? 1.2 : .8;
+      const t = Math.min(1, active.time / duration);
+      const visual = isGrain ? grain : flying;
       visual.visible = true;
       visual.position.lerpVectors(from, to, t * t * (3 - 2 * t));
       visual.position.y += Math.sin(t * Math.PI) * (reducedMotion ? .15 : 1.2);
-      if (direction === 'trade') grain.children.forEach(mesh => { mesh.material = itemId === 'barley' ? mats.barleyRipe : mats.wheatRipe; });
+      if (isGrain) grain.children.forEach(mesh => { mesh.material = itemId === 'barley' ? mats.barleyRipe : mats.wheatRipe; });
       else {
         flying.rotation.y = vehicle.visual.rearToolHeading();
         vehicle.visual.setPalletCargo(amount, direction === 'unload' ? slot : -1);
       }
       if (t < 1) return;
       // Commit a complete grain exchange or one pallet atomically, never in-flight stock.
+      if (supplying) {
+        const delivered = Math.min(active.deliveryAmount, quantity(vehicle.storage.contents[itemId]), port.capacity - stockTotal(port.stock));
+        vehicle.storage.contents[itemId] -= delivered;
+        if (!vehicle.storage.contents[itemId]) delete vehicle.storage.contents[itemId];
+        port.stock[itemId] = quantity(port.stock[itemId]) + delivered;
+        active.deliveryAmount = null; active.time = 0; grain.visible = false;
+        onChange();
+        if (!canSupply(port, itemId)) cancel();
+        return;
+      }
       if (direction === 'trade') {
         vehicle.storage.contents[itemId] -= input.amount;
         if (!vehicle.storage.contents[itemId]) delete vehicle.storage.contents[itemId];
@@ -137,7 +161,7 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
         cancel(); onChange(); return;
       }
       if (direction === 'load') {
-        port.stock[itemId]--;
+        port.stock[itemId] -= palletSize(port, itemId);
         if (!port.stock[itemId]) delete port.stock[itemId];
         vehicle.storage.contents[itemId] = count(vehicle.storage.contents[itemId]) + 1;
       } else {

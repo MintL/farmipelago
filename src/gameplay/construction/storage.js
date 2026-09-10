@@ -1,4 +1,4 @@
-import { cropIds } from '../catalog/crops.js';
+import { siloGoodIds } from '../catalog/goods.js';
 import { BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES } from '../livestock/index.js';
 import { isComplete, normalizedContents } from './state.js';
 
@@ -29,7 +29,7 @@ export function createBuildingStorage(buildings, onChange) {
     },
     storeIn(siloId, cropId, amount, elapsed = 0, notify = true) {
       const building = buildings.get(siloId);
-      const storedAmount = cropIds.includes(cropId) ? Math.max(0, Math.floor(Number(amount) || 0)) : 0;
+      const storedAmount = siloGoodIds.includes(cropId) ? Math.max(0, Math.floor(Number(amount) || 0)) : 0;
       if (!building || building.type !== 'silo' || !building.placed || !isComplete(building) || !storedAmount) return null;
       building.contents[cropId] = (building.contents[cropId] || 0) + storedAmount;
       building.visual.receive(elapsed);

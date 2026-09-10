@@ -1,4 +1,4 @@
-import { crops } from '../catalog/crops.js';
+import { storageAcceptsGood } from '../catalog/goods.js';
 import { HAY_BALE_LITRES } from '../livestock/index.js';
 
 const TRANSFER_LITRES_PER_TICK = 10;
@@ -192,7 +192,7 @@ export function createTransferController({
     },
     unloadSilo(siloId) {
       const vehicle = getActiveVehicle();
-      if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop') return;
+      if (!canTransferCargo(vehicle) || !['crop', 'bulk'].includes(vehicleStorageKind(vehicle))) return;
       const state = getActiveVehicleState();
       const amount = storageAmount();
       if (!amount) return;
@@ -205,9 +205,9 @@ export function createTransferController({
       });
     },
     loadSilo(siloId, cropId) {
-      if (!crops[cropId]) return;
       const vehicle = getActiveVehicle();
-      if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop') return;
+      if (!storageAcceptsGood(vehicleStorageKind(vehicle), cropId)) return;
+      if (!canTransferCargo(vehicle) || !['crop', 'bulk'].includes(vehicleStorageKind(vehicle))) return;
       const state = getActiveVehicleState();
       const silo = getBuildings()?.siloAt(state.x, state.z);
       if (silo?.id !== siloId || (storageItemId() && storageItemId() !== cropId)) return;
@@ -250,7 +250,7 @@ export function createTransferController({
       const progression = getProgression();
       if (!farm.cargoPort.isNear(state.x, state.z)) return;
       const village = progression.state();
-      if (!canTransferCargo(vehicle) || vehicleStorageKind(vehicle) !== 'crop' || !storageAmount()) return;
+      if (!canTransferCargo(vehicle) || !['crop', 'bulk'].includes(vehicleStorageKind(vehicle)) || !storageAmount()) return;
       const storage = vehicle.storage;
       const itemId = storageItemId(vehicle);
       const requirement = village.needs.find(entry => entry.itemId === itemId);

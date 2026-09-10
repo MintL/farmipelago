@@ -860,7 +860,7 @@ function* generateFarmSteps(
     workshop.rotation.y = yaw;
     group.add(workshop);
     farmRevealObjects.push(workshop);
-    workshopArea = { x, z, width, depth, yaw, spawnClearanceWidth: width + 1.6, spawnClearanceDepth: depth + 1.7 };
+    workshopArea = { x, y, z, width, depth, yaw, spawnClearanceWidth: width + 1.6, spawnClearanceDepth: depth + 1.7 };
 
     const localToWorld = (localX, localZ) => ({
       x: x + localX * Math.cos(yaw) + localZ * Math.sin(yaw),
@@ -1839,6 +1839,10 @@ function* generateFarmSteps(
     },
     cropStats() {
       return { planted: plantedCount, ready: readyCount, weeds: weedCount };
+    },
+    workshopStockPoint() {
+      if (!workshopArea) return null;
+      return { x: workshopArea.x + 1.6, y: workshopArea.y + .5, z: workshopArea.z };
     },
     insideWorkshop(x, z) {
       if (!workshopArea) return false;

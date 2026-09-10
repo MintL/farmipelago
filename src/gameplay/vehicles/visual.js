@@ -1,3 +1,4 @@
+import { createFlatbedAsset, PALLET_SLOTS } from './refined-tools.js';
 import { TRACTOR_MOUNTS } from './tractor-assets.js';
 import { createLiftLinkage } from './linkage.js';
 import { createBalerAsset, createCombineAsset, createFrontToolAsset, createLiquidTankAsset, createRearToolAsset, createTrailerAsset, createTractorAsset } from './assets.js';
@@ -55,11 +56,12 @@ export function createVehicle(scene, vehicle) {
   const rearAxle = new THREE.Vector3();
   const previousRearAxle = new THREE.Vector3();
   const trailer = tractor ? createTrailerAsset() : null;
+  const flatbed = tractor ? createFlatbedAsset() : null;
   const baler = tractor ? createBalerAsset() : null;
   const liquidTank = tractor ? createLiquidTankAsset() : null;
   const attachments = tractor ? Object.fromEntries(REAR_EQUIPMENT_IDS.map(type => {
-    const attachment = type === 'trailer' ? trailer.group : type === 'baler' ? baler.group : type === 'liquid-tank' ? liquidTank.group : createRearToolAsset(type);
-    attachment.position.set(0, ['trailer', 'liquid-tank', 'baler'].includes(type) ? 0 : toolUpY, ['trailer', 'liquid-tank', 'baler'].includes(type) ? TRACTOR_MOUNTS.towZ : TRACTOR_MOUNTS.rearZ);
+    const attachment = type === 'flatbed' ? flatbed.group : type === 'trailer' ? trailer.group : type === 'baler' ? baler.group : type === 'liquid-tank' ? liquidTank.group : createRearToolAsset(type);
+    attachment.position.set(0, ['flatbed', 'trailer', 'liquid-tank', 'baler'].includes(type) ? 0 : toolUpY, ['flatbed', 'trailer', 'liquid-tank', 'baler'].includes(type) ? TRACTOR_MOUNTS.towZ : TRACTOR_MOUNTS.rearZ);
     tractor.group.add(attachment);
     return [type, attachment];
   })) : {};
@@ -277,7 +279,16 @@ export function createVehicle(scene, vehicle) {
         attachment.visible = name === frontLoadout;
       });
     },
+    palletSlotPoint(index) {
+      const slot = PALLET_SLOTS[index];
+      root.updateMatrixWorld(true);
+      return flatbed.group.localToWorld(new THREE.Vector3(slot.x, slot.y, slot.z));
+    },
+    setPalletCargo(amount, hiddenSlot = -1) {
+      flatbed?.pallets.forEach((pallet, index) => { pallet.visible = index < amount && index !== hiddenSlot; });
+    },
     setStorageAmount(amount, capacity) {
+      if (flatbed) flatbed.pallets.forEach((pallet, index) => { pallet.visible = loadout === 'flatbed' && index < amount; });
       const ratio = capacity ? THREE.MathUtils.clamp(amount / capacity, 0, 1) : 0;
       if (trailer) {
         trailer.grain.visible = loadout === 'trailer' && ratio > 0;
@@ -382,7 +393,7 @@ export function createVehicle(scene, vehicle) {
       frontToolY = frontToolSpring.value;
       frontToolVelocity = frontToolSpring.velocity;
       const attachment = attachments[loadout];
-      if (attachment && !['trailer', 'liquid-tank', 'baler'].includes(loadout)) {
+      if (attachment && !['flatbed', 'trailer', 'liquid-tank', 'baler'].includes(loadout)) {
         attachment.position.y = rearToolY;
         attachment.rotation.x = rearToolVelocity * .035;
       }
@@ -412,7 +423,7 @@ export function createVehicle(scene, vehicle) {
         const wobble = Math.sin(elapsed * (8 + speedFactor * 15) + wheel.phase) * (.012 + speedFactor * .065);
         wheel.holder.rotation.z = wobble;
       });
-      const towWheels = loadout === 'trailer' ? trailer.wheels
+      const towWheels = loadout === 'flatbed' ? flatbed.wheels : loadout === 'trailer' ? trailer.wheels
         : loadout === 'baler' ? baler.wheels
         : loadout === 'liquid-tank' ? liquidTank.wheels
         : [];

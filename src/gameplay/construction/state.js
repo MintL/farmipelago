@@ -1,4 +1,4 @@
-import { cropIds } from '../catalog/crops.js';
+import { siloGoodIds } from '../catalog/goods.js';
 
 const CONSTRUCTION_PHASES = new Set(['draft', 'pen-draft', 'complete']);
 
@@ -14,7 +14,7 @@ export function normalizedConstructionPhase(saved) {
 }
 
 export function normalizedContents(contents) {
-  return Object.fromEntries(cropIds.flatMap(cropId => {
+  return Object.fromEntries(siloGoodIds.flatMap(cropId => {
     const amount = Math.max(0, Math.floor(Number(contents?.[cropId]) || 0));
     return amount ? [[cropId, amount]] : [];
   }));

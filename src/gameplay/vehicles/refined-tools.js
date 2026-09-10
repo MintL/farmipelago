@@ -1,3 +1,4 @@
+import { createPalletVisual } from '../../world/forage/pallet-visual.js';
 import { THREE, mats } from '../../core/shared.js';
 import { assembly, wheel } from './detail-model.js';
 
@@ -237,4 +238,33 @@ export function createFrontAsset(type) {
     }));
   }
   return group;
+}
+
+// Four fixed slots share the articulated implement transform.
+export const PALLET_SLOTS = [
+  { x: -.46, y: .5, z: 1.2 }, { x: .46, y: .5, z: 1.2 },
+  { x: -.46, y: .5, z: 2.42 }, { x: .46, y: .5, z: 2.42 },
+];
+
+export function createFlatbedAsset() {
+  const group = groupFor('attachment-flatbed');
+  group.add(model('flatbed-frame', add => {
+    tow(add);
+    for (const x of [-17, 15]) add(mats.tractorDark, x, 5, 12, 2, 3, 49);
+    for (const z of [12, 30, 40, 59]) add(mats.tractorDark, -18, 5, z, 36, 3, 2);
+    add(mats.metal, -21, 5, 40, 42, 2, 2);
+    add(mats.trunk, -19, 8, 12, 38, 2, 49);
+    for (const x of [-20, 19]) add(mats.tractor, x, 8, 12, 1, 2, 49);
+    add(mats.tractorAccent, -20, 10, 12, 40, 4, 1);
+    for (const x of [-18, 14]) add(mats.tractorAccent, x, 6, 61, 4, 2, 1);
+  }));
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const pallets = PALLET_SLOTS.map(slot => {
+    const pallet = createPalletVisual(geometry);
+    pallet.position.set(slot.x, slot.y, slot.z);
+    pallet.visible = false;
+    group.add(pallet);
+    return pallet;
+  });
+  return { group, pallets, wheels: fineWheels(group, 1.08, .3, 2.04) };
 }

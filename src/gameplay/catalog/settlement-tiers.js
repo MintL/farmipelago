@@ -22,7 +22,7 @@ export const SETTLEMENT_TIERS = [
     requirements: [
       { id: 'hay-bale', name: 'Hay', icon: 'hay-bale', unit: 'litres', target: 3600 },
       { id: 'eggs', name: 'Eggs', icon: 'lock', unit: 'items', target: 24 },
-      { id: 'flour', name: 'Flour', icon: 'lock', unit: 'litres', target: 3600 },
+      { id: 'flour', name: 'Flour', icon: 'lock', unit: 'pallets', target: 4 },
       { id: 'vegetable-oil', name: 'Vegetable oil', icon: 'lock', unit: 'litres', target: 3600 },
     ].map(requirement => ({ ...requirement, available: false })),
   },

@@ -94,7 +94,7 @@ Long-term play revolves around making the persistent Farmipelago capable of prod
 
 The game implements permanent Tier 1 requirements for **Wheat, Barley, Canola and Soybeans**, all available from the start with unlimited seeds. Each requires **3,600 L**. Completing any three immediately opens **Tier 2**. Tier 1 records remain saved; the storehouse moves to the new requirements and stops taking Tier 1 crops. Completed requirements never drain, and deliveries stop at the target, leaving surplus cargo in the vehicle.
 
-Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. Hay, Eggs, Flour and Vegetable oil appear as **Unavailable** requirements until their production/delivery routes are implemented; the current build cannot complete Tier 2. Targets are provisional: 3,600 L each for Hay, Flour and Vegetable oil, and 24 Eggs. The existing mow/bale loop is usable, but settlement hay delivery, a tedder and crate handling are not implemented.
+Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. Hay, Eggs, Flour and Vegetable oil appear as **Unavailable** requirements until their production/delivery routes are implemented; the current build cannot complete Tier 2. Targets are provisional: 3,600 L each for Hay and Vegetable oil, 4 Flour pallets, and 24 Eggs. The existing mow/bale loop is usable, but settlement hay delivery and a tedder are not implemented. Pallet Forks remain unavailable; packaged goods use automatic flatbed transfers.
 
 Opening Tier 2 also records eligibility for chicken-farm, windmill and oil-press islands. These categories are reserved for later content; ordinary island encounters remain unchanged and no specialist building is granted. Corn and livestock still require retained earned gates or Debug overrides. Tier opening earns only its defined capabilities, regardless of any other Debug settings.
 
@@ -112,7 +112,7 @@ SETTLEMENT TIER 2
 Complete any 3 of 4
 
 Hay       COMPLETE
-Flour     2,400 / 3,600
+Flour     2 / 4 pallets
 Oil       COMPLETE
 Eggs      0 / 24
 
@@ -620,6 +620,7 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 - default loadout: plough + front loader
 - can equip compatible rear/front equipment
 - can equip a **20,000 L Grain Trailer** for crop transport
+- can equip a **four-pallet Flatbed** for automatic packaged-goods transfers (Debug Flour stock in this slice)
 - can equip a **6,000 L Water / Milk Tank** for milk transport after the livestock unlock
 
 ### Combine Harvester
@@ -631,7 +632,7 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 Both vehicles remain parked in the world when not controlled. Their positions, loadouts and compatible stored cargo are saved.
 The tractor and combine each have their own generated Settlement Island spawn point with reserved turnaround space. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
 
-The Grain Trailer, Baler and Water / Milk Tank are articulated tow-behind
+The Grain Trailer, Flatbed, Baler and Water / Milk Tank are articulated tow-behind
 equipment. Each follows its own hitch-to-axle geometry, keeps its joint angle
 while parked and across refreshes, and uses that pose for visible wheels,
 working areas, cargo flow and bale ejection. Reversing permits a readable swing
@@ -639,7 +640,7 @@ but softly resists extreme jackknifing. Mounted rear and front tools remain
 rigidly aligned with the tractor. Tow articulation is intentionally kinematic
 and does not add separate equipment collision bodies.
 
-Vehicles and tools may use smaller blocks and rotated block assemblies to keep machinery detailed and readable; the strict five-model-voxels-per-tile building standard still applies to buildings. The tractor, combine and all seven rear/five front tool models use 0.05-tile detail blocks, with finer cab framing, wheels, angled plough shares and loader booms, tapered hoppers, slim mower decks, a ribbed trailer and detailed baler and liquid tank. Each rigid assembly assigns one material per occupied cell; windows, open buckets, trailer beds and the baler chamber are constructed spaces, and wheel and tank silhouettes are stepped. The blue tractor retains its glazed cab, paired timed headlights and beacon. The green-and-cream combine has fine cab framing, inset engine vents, detailed wheels, an open-spoke header reel, a moving feeder throat and a block-built unloading auger. Its header lift, reel spin, rear-wheel steering and auger deployment retain their existing animation interfaces. Front and rear mounted tools use visible lift links that follow their socket positions; trailers, the baler and the liquid tank use a common drawbar pivot and an open clevis. The clevis is hidden when the rear three-point linkage is in use. Articulated parts retain their wheel, rotor, lift, towing and transfer animation, with lift bars extending between their endpoints. This visual update does not alter equipment unlocks, inventory capacities, field-working areas or the kinematic driving model.
+Vehicles and tools may use smaller blocks and rotated block assemblies to keep machinery detailed and readable; the strict five-model-voxels-per-tile building standard still applies to buildings. The tractor, combine and the rear/front tool models use 0.05-tile detail blocks, with finer cab framing, wheels, angled plough shares and loader booms, tapered hoppers, slim mower decks, a ribbed trailer and detailed baler and liquid tank. Each rigid assembly assigns one material per occupied cell; windows, open buckets, trailer beds and the baler chamber are constructed spaces, and wheel and tank silhouettes are stepped. The blue tractor retains its glazed cab, paired timed headlights and beacon. The green-and-cream combine has fine cab framing, inset engine vents, detailed wheels, an open-spoke header reel, a moving feeder throat and a block-built unloading auger. Its header lift, reel spin, rear-wheel steering and auger deployment retain their existing animation interfaces. Front and rear mounted tools use visible lift links that follow their socket positions; trailers, the baler and the liquid tank use a common drawbar pivot and an open clevis. The clevis is hidden when the rear three-point linkage is in use. Articulated parts retain their wheel, rotor, lift, towing and transfer animation, with lift bars extending between their endpoints. This visual update does not alter equipment unlocks, inventory capacities, field-working areas or the kinematic driving model.
 
 The player can cycle between owned vehicles. Vehicle switching briefly pauses driving and uses a lift-and-glide camera handoff to the next vehicle.
 
@@ -671,6 +672,57 @@ The cattle logistics chain is:
 
 Transfers occur in rapid 10 L steps and are reflected in vehicle/building inventories rather than functioning as abstract menu submissions. Crop and milk transfers are made physically legible by color-matched swarms of tiny tumbling cuboids that weave along a guided arc from the source inventory to the receiver. Machinery and storage objects anticipate and react to the flow with compact toy-like movement.
 
+### Agricultural goods and pallets
+
+A shared goods catalog separates product identity, units and storage compatibility
+from planting. Combine storage accepts crops, Grain Trailers and silos accept
+bulk crops, and the Water / Milk Tank retains liquid storage. Flour is the first
+packaged product, counted as whole pallets. It cannot enter seed selection,
+combine harvesting, silos or Grain Trailers. Hay and bale handling are unchanged.
+
+Packaged products remain as counts in a building's stock HUD. **Load** moves
+one pallet at a time from nearby building stock into a **four-slot Flatbed**;
+the wooden pallets with stacked sacks remain visibly attached to its deck.
+**Unload** moves them into a compatible receiving inventory. The flatbed uses
+the existing articulated hitch, axle, wheel and saved joint pose. It is available
+in the workshop for this prototype without a progression gate. A loaded flatbed
+cannot be unequipped. Pallet Forks are unavailable, and packaged goods have no
+manual pickup, drop or loose physics bodies.
+
+**Debug review fixture:** Pause → Debug → **Add 4 Flour pallets** adds four to
+**Debug · Workshop stock**, enabling its nearby inventory HUD. Equip Flatbed in
+the workshop, leave the bay and bring its deck within five tiles of the workshop
+stock point. Load there, then drive to the Settlement Storehouse front yard and
+Unload into **Debug · Storehouse stock** (eight-pallet capacity). These inventories
+reuse the existing buildings without adding a processor or another structure.
+Both allow reverse transfers for repeated review. The destination popup appears
+with a flatbed; other vehicles retain normal settlement delivery UI. Debug stock
+never counts toward settlement requirements.
+
+The compact building HUD shows exact whole-unit stock with labeled **Load**,
+**Unload** and **Cancel** buttons, supporting touch and Tab + Enter/Space.
+Transfers check a grounded vehicle, deck range, compatible product, available
+source stock and receiving capacity before every unit commits. The storehouse
+accepts from its front yard. A pallet stays owned by its source until the arrival
+animation completes, when both counts change together. Cancel, switching vehicles,
+leaving range, jumping, changing equipment or entering build/cinematic mode stops
+the transfer; completed units remain transferred and the unfinished unit remains
+at source. Pause/hidden tabs freeze animations. Reload preserves committed stock
+and trailer cargo, cancels the unfinished animation and never transfers offline.
+Reduced motion retains a shorter, lower transfer animation.
+
+Building inventories and flatbed cargo persist. Legacy Debug bulk Flour becomes
+one pallet per 1,000 L in Workshop stock, rounding each partial inventory upward
+as in build 0.374. Former loose/carried Flour records, including released or
+pending-attachment island cargo, move to Workshop stock; duplicate world/island
+copies count once. Old representations and carry references are removed before
+restoring hay. Restored pallet cargo exceeding a trailer's capacity is recovered
+into Workshop stock rather than discarded.
+
+Flour's Tier 2 requirement remains unavailable at a provisional four pallets.
+Windmill production belongs to Step 8; island opportunities, processors and normal
+settlement pallet delivery are not implemented in this Step 6 slice.
+
 ### Grain Silos
 
 The player can enter build mode and place grain silos on valid clear, level terrain.
@@ -681,7 +733,7 @@ Current silo behavior:
 - they have physical collision
 - a placed silo remains a movable construction draft until its contextual Confirm action is used
 - confirmation permanently fixes the silo in place and enables crop storage gameplay
-- each silo stores crop volumes by crop type
+- each silo stores bulk crops separately by identity; packaged pallets are excluded
 - contents persist in the save
 - a nearby popup shows stored crop amounts
 - round Load / Unload controls transfer produce between the selected silo and an eligible vehicle
@@ -738,7 +790,7 @@ The progression receiver is a permanent **Settlement Storehouse** on the smaller
 
 ### Current prototype
 
-The player brings Wheat, Barley, Canola or Soybeans to the front yard during Tier 1. The contextual **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with a separate **Not started**, **In progress**, **✓ Complete** or **Unavailable** status. Eggs are counted individually; the other current targets use litres. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s unavailable requirements. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement with its hidden status space preserved. Cards are read-only and cannot be selected. Each icon and crop name are vertically centered together in the card’s first row.
+The player brings Wheat, Barley, Canola or Soybeans to the front yard during Tier 1. The contextual **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with a separate **Not started**, **In progress**, **✓ Complete** or **Unavailable** status. Eggs are counted individually, Flour in pallets, and the other current targets in litres. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s unavailable requirements. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement with its hidden status space preserved. Cards are read-only and cannot be selected. Each icon and crop name are vertically centered together in the card’s first row.
 
 Use the round **Deliver** icon button below the popup’s right edge, matching the silo’s transfer action. Its tooltip and accessible label identify delivery. Deliver identifies the current vehicle’s carried crop directly on every activation, independent of silo selection. It is disabled for empty or unsupported cargo and completed requirements. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries stop at the requirement target without removing surplus cargo. Visible crates reflect the active tier’s delivered progress with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its Deliver button supports keyboard activation. Requirement cards are informational and do not receive keyboard focus.
 
@@ -909,7 +961,7 @@ The current save includes:
 - active settlement tier, permanent requirement histories for each tier, retained earned capabilities and separate Debug unlock overrides
 - vehicle positions
 - vehicle loadouts
-- vehicle storage
+- vehicle storage, including whole-pallet flatbed cargo and separate Debug building stock
 - active vehicle
 - relevant UI state, including the default-on Fast growth Debug preference
 

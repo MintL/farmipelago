@@ -505,7 +505,7 @@ Keep implementation status, build versions, approvals, migration assumptions and
 
 ### Implementation record
 
-Steps 0–5 are approved. Step 6 is next and has not started.
+Steps 0–6 are approved. Step 6 is approved as a Debug-only logistics prototype; Step 7 is next and has not started.
 Weed damage and sprayed-ground coloring remain on hold at the user’s request. Steps 1–2 were
 committed as `17e9dcd` on `feature/drifting-islands`.
 
@@ -717,6 +717,130 @@ regressions for initial spawn/regeneration, driving/jump/rescue, bridges/plateau
 plough counting/reset and reachable HUD/touch controls. Stop for Step 5 playtest
 approval; do not commit or begin Step 6.
 
+**Step 6 — Initial bulk prototype in build 0.373; superseded by pallets below.**
+
+- Shared goods catalog separates product identity/category from compatible storage.
+  Existing crops support combine and bulk storage; milk remains liquid; Flour
+  supports bulk storage only. Grain Trailer is bulk storage, with capacity unchanged.
+- Silos normalize/save separate crop and Flour quantities; trailer restore uses
+  catalog compatibility. Existing quantity maps and save schema remain unchanged.
+- Added Debug-only Add 1,000 L Flour action, capped to free trailer space, refusing
+  other cargo, incompatible equipment and active transfers. Feedback is shown in
+  Debug. Flour has a sack icon and pale transfer effects in existing logistics UI.
+- Crop-only seeding/harvesting stays separate. No Windmill, processors, Step 7
+  opportunities or normal Flour delivery; Tier 2 placeholders remain unavailable.
+- Both production builds pass with the existing bundle-size warning. Gameplay
+  verification is manual; no browser automation, scripted input or synthetic saves.
+
+**Step 6 revision — Physical Flour pallets in build 0.374; superseded design.**
+
+- User requested pallet transport and explicitly replaced Flour's silo/trailer
+  handling. Packaged products use pallet units. Flour is the first implementation:
+  wooden pallet and stacked sacks, one pallet per load, with a 1-pallet HUD.
+- Enabled Pallet Forks with Tier 2 / Debug hay equipment. Lowered forks pick up
+  one Flour pallet while driving; raising carries it, lowering places it. Reuses
+  the physical cargo body and pickup/drop lifecycle, with separate product identity
+  and visuals. Bale forks and barn feed reject Flour pallets.
+- Debug creates one pallet directly on empty forks. Saves preserve placed/carried
+  pallets and cargo on released/pending-attachment islands. Release reservations
+  include pallet bounds. Existing bulk Flour converts at 1,000 L per pallet,
+  rounding partial pallets upward. Flour is removed from silo/trailer compatibility.
+- Flour requirement now uses a provisional 4-pallet target and remains unavailable.
+  No processor, pallet delivery or flatbed yet; flatbed transport is the agreed
+  follow-up after basic pallet handling is approved. Weed work remains on hold.
+- Verification: both production builds and `git diff --check` pass. No
+  automated gameplay checks; the existing bundle-size warning remains.
+
+**Revised pallet direction — automatic flatbed transfers; implemented in 0.375, approved as a Debug prototype.**
+
+- Packaged products are counted as pallets in a building's stock HUD, e.g.
+  Windmill → Flour: 4 pallets. They are not loose objects the player must handle.
+- Drive a compatible flatbed within range and use **Load**. Pallets animate from
+  the building onto available trailer positions, then remain visible as cargo.
+- At a compatible destination, use **Unload** (or Deliver at the storehouse).
+  Pallets animate from trailer to building and the corresponding counts update.
+- Transfers respect whole-pallet quantities, available stock, trailer capacity
+  and destination acceptance. Cancellation, moving away or reload must preserve
+  quantities without duplication or loss.
+- Remove the manual Flour pallet/fork loop from the active implementation.
+  Hay-bale handling is separate and remains unchanged. Flour still cannot enter
+  silos or Grain Trailers. A flatbed is part of this revision, not a later
+  addition to a manual-handling system.
+- Windmill production still belongs to Step 8. Step 6 should establish the
+  flatbed inventory and animated transfer behavior using Debug stock, without
+  claiming a working Windmill exists already.
+
+**Revised Step 6 approval gate:** load/unload whole pallets through nearby HUD
+controls, check the visible trailer load and animations, capacity and stock
+limits, interruption/reload conservation, and desktop/mobile controls. Review
+this revised implementation before proceeding to the island opportunity system.
+
+**Step 6 automatic transfer revision — build 0.375; approved as a Debug prototype.**
+
+- Retains the shared goods catalog and sack-pallet visual. Removes the superseded
+  manual Flour physics, fork pickup/drop, Debug spawn and island-cargo loop;
+  Pallet Forks are unavailable. Hay's original handling is restored unchanged.
+- Adds a four-slot Flatbed in the workshop, using the existing tow articulation,
+  animated wheels and saved hitch angle. Its HUD shows whole pallets out of four;
+  loaded equipment cannot be removed. Pallets remain visible on deck.
+- Minimal Debug fixtures reuse Workshop and Storehouse stock points. **Add 4
+  Flour pallets** adds to Workshop stock. Its nearby labeled Load/Unload HUD and
+  the eight-slot Debug Storehouse receiver exercise both directions without a
+  Windmill, new building, opportunity or settlement completion route. The receiver
+  appears for flatbeds, preserving normal crop delivery UI for other vehicles.
+- One pallet animates at a time, with atomic inventory updates on arrival.
+  Grounded state, deck range (five tiles), destination acceptance, source count
+  and receiving capacity are checked for each unit. Cancel, range loss, jump,
+  vehicle/loadout switching and build/cinematic modes interrupt safely. Pause
+  freezes active transfers. Refresh cancels only the uncommitted unit, still
+  owned by its source; completed units remain saved at their destination.
+- Saves retain both building stocks and trailer cargo. Migration consumes former
+  bulk Flour at one pallet per 1,000 L rounded up per inventory, and manual Flour
+  records from world/attached/released/pending islands into Workshop stock.
+  World/island duplicate records count once, carry references clear, and removed
+  legacy representations cannot migrate again. Capacity overflow recovers to
+  Workshop stock. No synthetic save fixtures were created or run.
+- Flour remains excluded from seeds, combines, silos, Grain Trailers and normal
+  settlement delivery. Tier 2 target stays provisional at four unavailable pallets.
+  Steps 7–8, weed changes and further progression remain out of scope. Approved
+  Step 5 cadence, departure behavior and Debug defaults remain intact. The separate
+  uncommitted storehouse roof/gable correction is preserved without modification.
+- Verification: game and standalone island-debug production builds pass;
+  `git diff --check` passes. Existing large-bundle warning remains. No browser
+  automation, scripted gameplay, synthetic saves or gameplay hooks were used.
+
+**Manual playtest checklist:**
+
+User reported that the Debug prototype works and approved commit on 2026-09-10.
+This is approval of the logistics prototype, not a claim that normal Windmill
+production or settlement pallet delivery is implemented. Individual checks below
+were not separately reported; automated gameplay checks were not run.
+
+1. Refresh to 0.375. Pause → Debug → Add 4 Flour pallets, then resume. Enter the
+   Workshop with the tractor, equip Flatbed, leave the bay and stop its deck
+   within five tiles of the workshop door. Load: verify four visible arrivals,
+   source decrement, four-slot HUD, empty-stock and full-trailer limits.
+2. Drive to the Storehouse front yard. In Debug Storehouse stock, Unload and
+   verify four departures and receiver increment. Repeat with four more Debug
+   pallets to reach receiver capacity eight, then check unloading is blocked.
+   Load from that receiver and return cargo to Workshop to repeat freely.
+3. Cancel, jump or leave range during either animation; switch vehicles, pause,
+   enter build mode, and refresh during a transfer and while parked. Check total
+   Workshop + Flatbed + Storehouse stock is conserved except for explicit Debug
+   additions. Reload any existing 0.373/0.374 save to review migration, then reload
+   again to verify no repeated recovery. Check old hay still feeds cattle.
+4. Drive forward/reverse through turns, cross the bridge, jump/rescue, switch
+   vehicles and refresh: check deck cargo and attachment alignment. Try changing
+   equipment while loaded; it must be refused. Silos/Grain Trailers cannot accept
+   Flour, normal crop transfers still work, and Tier 2 Flour remains unavailable.
+5. Repeat on desktop with WASD/arrows, Space and Tab + Enter/Space for buttons,
+   and on a phone viewport with the virtual stick and touch buttons. Verify HUD
+   bounds, safe areas, reachable controls and no scrolling/zoom regressions.
+   The wider AGENTS.md manual checklist (spawn, regeneration, terrain collisions,
+   plough count and rescue) also remains for a person to perform.
+
+**Step 6 approved for commit. Prepare the Step 7 summary before implementation.**
+
 ### Step 0 — Establish a clean baseline
 
 **Goal:** make sure later progression changes can be judged against a known-good drifting-islands build.
@@ -879,13 +1003,16 @@ approval; do not commit or begin Step 6.
 
 - Introduce a shared goods/catalog identity that can represent crops, animal products and processed products while preserving existing crop-specific behavior where needed.
 - Ensure vehicle/building inventories and transfer UI can represent a non-crop good without pretending it can be planted.
-- Add **Flour** as the first non-crop test good behind Debug only.
+- Add **Flour** as the first non-crop test good behind Debug only. User refinement:
+  Flour uses pallet units in building inventories and automatic animated
+  loading/unloading on a flatbed; it must not use manual forks, silo storage
+  or Grain Trailer bulk storage.
 - Do not create a Windmill yet.
 
 **User verification gate:**
 
 - Existing crop inventories and transfers behave exactly as before.
-- Debug Flour can be stored, transported and displayed with the correct identity.
+- Debug Flour stock loads/unloads onto a flatbed with animated pallets and correct counts.
 - Flour never appears in seed selection or combine harvesting.
 - Persistence handles mixed goods correctly.
 

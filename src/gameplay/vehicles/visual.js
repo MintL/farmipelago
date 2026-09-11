@@ -287,7 +287,8 @@ export function createVehicle(scene, vehicle) {
     setPalletCargo(amount, hiddenSlot = -1) {
       flatbed?.pallets.forEach((pallet, index) => { pallet.visible = index < amount && index !== hiddenSlot; });
     },
-    setStorageAmount(amount, capacity) {
+    setStorageAmount(amount, capacity, itemId) {
+      flatbed?.pallets.forEach(pallet => pallet.userData.setGood(itemId));
       if (flatbed) flatbed.pallets.forEach((pallet, index) => { pallet.visible = loadout === 'flatbed' && index < amount; });
       const ratio = capacity ? THREE.MathUtils.clamp(amount / capacity, 0, 1) : 0;
       if (trailer) {

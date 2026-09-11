@@ -1,11 +1,12 @@
 import { THREE } from '../../core/shared.js';
 
-// Inverted hull plus stencil: only the outside silhouette is white, including
+// Inverted hull plus stencil: highlight only the outside silhouette, including
 // instanced trees/terrain, without redrawing the full world into postprocess masks.
 export function createIslandOutline(island) {
   if (island.selectionOutline) return island.selectionOutline;
   const material = new THREE.ShaderMaterial({
-    uniforms: { viewport: { value: new THREE.Vector2(innerWidth, innerHeight) }, width: { value: 1 }, opacity: { value: .65 } },
+    uniforms: { viewport: { value: new THREE.Vector2(innerWidth, innerHeight) }, width: { value: 1 },
+      opacity: { value: .65 }, color: { value: new THREE.Vector3(1, 1, 1) } },
     vertexShader: `
       uniform vec2 viewport;
       uniform float width;
@@ -21,12 +22,15 @@ export function createIslandOutline(island) {
         vec3 viewNormal = normalize(normalMatrix * n);
         gl_Position.xy += normalize(viewNormal.xy + vec2(.00001)) * width * 2.0 / viewport * gl_Position.w;
       }`,
-    fragmentShader: 'uniform float opacity; void main() { gl_FragColor = vec4(1.0, 1.0, 1.0, opacity); }',
+    fragmentShader: 'uniform float opacity; uniform vec3 color; void main() { gl_FragColor = vec4(color, opacity); }',
     side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: true,
     stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp,
   });
   const root = new THREE.Group(); root.name = 'island-selection-outline';
+  // Shader preparation happens before the island enters selection range.
+  // Only the selection view may reveal this outline after its range check.
+  root.visible = false;
   const entries = [];
   island.group.updateWorldMatrix(true, true);
   island.group.traverse(source => {
@@ -50,6 +54,7 @@ export function createIslandOutline(island) {
       material.uniforms.viewport.value.set(innerWidth, innerHeight);
       material.uniforms.width.value = selected ? 2.5 : 1;
       material.uniforms.opacity.value = selected ? 1 : .65;
+      material.uniforms.color.value.set(1, selected ? .76 : 1, selected ? .24 : 1);
       island.group.updateWorldMatrix(true, true);
       inverse.copy(island.group.matrixWorld).invert();
       for (const { source, mesh } of entries) {

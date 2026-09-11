@@ -28,6 +28,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         game: resolve(import.meta.dirname, 'index.html'),
+        buildings: resolve(import.meta.dirname, 'buildings.html'),
+        buildingStudies: resolve(import.meta.dirname, 'buildings-next.html'),
+        materials: resolve(import.meta.dirname, 'materials.html'),
         voxelStudio: resolve(import.meta.dirname, 'voxel-studio.html'),
         workshopPreview: resolve(import.meta.dirname, 'workshop-preview.html'),
         islandDebug: resolve(import.meta.dirname, 'island-debug.html'),

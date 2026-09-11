@@ -119,7 +119,9 @@ the GDD as well:
   grid with `MODEL_VOXEL` and `createVoxelModel()`: use stepped roofs, real
   wall thickness, constructed openings, and voxel-sized structural details.
   Do not introduce wall-sized arbitrary boxes, rotated roof slabs, smooth
-  low-poly building forms, visible grid lines, or cube textures.
+  low-poly building forms or heavy visible grid lines. Basic voxel surface
+  textures are allowed: establish and reuse the shared material palette first,
+  keeping textures subtle, seamless, and consistently scaled across merged runs.
 - Keep mobile controls usable with safe-area insets and `pointer` events.
   Keyboard controls (WASD/arrows and Space) are a required fallback.
 - Keep rendering work out of the fixed physics step. Clamp frame deltas before

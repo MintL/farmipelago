@@ -1,20 +1,28 @@
 import { dayPhaseLabel } from '../world/environment/index.js';
 
 export function createDebugView({
-  cameraPresets,
+  tierList,
   timeSlider,
   timeValue,
   unlockList,
   clearOverrides,
 }) {
   return {
-    renderCameraPresets(activeFov) {
-      for (const button of cameraPresets) {
-        const selected = Number(button.dataset.cameraFov) === activeFov;
-        const state = button.querySelector('.debugUnlockState');
-        button.setAttribute('aria-pressed', String(selected));
-        button.setAttribute('aria-label', `${button.dataset.cameraLabel}: ${selected ? 'Active' : 'Select preset'}`);
-        state.textContent = selected ? 'Active' : 'Select';
+    renderTiers(tiers) {
+      tierList.replaceChildren();
+      for (const tier of tiers) {
+        const state = tier.active ? 'Current' : tier.opened ? 'Opened' : 'Open tier';
+        tierList.append(debugButton({
+          name: `Tier ${tier.id}`,
+          category: tier.summary,
+          state,
+          className: 'debugUnlock',
+          dataKey: 'tierId',
+          dataValue: tier.id,
+          pressed: tier.active,
+          disabled: tier.opened,
+          label: `Tier ${tier.id}: ${state}. ${tier.summary}`,
+        }));
       }
     },
     renderTimeOfDay(dayPhase) {

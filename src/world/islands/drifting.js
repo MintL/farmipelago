@@ -1,3 +1,4 @@
+import { restorePlacedProcessors } from '../services/visual.js';
 import { addIslandService, restoreIslandServices, serviceIslandSettings } from '../services/index.js';
 import { advancePreparation, finishPreparation } from '../../core/preparation.js';
 import { TILE, THREE } from '../../core/shared.js';
@@ -7,8 +8,10 @@ import { TRAVEL_DIRECTION } from '../travel.js';
 import { createMotionSafety, envelopesIntersect, ORIGIN, translateBox, solidVisualBoxes, boxOfBridge } from './motion-safety.js';
 import { velocityOnRoute } from './approach-route.js';
 import { seededRandom } from './procedural.js';
+import { passagesClear } from './passage-traffic.js';
+import { createShorePassage } from './shore-passage.js';
 
-const ENCOUNTER_SECONDS = 20;
+const ENCOUNTER_SECONDS = 30;
 const ENCOUNTER_VARIATION_SECONDS = 4;
 // Temporarily paused: distant decoration is not useful on small screens.
 const DECORATIVE_ISLANDS_ENABLED = false;
@@ -38,7 +41,8 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
   const bridges = options.bridgeBlocks || [];
   const safety = createMotionSafety(() => ({ terrain, lowerBlocks: options.lowerBlocks || [], obstacles: options.obstacles || [],
     bridgeBlocks: bridges, visualBoxes: () => [...initialProps, ...retained.flatMap(island => safety.envelope(island).boxes
-      .map(box => ({ ...translateBox(box, island.group.position), islandId: island.id })))] }));
+      .map(box => ({ ...translateBox(box, island.group.position), islandId: island.id })))] }),
+  (island, route, other) => passageTrafficClear(island, route, other));
   const frustum = new THREE.Frustum(), projection = new THREE.Matrix4();
   const bounds = new THREE.Box3(), viewBounds = new THREE.Box3(), sphere = new THREE.Sphere();
   const active = [];
@@ -54,6 +58,15 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
   let running = false, attachmentStep = null, pendingEncounter = null, forecastAt = -Infinity, forecastCache = [];
   let fastIslands = options.fastIslands === true;
   const passingSpeed = () => travelState.speed * PASSING_SPEED_MULTIPLIER * (fastIslands ? 10 : 1);
+  const remainingRoute = island => [copy(island.body ? physics.movingIslandPosition(island.body) : island.group.position),
+    ...island.route.slice(island.routeIndex)];
+  const passageTrafficClear = (island, route, other) => passagesClear({
+    bounds: island.reservationBounds || safety.envelope(island).bounds, route,
+    delay: island.body ? 0 : Math.max(0, (island.launchAt || 0) - elapsed),
+  }, {
+    bounds: other.reservationBounds || safety.envelope(other).bounds, route: remainingRoute(other),
+    delay: other.body ? 0 : Math.max(0, (other.launchAt || 0) - elapsed),
+  }, passingSpeed());
   const approaching = () => active.filter(island => island.plan && !island.arrived);
   const observer = () => options.getObserver?.() || physics.vehicleState() || { x: 0, z: 0 };
   const updateFrustum = () => {
@@ -133,8 +146,8 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       || inView(island, island.route[island.route.length - 1])
       || !safety.routeClear(island, island.route, { margin: TILE, traffic: true })
       || !island.route.slice(1).every((to, i) => safety.shoreClear(island, island.route[i], to))
-      || !routeTrafficClear(island, island.route)
-      || !safety.reserve(island, island.route)) return false;
+      || !routeTrafficClear(island, island.route, true)
+      || !safety.reserve(island, island.route, [], undefined, true)) return false;
     island.status = 'drifting';
     island.velocity = { ...ORIGIN };
     try {
@@ -150,7 +163,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     active.splice(active.indexOf(island), 1);
     island.dispose();
   };
-  const outsideStartSteps = function* (island, goal, normal) {
+  const outsideStartSteps = function* (island, goal, normal, traffic = island.status !== 'attached') {
     // Walk outward to the current camera edge, rather than adding a fixed
     // distance around the whole farm. The full route still needs shore clearance.
     const start = { x: goal.x, y: 0, z: goal.z };
@@ -158,7 +171,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       yield;
       start.x += normal.x * 2 * TILE;
       start.z += normal.z * 2 * TILE;
-      if (!inView(island, start) && safety.clear(island, start, start)
+      if (!inView(island, start) && safety.clear(island, start, start, { traffic })
         && safety.shoreClear(island, start, start) && clearOfTraffic(island, start)) return start;
     }
     return null;
@@ -181,11 +194,19 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       if (inView(island, target, VIEW_MARGIN + 8 * TILE)) continue;
       const extension = [end, target];
       if (!safety.routeClear(island, extension, { margin: TILE, traffic: true })
-        || !safety.shoreClear(island, end, target) || !routeTrafficClear(island, extension)) return;
+        || !safety.shoreClear(island, end, target)) return;
       // Replace the straight final segment; retain a release's vertical descent.
       const descending = Math.abs((route[route.length - 2].y || 0) - (end.y || 0)) > .025;
       const extended = descending ? [...route, target] : [...route.slice(0, -1), target];
-      if (!safety.reserve(island, extended, [], island.reservationBounds || safety.envelope(island).bounds)) return;
+      const remaining = [copy(physics.movingIslandPosition(island.body)),
+        ...extended.slice(Math.min(island.routeIndex, extended.length - 1))];
+      const passage = safety.isPassage(island);
+      if (!routeTrafficClear(island, remaining, passage)) return;
+      const reserved = passage
+        ? safety.reserve(island, remaining, [], island.reservationBounds || safety.envelope(island).bounds, true)
+        : safety.reservePriority(island, remaining, [], active.filter(other => other !== island).map(other =>
+          translateBox(safety.envelope(other).bounds, physics.movingIslandPosition(other.body))));
+      if (!reserved) return;
       island.routeIndex = Math.min(island.routeIndex, extended.length - 1);
       island.route = extended;
       if (island.plan) island.plan.route = extended;
@@ -198,7 +219,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     const near = copy(observer());
     const incoming = { ...travelState.direction };
     const speed = passingSpeed();
-    // One seeded 16–24-second spacing per candidate, independent of generation
+    // One seeded 26–34-second spacing per candidate, independent of generation
     // randomness. Apply it to shore arrivals, then subtract the approach below.
     const interval = ENCOUNTER_SECONDS
       + (seededRandom(island.seed ^ 0x510e527f)() * 2 - 1) * ENCOUNTER_VARIATION_SECONDS;
@@ -221,13 +242,12 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         const goal = { x: placement.x + normal.x * offset, y: 0, z: placement.z + normal.z * offset };
         if (camera && !inView(island, goal, 0)) continue;
         if (reachable.length && shoreDistance(island, goal, near) > ATTACHMENT_RULES.range) continue;
-        if (!safety.clear(island, goal, goal) || !safety.shoreClear(island, goal, goal)) continue;
+        if (!safety.clear(island, goal, goal, { traffic: true }) || !safety.shoreClear(island, goal, goal)) continue;
         yield;
         const pull = createAttachmentRoutePlanner(island.terrain, terrain, bridges, goal)(placement);
-        if (!pull || !safety.routeClear(island, pull)) continue;
-        // A shore encounter is a pass, not a head-on arrival followed by a turn.
-        // Use the same current as decorative lanes, with up to 30 degrees of bias.
-        // Both sides must clear land before publishing this straight route.
+        if (!pull || !safety.routeClear(island, pull, { traffic: true })) continue;
+        // Keep the current's general direction, bending gently around the shore.
+        // Every sampled segment must clear land before publishing the passage.
         for (const angle of [0, Math.PI / 12, -Math.PI / 12, Math.PI / 6, -Math.PI / 6]) {
           yield;
           const c = Math.cos(angle), s = Math.sin(angle);
@@ -236,15 +256,19 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
           const start = yield* outsideStartSteps(island, goal, entry);
           const exit = yield* outsideStartSteps(island, goal, flow);
           if (!start || !exit) continue;
-          const route = [start, goal, exit];
-          if (!safety.routeClear(island, route, { margin: TILE, traffic: true })
-            || !routeTrafficClear(island, route) || !safety.canReserve(island, route)
-            || !route.slice(1).every((to, i) => safety.shoreClear(island, route[i], to))) continue;
-          const distance = routeLength([start, goal]);
-          const duration = distance / speed;
-          const launchAt = Math.max(elapsed, due - duration);
-          return { route, placement, normal, flow, arrivalIndex: 2, launchAt, due: launchAt + duration,
-            goal, observer: copy(near) };
+          for (const bend of [3 * TILE, 1.5 * TILE, 0]) {
+            yield;
+            const { route, arrivalIndex } = createShorePassage(start, goal, exit, normal, bend);
+            if (inView(island, route[0]) || inView(island, route.at(-1))) continue;
+            const duration = routeLength(route.slice(0, arrivalIndex)) / speed;
+            const launchAt = Math.max(elapsed, due - duration);
+            island.launchAt = launchAt;
+            if (!safety.routeClear(island, route, { margin: TILE, traffic: true })
+              || !routeTrafficClear(island, route, true) || !safety.canReserve(island, route, [], true)
+              || !route.slice(1).every((to, i) => safety.shoreClear(island, route[i], to))) continue;
+            return { route, placement, normal, flow, arrivalIndex, launchAt, due: launchAt + duration,
+              goal, observer: copy(near) };
+          }
         }
       }
     }
@@ -295,8 +319,8 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       island.routeIndex = 1;
       island.group.position.copy(start);
       if (safety.routeClear(island, island.route, { margin: TILE, traffic: true })
-        && safety.shoreClear(island, start, end) && routeTrafficClear(island, island.route)
-        && safety.canReserve(island, island.route)) return true;
+        && safety.shoreClear(island, start, end) && routeTrafficClear(island, island.route, true)
+        && safety.canReserve(island, island.route, [], true)) return true;
     }
     return false;
   };
@@ -316,7 +340,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         island.group.position.copy(plan.route[0]);
       } else if (!(yield* planDecoration(island))) return;
       yield;
-      if (!safety.reserve(island, island.route)) return;
+      if (!safety.reserve(island, island.route, [], undefined, true)) return;
       if (options.prepareVisuals) {
         let ready = false, failure = null;
         visualWork = Promise.resolve(options.prepareVisuals(island));
@@ -378,8 +402,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       island.routeIndex = next.index;
       island.routeComplete = next.complete;
       if (next.complete && island.status === 'releasing') island.status = 'drifting';
-      // Keep the complete reservation, including camera-driven extensions,
-      // through retirement. Extensions are checked before entering them.
+      safety.advancePassage(island, [copy(position), ...island.route.slice(next.index)]);
       return { island, position, velocity: next.velocity, priority: island.status === 'releasing' ? 0 : island.encounter ? 1 : 2 };
     });
     for (const record of safety.resolve(proposals, dt)) {
@@ -389,7 +412,13 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     }
   };
   physics.beforeIslandStep = step;
-  const routeTrafficClear = (island, route) => route.slice(1).every((to, i) => clearOfTraffic(island, route[i], to));
+  const routeTrafficClear = (island, route, passage = false) => active.every(other => {
+    if (other === island) return true;
+    if (passage && safety.isPassage(other)) return passageTrafficClear(island, route, other);
+    return route.slice(1).every((to, i) => !envelopesIntersect(safety.trafficEnvelope(island), route[i],
+      { x: to.x - route[i].x, y: (to.y || 0) - (route[i].y || 0), z: to.z - route[i].z },
+      safety.trafficEnvelope(other), physics.movingIslandPosition(other.body), ORIGIN, TILE));
+  });
   const api = {
     active, safety,
     setFastIslands(enabled) { fastIslands = Boolean(enabled); forecastAt = -Infinity; },
@@ -397,12 +426,12 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     restoreConnection(island, route, gaps) {
       if (!safety.reserve(island, route, gaps.map(boxOfBridge))) throw new Error('Saved island connection overlaps a reserved route.');
     },
-    canMoveConnection(island, from, to) { return safety.clear(island, from, to) && clearOfTraffic(island, from, to); },
-    canPlanConnection(island, route) { return safety.routeClear(island, route) && routeTrafficClear(island, route); },
+    canMoveConnection(island, from, to) { return safety.clear(island, from, to, { traffic: true }) && clearOfTraffic(island, from, to); },
+    canPlanConnection(island, route) { return safety.routeClear(island, route, { traffic: true }) && routeTrafficClear(island, route); },
     retain(island) { cancelPreparation(); if (!retained.includes(island)) retained.push(island); safety.invalidate(); },
     invalidate() { cancelPreparation(); safety.invalidate(); forecastAt = -Infinity; },
     reserveConnection(island, route, gaps) {
-      if (!safety.routeClear(island, route) || !routeTrafficClear(island, route)) return false;
+      if (!safety.routeClear(island, route, { traffic: true }) || !routeTrafficClear(island, route)) return false;
       const extras = gaps.map(gap => boxOfBridge(gap));
       // Bridge construction must also have an empty corridor.
       for (const other of active) if (other !== island) {
@@ -410,7 +439,17 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         const shape = { boxes: extras, bounds: extras.length ? unionBridgeBoxes(extras) : safety.envelope(island).bounds };
         if (extras.length && envelopesIntersect(shape, ORIGIN, ORIGIN, safety.trafficEnvelope(other), p, ORIGIN, TILE)) return false;
       }
-      return safety.reserve(island, route, extras);
+      const occupied = active.filter(other => other !== island).map(other =>
+        translateBox(safety.envelope(other).bounds, physics.movingIslandPosition(other.body)));
+      if (!safety.reservePriority(island, route, extras, occupied)) return false;
+      cancelPreparation();
+      if (pendingEncounter) {
+        safety.unreserve(pendingEncounter.id);
+        pendingEncounter.dispose();
+        pendingEncounter = null;
+      }
+      forecastAt = -Infinity;
+      return true;
     },
     clearReservation(island) { cancelPreparation(); safety.unreserve(island.id); safety.invalidate(); },
     take(island) {
@@ -426,23 +465,45 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       safety.invalidate(island);
       const position = copy(island.group.position), b = safety.fixedBounds(), shape = safety.envelope(island).bounds;
       const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
-      const dx = position.x - cx, dz = position.z - cz, length = Math.hypot(dx, dz) || 1;
-      const normal = { x: dx / length || 1, z: dz / length };
-      const end = outsideStart(island, position, normal);
-      if (!end) { island.releaseCheck = { time: elapsed, route: null }; return null; }
+      const heading = Math.atan2(position.z - cz, position.x - cx);
       const ignoreSources = new Set(retained.flatMap(source => (source.links || [])
         .filter(link => source === island || link.gap.from.islandId === island.id).flatMap(link => link.blocks)));
       const height = Math.max(0, b.maxY - shape.minY + 2);
-      const lifted = { ...position, y: height }, over = { ...end, y: height };
-      const direct = [position, end];
-      const route = safety.routeClear(island, direct, { ignoreSources }) ? direct : [position, lifted, over, end];
-      const valid = safety.routeClear(island, route, { ignoreSources }) && routeTrafficClear(island, route)
-        && safety.canReserve(island, route) && (!force || safety.reserve(island, route));
-      island.releaseCheck = { time: elapsed, route: valid ? route : null };
+      const occupied = active.filter(other => other !== island).map(other =>
+        translateBox(safety.envelope(other).bounds, physics.movingIslandPosition(other.body)));
+      const valid = route => safety.routeClear(island, route, { ignoreSources, traffic: true }) && routeTrafficClear(island, route)
+        && safety.reservePriority(island, route, [], occupied, force);
+      // A blocked radial exit does not mean the island is trapped. Prefer a
+      // level departure, then try lifting over land or reserved traffic.
+      const ends = [];
+      for (const offset of [0, 1, -1, 2, -2, 3, -3, 4]) {
+        const angle = heading + offset * Math.PI / 4;
+        const end = outsideStart(island, position, { x: Math.cos(angle), z: Math.sin(angle) }, true);
+        if (!end) continue;
+        const route = [position, end];
+        if (valid(route)) {
+          island.releaseCheck = { time: elapsed, route };
+          return route;
+        }
+        ends.push(end);
+      }
+      for (const end of ends) {
+        const route = [position, { ...position, y: height }, { ...end, y: height }, end];
+        if (!valid(route)) continue;
+        island.releaseCheck = { time: elapsed, route };
+        return route;
+      }
+      island.releaseCheck = { time: elapsed, route: null };
       return island.releaseCheck.route;
     },
     resume(island, route) {
       cancelPreparation();
+      if (pendingEncounter) {
+        safety.unreserve(pendingEncounter.id);
+        pendingEncounter.dispose();
+        pendingEncounter = null;
+      }
+      forecastAt = -Infinity;
       const index = retained.indexOf(island); if (index >= 0) retained.splice(index, 1);
       safety.invalidate(island);
       measureVisuals(island);
@@ -456,11 +517,16 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
     restore() {
       // Retained land and pending connection reservations are restored first.
       // Published islands may already be visible, so do not use spawn checks.
-      for (const saved of savedPopulation?.islands || []) {
+      // Restore exclusive release corridors before yielding ordinary passages,
+      // regardless of the order in which the islands originally arrived.
+      const savedIslands = [...(savedPopulation?.islands || [])]
+        .sort((a, b) => Number(b.status === 'releasing') - Number(a.status === 'releasing'));
+      for (const saved of savedIslands) {
         if (!DECORATIVE_ISLANDS_ENABLED && saved.encounter === false) continue;
         const island = createIsland(saved.seed, saved.settings);
         if (saved.fields) island.restoreFields(saved.fields);
         restoreIslandServices(island, saved.services);
+        restorePlacedProcessors(island, saved.placedProcessors);
         island.id = saved.id;
         island.terrain.forEach(tile => { tile.islandId = saved.id; });
         island.group.position.copy(saved.position);
@@ -476,7 +542,11 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         island.reservationBounds = { ...saved.reservationBounds };
         island.extraMotionBoxes = saved.extraMotionBoxes.map(box => ({ ...box }));
         measureVisuals(island);
-        if (!safety.reserve(island, island.route, [], island.reservationBounds)) {
+        // Restored traffic may have been yielding when saved. Preserve its
+        // positions and let swept physics resume the stop instead of rejecting
+        // the save because a future cruise-speed prediction would conflict.
+        if (!clearOfTraffic(island, island.group.position)
+          || !safety.reserve(island, remainingRoute(island), [], island.reservationBounds, island.status === 'drifting', true)) {
           island.dispose();
           throw new Error('Saved drifting island overlaps a reserved route.');
         }
@@ -490,7 +560,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       sinceEncounter, elapsed, decorationElapsed, retryAt, sequence, lastArrival, initialized: populationInitialized,
       islands: active.map(island => ({
         id: island.id, seed: island.seed, settings: { ...island.settings },
-        fields: island.persistentFields(), services: structuredClone(island.services || []),
+        fields: island.persistentFields(), services: structuredClone(island.services || []), placedProcessors: structuredClone(island.placedProcessors || []),
         position: copy(physics.movingIslandPosition(island.body)), status: island.status,
         encounter: Boolean(island.encounter), arrived: Boolean(island.arrived),
         route: island.route.map(copy), routeIndex: island.routeIndex, routeComplete: Boolean(island.routeComplete),
@@ -520,7 +590,7 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
         }
         if (island.plan && !island.arrived && island.routeIndex >= island.plan.arrivalIndex) {
           const placement = createAttachmentRoutePlanner(island.terrain, terrain, bridges, island.group.position)(island.plan.placement);
-          if (placement && safety.routeClear(island, placement)) {
+          if (placement && safety.routeClear(island, placement, { traffic: true })) {
             island.arrived = true; lastArrival = elapsed; sinceEncounter = 0;
             encounterStatus = 'Suitable island at shore';
           } else { island.arrived = true; encounterStatus = 'Site changed; preparing replacement'; }
@@ -529,7 +599,10 @@ export function createDriftingIslands(parent, terrain, seed, createIsland, physi
       if (!running) return;
       if (!initialized) {
         initialized = true;
-        initialProps = solidVisualBoxes(parent, parent, true);
+        // Restored expansion bridges already have removable bridgeBlocks.
+        // Baking them into permanent props leaves ghost obstacles on release.
+        const expansionBridges = new Set(retained.flatMap(island => (island.links || []).map(link => link.visual)));
+        initialProps = solidVisualBoxes(parent, parent, true, expansionBridges);
         safety.invalidate();
         if (!populationInitialized) {
           populationInitialized = true;

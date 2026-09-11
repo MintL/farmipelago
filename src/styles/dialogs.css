@@ -225,8 +225,7 @@
 #debugTimeSlider { width: 100%; min-height: 30px; margin: 0; accent-color: var(--accent-strong); touch-action: none; }
 .debugTimeTicks { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; }
 .debugIntro { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
-#debugCameraPresets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-#debugUnlockList { display: grid; gap: 6px; }
+#debugTierList, #debugUnlockList { display: grid; gap: 6px; }
 .debugSectionLabel { color: var(--ink); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .debugUnlock {
   width: 100%;
@@ -247,8 +246,6 @@
 .debugUnlock strong { display: block; font-size: 12px; }
 .debugUnlock small { color: var(--muted); font-size: 10px; }
 .debugUnlockState { color: var(--accent-strong) !important; font-weight: 760; text-align: right; }
-.debugCameraPreset { min-height: 66px; display: grid; justify-content: stretch; gap: 5px; text-align: center; }
-.debugCameraPreset .debugUnlockState { text-align: center; }
 #clearUnlockOverrides { justify-self: start; }
 #confirmBody p {
   margin: 0 0 14px;

@@ -12,8 +12,8 @@ const DUSK_START_HOUR = 20;
 const NIGHT_START_HOUR = 22;
 
 const color = value => new THREE.Color(value);
-const waterSplashDayColor = new THREE.Color().setRGB(.035, .24, .34);
-const waterSplashNightColor = new THREE.Color().setRGB(.025, .10, .22);
+const waterSplashDayColor = new THREE.Color().setRGB(.07, .38, .50);
+const waterSplashNightColor = new THREE.Color().setRGB(.06, .24, .40);
 const keyframes = [
   { hour: 0, horizon: color(0x496984), fog: color(0x405c72), key: color(0x9dbde8), keyIntensity: .58, hemiSky: color(0x7896c7), hemiGround: color(0x202b3d), hemiIntensity: .48, fill: color(0x7998c4), fillIntensity: .13, exposure: .96 },
   { hour: 2, horizon: color(0x496984), fog: color(0x405c72), key: color(0x9dbde8), keyIntensity: .58, hemiSky: color(0x7896c7), hemiGround: color(0x202b3d), hemiIntensity: .48, fill: color(0x7998c4), fillIntensity: .13, exposure: .96 },

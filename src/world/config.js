@@ -15,7 +15,7 @@ export const STARTER_ISLAND_LAYOUT = [
     cx: 0,
     cz: 0,
     h: 0,
-    r: 7.2,
+    r: 7.8,
   },
   {
     id: SETTLEMENT_ISLAND_ID,
@@ -25,7 +25,7 @@ export const STARTER_ISLAND_LAYOUT = [
     cx: 0,
     cz: 0,
     h: 0,
-    r: 4.8,
+    r: 7.0,
     placement: {
       relativeTo: FARM_ISLAND_ID,
       direction: 'north',

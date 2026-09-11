@@ -22,7 +22,7 @@ const METER_TICKS_PER_SECOND = 120;
 const TRANSFER_TICKS_PER_SECOND = METER_TICKS_PER_SECOND;
 const CAMERA_SWIPE_THRESHOLD = 48;
 
-export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
+export function createUi({ commands, panSurface }) {
   const {
     restart: onRestart,
     changeLoadout: onLoadoutChange,
@@ -46,8 +46,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     buildPointerCancel: onBuildPointerCancel,
     overrideUnlock: onUnlockOverride = () => {},
     clearUnlockOverrides: onClearUnlockOverrides = () => {},
-    changeCameraPreset: onCameraPresetChange = () => true,
+    openDebugTier: onOpenDebugTier = () => {},
     changeTimeOfDay: onTimeOfDayChange = () => true,
+    changeQuickBuilding: onQuickBuildingChange = () => {},
     changeFastGrowth: onFastGrowthChange = () => {},
     changeFastIslands: onFastIslandsChange = () => {},
     rotateCameraStep: onCameraRotateStep = () => true,
@@ -94,14 +95,13 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   let siloInventory = null;
   let siloCropId = null;
   let debugUnlockables = [];
-  let debugCameraFov = Number(cameraPresetFov);
   let debugDayPhase = DEFAULT_DAY_PHASE;
   const amountTickers = new Map();
 
   const {
     topBar, overlay, barnDialog, pauseDialog, pauseBody,
     confirmBody, pauseTitle, controlsList, showControls, hideHud, showDebug, debugPanel,
-    debugTimeSlider, debugTimeValue, debugFastGrowth, debugFastIslands, debugCameraPresets, debugUnlockList,
+    debugTimeSlider, debugTimeValue, debugQuickBuilding, debugFastGrowth, debugFastIslands, debugTierList, debugUnlockList,
     clearUnlockOverrides, stickZone, stickBase, stickKnob,
     actionCluster, cycleVehicleButton, desktopHints, secondaryHint, secondaryHintLabel,
     frontToolToggle, rearToolToggle, seedCycleControl, seedCropToast, unloadButton,
@@ -119,13 +119,12 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   setInputMode(matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard');
 
   const debugView = createDebugView({
-    cameraPresets: debugCameraPresets,
+    tierList: debugTierList,
     timeSlider: debugTimeSlider,
     timeValue: debugTimeValue,
     unlockList: debugUnlockList,
     clearOverrides: clearUnlockOverrides,
   });
-  const renderDebugCameraPresets = () => debugView.renderCameraPresets(debugCameraFov);
   const renderDebugTimeOfDay = () => debugView.renderTimeOfDay(debugDayPhase);
   const renderDebugUnlockables = () => debugView.renderUnlockables(debugUnlockables);
 
@@ -599,6 +598,7 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     demolitionWarning.hidden = !confirmingDemolition;
     demolitionWarning.textContent = state.type === 'cattle-barn'
       ? 'You will lose this barn, its pen, all cattle, and any stored hay and milk. This cannot be undone.'
+      : ['windmill', 'oil-press'].includes(state.type) ? 'You will lose this processor and all stored input and output. This cannot be undone.'
       : 'You will lose this silo and all crops stored inside. This cannot be undone.';
     if (confirmingDemolition) constructionDemolish.setAttribute('aria-describedby', 'demolitionWarning');
     else constructionDemolish.removeAttribute('aria-describedby');
@@ -637,7 +637,8 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     let visibleOptions = 0;
     for (const option of buildingOptions) {
       const type = option.dataset.buildingId;
-      const locked = type === 'cattle-barn' && !unlockedGates.has('building:cattle-barn');
+      const locked = (type === 'cattle-barn' && !unlockedGates.has('building:cattle-barn'))
+        || (['windmill', 'oil-press'].includes(type) && !debugQuickBuilding.checked);
       option.hidden = locked;
       option.disabled = locked;
       if (!locked) visibleOptions++;
@@ -1118,6 +1119,12 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     showDebug.setAttribute('aria-expanded', String(!expanded));
     debugPanel.hidden = expanded;
   });
+  debugQuickBuilding.addEventListener('change', () => {
+    if (!debugQuickBuilding.checked && ['windmill', 'oil-press'].includes(selectedBuilding)) selectedBuilding = null;
+    onQuickBuildingChange(debugQuickBuilding.checked);
+    renderBuildMode();
+    onPersistentStateChange();
+  });
   debugFastIslands.addEventListener('change', () => {
     onFastIslandsChange(debugFastIslands.checked);
     onPersistentStateChange();
@@ -1132,13 +1139,10 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     debugDayPhase = nextPhase;
     renderDebugTimeOfDay();
   });
-  debugPanel.addEventListener('click', event => {
-    const button = event.target.closest('.debugCameraPreset');
-    if (!button) return;
-    const nextFov = Number(button.dataset.cameraFov);
-    if (onCameraPresetChange(nextFov) === false) return;
-    debugCameraFov = nextFov;
-    renderDebugCameraPresets();
+  debugTierList.addEventListener('click', event => {
+    const button = event.target.closest('[data-tier-id]');
+    if (!button || button.disabled) return;
+    onOpenDebugTier(Number(button.dataset.tierId));
   });
   debugUnlockList.addEventListener('click', event => {
     const button = event.target.closest('.debugUnlock');
@@ -1172,7 +1176,6 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
   });
 
   renderEquipmentActions();
-  renderDebugCameraPresets();
   renderDebugTimeOfDay();
   renderInventoryMeter();
   renderSecondaryAction();
@@ -1209,8 +1212,11 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
     },
     activeLoadout: () => ({ ...activeLoadout, vehicle: activeVehicle.type }),
     activeSeedId: selectedSeedCropId,
-    persistentState: () => ({ seedCropId: selectedSeedCropId(), fastGrowth: debugFastGrowth.checked, fastIslands: debugFastIslands.checked }),
+    persistentState: () => ({ seedCropId: selectedSeedCropId(), fastGrowth: debugFastGrowth.checked, fastIslands: debugFastIslands.checked, quickBuilding: debugQuickBuilding.checked }),
     restorePersistentState(savedState) {
+      debugQuickBuilding.checked = savedState?.quickBuilding === true;
+      onQuickBuildingChange(debugQuickBuilding.checked);
+      renderBuildMode();
       debugFastGrowth.checked = savedState?.fastGrowth !== false;
       debugFastIslands.checked = savedState?.fastIslands === true;
       const savedSeedIndex = availableCropIds().indexOf(savedState?.seedCropId);
@@ -1418,6 +1424,9 @@ export function createUi({ commands, cameraPresetFov = 38, panSurface }) {
       if (changed) renderSiloInventory();
       else siloInventoryElement.hidden = false;
       positionStoragePopup(nextInventory.x, nextInventory.y, 104, 54);
+    },
+    setDebugTiers(tiers) {
+      debugView.renderTiers(tiers);
     },
     setDebugUnlockables(nextUnlockables) {
       debugUnlockables = Array.isArray(nextUnlockables) ? nextUnlockables.map(unlockable => ({ ...unlockable })) : [];

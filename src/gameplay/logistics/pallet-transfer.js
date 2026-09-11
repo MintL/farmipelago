@@ -12,7 +12,7 @@ const displayItem = (id, amount, target) => {
     target: target == null ? undefined : goodDisplayAmount(id, target).amount };
 };
 
-export function createPalletTransfers({ scene, getVehicle, getState, getFarm, getProgression, isBlocked, onChange, reducedMotion }) {
+export function createPalletTransfers({ scene, getVehicle, getState, getFarm, getProgression, getBuildingPorts = () => [], isBlocked, onChange, reducedMotion }) {
   let active = null;
   const flying = createPalletVisual(new THREE.BoxGeometry(1, 1, 1));
   flying.visible = false; flying.scale.setScalar(.92); scene.add(flying);
@@ -25,9 +25,10 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
   grain.visible = false; scene.add(grain);
   const ports = () => {
     const requirements = getProgression().state().needs.filter(need => need.available && storageAcceptsGood('pallet', need.id));
-    return [...getFarm().servicePorts(),
+    return [...getFarm().servicePorts(), ...getBuildingPorts(),
       ...(requirements.length ? [{ id: 'settlement', label: 'Settlement', point: getFarm().cargoPort.unloadTarget(),
-        stock: {}, capacity: Infinity, accepts: requirements.map(need => need.id), canLoad: false, canUnload: true, requirements }] : []),
+        stock: {}, capacity: Infinity, accepts: requirements.map(need => need.id), canLoad: false, canUnload: true, requirements,
+        setTransferState: state => getFarm().cargoPort.setTransferState(state) }] : []),
     ];
   };
   const inRange = port => {
@@ -61,6 +62,7 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
   };
   const itemFor = (port, direction) => port.accepts.find(id => direction === 'load' ? count(port.stock[id]) : count(getVehicle().storage.contents[id])) || port.accepts[0];
   const cancel = () => {
+    active?.setTransferState?.({ active: false });
     if (active) active.vehicle.visual.setPalletCargo(total(active.vehicle.storage.contents));
     active = null; flying.visible = grain.visible = false;
   };
@@ -86,10 +88,10 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
         return { kind: 'pallet', serviceKind: 'processor', id: port.id, label: port.label, point: port.point, stockItems, inputs: [], outputs: [],
           stockLabel: stockItems.map(item => `${item.name}: ${item.amount.toLocaleString()} L`).join(' · '),
           showTrade: false, tradeComplete: false, canTrade: false,
-          showLoad: port.role === 'output', showUnload: port.role === 'input', unloadLabel: 'Unload grain',
+          showLoad: port.role === 'output', showUnload: port.role === 'input', unloadLabel: `Unload ${processor.inputLabel?.toLowerCase() || 'grain'}`,
           canLoad: !active && allowed(port, 'load', itemFor(port, 'load')), canUnload: !active && canSupply(port),
           active: Boolean(active), hint: active ? 'Transferring…' : processorStatus(port.service, processor),
-          capacityLabel: `Grain ${Math.floor(stockTotal(port.service.inputStock)).toLocaleString()} / ${processor.inputCapacity.toLocaleString()} L`,
+          capacityLabel: `${processor.inputLabel || 'Grain'} ${Math.floor(stockTotal(port.service.inputStock)).toLocaleString()} / ${processor.inputCapacity.toLocaleString()} L`,
         };
       }
       const complete = offer && port.service.completedTrades >= offer.tradeLimit;
@@ -114,7 +116,9 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
       const input = direction === 'trade' ? payment(port) : null;
       const itemId = supplying ? carriedInput(port) : input?.itemId || itemFor(port, direction);
       if (supplying ? !canSupply(port, itemId) : direction === 'trade' ? !canTrade(port) : !allowed(port, direction, itemId)) return;
-      active = { id, direction, itemId, input, supplying, vehicle: getVehicle(), tool: getVehicle().loadout.tool, frontTool: getVehicle().loadout.frontTool, time: 0 };
+      active = { id, direction, itemId, input, supplying, vehicle: getVehicle(), tool: getVehicle().loadout.tool, frontTool: getVehicle().loadout.frontTool,
+        setTransferState: port.setTransferState, time: 0 };
+      active.setTransferState?.({ active: true, direction: direction === 'load' ? 'output' : 'input' });
     },
     update(dt) {
       if (!active) return;
@@ -136,8 +140,9 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
       visual.visible = true;
       visual.position.lerpVectors(from, to, t * t * (3 - 2 * t));
       visual.position.y += Math.sin(t * Math.PI) * (reducedMotion ? .15 : 1.2);
-      if (isGrain) grain.children.forEach(mesh => { mesh.material = itemId === 'barley' ? mats.barleyRipe : mats.wheatRipe; });
+      if (isGrain) grain.children.forEach(mesh => { mesh.material = itemId === 'canola' ? mats.canolaFlower : itemId === 'barley' ? mats.barleyRipe : mats.wheatRipe; });
       else {
+        flying.userData.setGood(itemId);
         flying.rotation.y = vehicle.visual.rearToolHeading();
         vehicle.visual.setPalletCargo(amount, direction === 'unload' ? slot : -1);
       }

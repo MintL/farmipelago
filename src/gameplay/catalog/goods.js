@@ -6,6 +6,7 @@ export const goods = {
     id, name: crops[id].name, icon: id, unit: 'litres', category: 'crop', storageKinds: ['crop', 'bulk'],
   }])),
   milk: { id: 'milk', name: 'Milk', icon: 'milk', unit: 'litres', category: 'animal', storageKinds: ['liquid'] },
+  'vegetable-oil': { id: 'vegetable-oil', name: 'Vegetable oil', icon: 'vegetable-oil', unit: 'pallets', litresPerPallet: 1000, category: 'processed', storageKinds: ['pallet'] },
   flour: { id: 'flour', name: 'Flour', icon: 'flour', unit: 'pallets', litresPerPallet: 1000, category: 'processed', storageKinds: ['pallet'] },
 };
 

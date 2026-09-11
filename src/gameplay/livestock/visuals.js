@@ -1,3 +1,4 @@
+import { createPlaceableBuilding } from '../../world/buildings/game.js';
 import { THREE, TILE, box, mats } from '../../core/shared.js';
 import { barnPenConnectorSegments, cornerToWorld } from './pen-geometry.js';
 
@@ -6,9 +7,6 @@ const cowWhite = new THREE.MeshStandardMaterial({ color: 0xe8dfc6, roughness: .9
 const cowBrown = new THREE.MeshStandardMaterial({ color: 0x684638, roughness: .92 });
 const cowMuzzle = new THREE.MeshStandardMaterial({ color: 0xc9937a, roughness: .92 });
 const cowDark = new THREE.MeshStandardMaterial({ color: 0x332a26, roughness: .94 });
-const barnRed = new THREE.MeshStandardMaterial({ color: 0x9d493b, roughness: .92 });
-const barnDark = new THREE.MeshStandardMaterial({ color: 0x4a302a, roughness: .94 });
-const barnCream = new THREE.MeshStandardMaterial({ color: 0xe2d1aa, roughness: .9 });
 const fenceWood = new THREE.MeshStandardMaterial({ color: 0x8b603d, roughness: .96 });
 const fenceDark = new THREE.MeshStandardMaterial({ color: 0x5d3d2b, roughness: .98 });
 const validMaterial = new THREE.MeshBasicMaterial({ color: 0x91d55e, transparent: true, opacity: .72, depthWrite: false });
@@ -16,74 +14,7 @@ const invalidMaterial = new THREE.MeshBasicMaterial({ color: 0xe36d63, transpare
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export function createCattleBarnVisual() {
-  const group = new THREE.Group();
-  const spring = new THREE.Group();
-  const shell = new THREE.Group();
-  const redMaterial = barnRed.clone();
-  const darkMaterial = barnDark.clone();
-  const creamMaterial = barnCream.clone();
-  group.name = 'cattle-barn';
-  group.add(spring);
-  spring.add(shell);
-  const foundation = box(2.65, .16, 2.05, darkMaterial); foundation.position.y = .08; shell.add(foundation);
-  const body = box(2.45, 1.65, 1.85, redMaterial); body.position.y = .9; shell.add(body);
-  const roofLeft = box(1.68, .16, 2.22, creamMaterial); roofLeft.position.set(-.62, 1.94, 0); roofLeft.rotation.z = -.48; shell.add(roofLeft);
-  const roofRight = roofLeft.clone(); roofRight.position.x = .62; roofRight.rotation.z = .48; shell.add(roofRight);
-  const doorway = box(1.02, 1.18, .08, darkMaterial); doorway.position.set(0, .65, 0.965); shell.add(doorway);
-  const trim = box(1.24, .12, .12, creamMaterial); trim.position.set(0, 1.3, 1.0); shell.add(trim);
-  const hay = box(.58, .42, .38, mats.bale); hay.position.set(-.82, .3, 1.12); shell.add(hay);
-  const milkCan = new THREE.Mesh(new THREE.CylinderGeometry(.16, .2, .52, 10), mats.metal);
-  milkCan.position.set(.86, .3, 1.08); milkCan.castShadow = true; shell.add(milkCan);
-  const ringMaterial = validMaterial.clone();
-  const ring = new THREE.Mesh(new THREE.RingGeometry(1.65, 1.75, 32), ringMaterial);
-  ring.rotation.x = -Math.PI * .5; ring.position.y = .02; ring.visible = false; group.add(ring);
-  let dragging = false, valid = true, droppedAt = null;
-  let transfer = null, transferPulse = 0;
-  const updateAppearance = () => {
-    ringMaterial.color.copy((valid ? validMaterial : invalidMaterial).color);
-    for (const material of [redMaterial, darkMaterial, creamMaterial]) {
-      material.transparent = dragging;
-      material.opacity = dragging ? .7 : 1;
-    }
-  };
-  return {
-    group,
-    setDragging(nextValid) { dragging = true; valid = nextValid; ring.visible = true; updateAppearance(); },
-    setSelected(nextSelected) { if (!dragging) ring.visible = nextSelected; },
-    setPenComplete() {},
-    drop() { dragging = false; valid = true; droppedAt = null; updateAppearance(); },
-    settle() { dragging = false; valid = true; updateAppearance(); },
-    setTransferState({ active, direction, elapsed = 0 }) {
-      if (!active) {
-        transfer = null;
-        transferPulse = Math.max(transferPulse, reducedMotion ? .28 : 1);
-        return;
-      }
-      transfer = { direction, started: elapsed };
-    },
-    pulseTransfer(direction) {
-      if (direction === 'input') transferPulse = Math.max(transferPulse, reducedMotion ? .24 : .65);
-    },
-    animate(elapsed, active, dt = 0) {
-      if (dragging || active) {
-        spring.position.y = .12 + Math.sin(elapsed * 16) * .025;
-        spring.rotation.z = Math.sin(elapsed * 13) * .025;
-        return;
-      }
-      if (droppedAt === null) droppedAt = elapsed;
-      const age = elapsed - droppedAt;
-      transferPulse *= Math.exp(-(reducedMotion ? 11 : 8) * dt);
-      const transferAge = transfer ? Math.max(0, elapsed - transfer.started) : 0;
-      const transferWobble = !reducedMotion && transfer ? Math.sin(transferAge * 15) * .012 : 0;
-      const bounce = (age < .7 ? Math.sin(age * 19) * Math.exp(-age * 5) : 0)
-        + transferPulse * (reducedMotion ? .07 : .24);
-      spring.position.y = 0; spring.rotation.z = transferWobble;
-      spring.scale.set(1 - bounce * .08, 1 + bounce * .18, 1 - bounce * .08);
-      const milkJiggle = !reducedMotion && transfer ? Math.sin(transferAge * 24) * .08 : 0;
-      milkCan.position.y = .3 + Math.abs(milkJiggle) * .12;
-      milkCan.rotation.z = milkJiggle;
-    },
-  };
+  return createPlaceableBuilding('cattle-barn');
 }
 
 export function createPenVisual(geometry, levelY, building, editing = false) {

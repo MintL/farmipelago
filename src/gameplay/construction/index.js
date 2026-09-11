@@ -1,4 +1,9 @@
-import { solidVisualBoxes } from '../../world/islands/motion-safety.js';
+import { ISLAND_SERVICES } from '../catalog/island-services.js';
+import { createPlacedProcessorVisual } from '../../world/services/visual.js';
+import { islandServicePorts, restoreStock } from '../../world/services/index.js';
+import { processService } from '../../world/services/processor.js';
+import { solidVisualBoxes, obstacleBoxes, translateBox } from '../../world/islands/motion-safety.js';
+import { setGameBuildingNightAmount } from '../../world/buildings/game.js';
 import { TILE, gridKey } from '../../core/shared.js';
 import { createSilo } from './silo-visual.js';
 import { createConstructionOutline } from './outline.js';
@@ -12,11 +17,19 @@ import {
   reconcileCattleBarnAnimals, removeCollinearVertices, snapPenPoint, updateCattleBarn,
 } from '../livestock/index.js';
 
-const SILO_RADIUS = 1.05;
-const SILO_HEIGHT = 3.7;
-const CATTLE_BARN_RADIUS = 1.45;
-const CATTLE_BARN_HEIGHT = 2.25;
+const SILO_RADIUS = 2.5;
+const SILO_HEIGHT = 5.9;
+const CATTLE_BARN_RADIUS = 4.5;
+const CATTLE_BARN_HEIGHT = 5.0;
 const BUILDING_HOLD_MS = 280;
+const isProcessor = type => ISLAND_SERVICES[type]?.kind === 'processor';
+const processorState = (type, saved = {}) => {
+  const definition = ISLAND_SERVICES[type];
+  return { definitionId: type, stock: restoreStock(saved.stock, Object.keys(definition.outputs), definition.capacity),
+    inputStock: restoreStock(saved.inputStock, definition.inputs.map(input => input.itemId), definition.inputCapacity) };
+};
+const savedProcessor = building => ({ id: building.id, type: building.type, x: building.site.x, z: building.site.z,
+  constructionPhase: building.constructionPhase, stock: { ...building.service.stock }, inputStock: { ...building.service.inputStock } });
 
 export function createBuildingManager({
   getSiteAt, getTerrain, setCollider, registerOccluder = () => {}, unregisterOccluder = () => {},
@@ -28,18 +41,21 @@ export function createBuildingManager({
   let repaintRequested = null;
   let buildMode = false;
   let nextCowId = 1;
+  let quickBuilding = false;
   const nextIds = { silo: 1, 'cattle-barn': 1 };
   const buildings = new Map();
 
   const definitions = {
-    silo: { radius: SILO_RADIUS, footprintSpan: 1, height: SILO_HEIGHT, popupHeight: 4.05, createVisual: createSilo },
-    'cattle-barn': { radius: CATTLE_BARN_RADIUS, footprintSpan: 1, height: CATTLE_BARN_HEIGHT, popupHeight: 3.15, createVisual: createCattleBarnVisual },
+    ...Object.fromEntries(['windmill', 'oil-press'].map(type => [type, { radius: 3.5, footprintSpan: 3,
+      height: type === 'windmill' ? 7.2 : 3.6, popupHeight: 3.2, createVisual: () => createPlacedProcessorVisual(type) }])),
+    silo: { radius: SILO_RADIUS, footprintSpan: 2, height: SILO_HEIGHT, popupHeight: 6.2, createVisual: createSilo },
+    'cattle-barn': { radius: CATTLE_BARN_RADIUS, footprintSpan: 4, footprint: { minX: -3, maxX: 3, minZ: -4, maxZ: 1 }, height: CATTLE_BARN_HEIGHT, popupHeight: 5.4, createVisual: createCattleBarnVisual },
   };
 
   const addBuilding = (type, savedId) => {
     const definition = definitions[type];
     if (!definition) return null;
-    const id = typeof savedId === 'string' && !buildings.has(savedId) ? savedId : `${type}-${nextIds[type]++}`;
+    const id = typeof savedId === 'string' && !buildings.has(savedId) ? savedId : isProcessor(type) ? `${type}-${[...crypto.getRandomValues(new Uint32Array(4))].map(value => value.toString(16)).join('-')}` : `${type}-${nextIds[type]++}`;
     const savedNumber = Number(id.match(new RegExp(`^${type}-(\\d+)$`))?.[1]);
     if (Number.isInteger(savedNumber)) nextIds[type] = Math.max(nextIds[type], savedNumber + 1);
     const visual = definition.createVisual();
@@ -48,6 +64,7 @@ export function createBuildingManager({
       constructionOutline: createConstructionOutline(visual.group),
     };
     if (type === 'silo') building.contents = {};
+    else if (isProcessor(type)) building.service = processorState(type);
     else Object.assign(building, normalizeCattleBarnState(null));
     visual.group.userData.building = building;
     parent?.add(visual.group);
@@ -56,8 +73,18 @@ export function createBuildingManager({
   };
 
   const placementFor = (point, type) => {
-    const site = getSiteAt(point.x, point.z, definitions[type].radius);
-    if (site) return { ...site, valid: true };
+    const site = getSiteAt(point.x, point.z, definitions[type].radius, definitions[type].footprint);
+    if (site) {
+      const span = definitions[type].footprintSpan;
+      for (const building of buildings.values()) {
+        if (!building.placed || building === operation?.building) continue;
+        const separation = (span + definitions[building.type].footprintSpan) * TILE;
+        if (Math.abs(site.x - building.site.x) <= separation && Math.abs(site.z - building.site.z) <= separation) {
+          return { ...site, valid: false };
+        }
+      }
+      return { ...site, valid: true };
+    }
     return { x: point.x, y: 0, z: point.z, valid: false };
   };
 
@@ -92,9 +119,8 @@ export function createBuildingManager({
     return null;
   };
 
-  const colliderFor = building => building.type === 'silo'
-    ? { shape: 'cylinder', x: building.site.x, y: building.site.y, z: building.site.z, radius: SILO_RADIUS, height: SILO_HEIGHT }
-    : { shape: 'box', x: building.site.x, y: building.site.y, z: building.site.z, width: 2.65, height: CATTLE_BARN_HEIGHT, depth: 3, radius: CATTLE_BARN_RADIUS };
+  const colliderFor = building => building.visual.colliders.map(collider => ({ ...collider,
+    x: collider.x + building.site.x, y: collider.y + building.site.y, z: collider.z + building.site.z }));
 
   const occupiedTileKeys = except => {
     const keys = new Set();
@@ -102,7 +128,8 @@ export function createBuildingManager({
       if (!building.placed || building === except) continue;
       const gx = Math.round(building.site.x / TILE), gz = Math.round(building.site.z / TILE);
       const span = definitions[building.type].footprintSpan;
-      for (let dx = -span; dx <= span; dx++) for (let dz = -span; dz <= span; dz++) keys.add(gridKey(gx + dx, gz + dz));
+      const area = definitions[building.type].footprint || { minX: -span, maxX: span, minZ: -span, maxZ: span };
+      for (let dx = area.minX; dx <= area.maxX; dx++) for (let dz = area.minZ; dz <= area.maxZ; dz++) keys.add(gridKey(gx + dx, gz + dz));
       if (building.type === 'cattle-barn') for (const key of building.derived?.tileSet || []) keys.add(key);
     }
     return keys;
@@ -381,8 +408,27 @@ export function createBuildingManager({
       }
       for (const building of buildings.values()) building.penVisual?.setEditing(enabled && building === selected && isPenDraft(building));
     },
+    setQuickBuilding(enabled) {
+      quickBuilding = enabled;
+      if (!enabled) {
+        this.cancelDrag();
+        for (const building of [...buildings.values()]) {
+          if (!isProcessor(building.type) || isComplete(building)) continue;
+          removeBuilding(building);
+          if (selected === building) selected = null;
+        }
+        onChange();
+      }
+    },
+    servicePorts() {
+      return islandServicePorts([...buildings.values()].filter(building =>
+        isProcessor(building.type) && building.placed && isComplete(building)).map(building => ({
+        id: `building:${building.id}`, status: 'attached', transform: { x: 0, y: 0, z: 0 },
+        source: { status: 'attached', services: [Object.assign(building.service, { id: building.id, position: building.site })] },
+      })), service => buildings.get(service.id)?.visual);
+    },
     placeBuilding(type, preferredPoint) {
-      if (!buildMode || !definitions[type]) return false;
+      if (!buildMode || !definitions[type] || (isProcessor(type) && !quickBuilding)) return false;
       this.cancelDrag();
       const site = automaticSiteFor(type, preferredPoint);
       if (!site) {
@@ -401,6 +447,7 @@ export function createBuildingManager({
       return true;
     },
     beginDrag(point, type, hit = null) {
+      if (isProcessor(type) && !quickBuilding && !hit) return false;
       const hitBuilding = hit?.building || (hit?.id ? hit : null);
       if (repaintRequested?.placed && isPenDraft(repaintRequested)) {
         const building = repaintRequested;
@@ -572,6 +619,8 @@ export function createBuildingManager({
       for (const building of buildings.values()) {
         const key = gridKey(Math.round(building.site.x / TILE), Math.round(building.site.z / TILE));
         if (!island.worldTiles?.has(key)) continue;
+        if (isProcessor(building.type)) result.push(...obstacleBoxes(building.visual.obstacles).map(box =>
+          translateBox(box, { x: building.site.x - island.group.position.x, y: building.site.y, z: building.site.z - island.group.position.z })));
         for (const object of [building.visual.group, building.penVisual?.group, building.gateVisual?.group,
           ...(building.animals || []).map(animal => animal.visual?.group)].filter(Boolean)) {
           result.push(...solidVisualBoxes(object, island.group));
@@ -581,6 +630,7 @@ export function createBuildingManager({
     },
     suspendIsland(island) {
       const suspended = [];
+      island.placedProcessors = [];
       for (const building of buildings.values()) {
         const key = gridKey(Math.round(building.site.x / TILE), Math.round(building.site.z / TILE));
         if (!island.worldTiles.has(key)) continue;
@@ -588,8 +638,17 @@ export function createBuildingManager({
         clearBuildingColliders(building);
         const visuals = [building.visual.group, building.penVisual?.group, building.gateVisual?.group,
           ...(building.animals || []).map(animal => animal.visual?.group)].filter(Boolean);
+        building.visual.setTransferState?.({ active: false });
+        building.visual.stop();
         visuals.forEach(object => island.group.attach(object));
+        if (building.visual.bounds) {
+          const bounds = building.visual.bounds.clone().translate(building.visual.group.position);
+          if (island.serviceBounds) island.serviceBounds.union(bounds);
+          else island.serviceBounds = bounds;
+        }
         suspended.push({ building, visuals, x: island.group.position.x, z: island.group.position.z });
+        if (isProcessor(building.type)) island.placedProcessors.push({ ...savedProcessor(building),
+          x: building.site.x - island.group.position.x, y: building.site.y, z: building.site.z - island.group.position.z });
         buildings.delete(building.id);
         if (selected === building) selected = null;
       }
@@ -615,12 +674,19 @@ export function createBuildingManager({
         if (building.pen) rebuildPen(building, penGeometry(building, building.pen.vertices, building.animals.length || STARTER_COW_COUNT));
         registerBuildingOccluder(building);
       }
+      if (!island.suspendedBuildings && island.placedProcessors?.length) {
+        for (const visual of island.placedProcessorVisuals || []) visual.removeFromParent();
+        this.restorePersistentState(island.placedProcessors.map(saved => ({ ...saved,
+          x: saved.x + island.group.position.x, z: saved.z + island.group.position.z })), true);
+      }
+      island.placedProcessors = [];
+      island.placedProcessorVisuals = [];
       island.suspendedBuildings = null;
     },
     persistentState() {
       return [...buildings.values()]
         .filter(building => building.placed)
-        .map(building => building.type === 'silo' ? {
+        .map(building => isProcessor(building.type) ? savedProcessor(building) : building.type === 'silo' ? {
           id: building.id, type: building.type, x: building.site.x, z: building.site.z,
           constructionPhase: building.constructionPhase, contents: { ...building.contents },
         } : {
@@ -638,17 +704,21 @@ export function createBuildingManager({
           })),
         });
     },
-    restorePersistentState(savedBuildings) {
+    restorePersistentState(savedBuildings, reconnecting = false) {
       if (!Array.isArray(savedBuildings)) return;
       for (const saved of savedBuildings) {
         if (!definitions[saved?.type] || !Number.isFinite(saved.x) || !Number.isFinite(saved.z)) continue;
-        const site = placementFor(saved, saved.type);
+        const tile = getTerrain().get(gridKey(Math.round(saved.x / TILE), Math.round(saved.z / TILE)));
+        // Restoring a confirmed site is not a new placement; later bridge reservations must not erase its stock.
+        const retainedBuilding = normalizedConstructionPhase(saved) === 'complete';
+        const site = (reconnecting || retainedBuilding) && tile && !tile.water ? { x: saved.x, y: tile.topY, z: saved.z, valid: true } : placementFor(saved, saved.type);
         if (!site.valid) continue;
         const building = addBuilding(saved.type, saved.id);
         building.site = site;
         building.placed = true;
         building.constructionPhase = normalizedConstructionPhase(saved);
         if (building.type === 'silo') building.contents = normalizedContents(saved.contents);
+        else if (isProcessor(building.type)) building.service = processorState(building.type, saved);
         else {
           Object.assign(building, normalizeCattleBarnState(saved));
           if (isDraft(building)) {
@@ -673,8 +743,8 @@ export function createBuildingManager({
           const geometry = penGeometry(building, building.pen.vertices, building.animals.length || STARTER_COW_COUNT);
           if (geometry.valid) rebuildPen(building, geometry);
           else {
-            building.pen = null;
-            building.derived = null;
+            // Keep the saved fence and herd available for repair after a footprint change.
+            building.derived = geometry;
             building.visual.setPenComplete?.(false);
           }
         }
@@ -692,7 +762,7 @@ export function createBuildingManager({
       if (operation?.kind === 'hold-building' && performance.now() - operation.startedAt >= BUILDING_HOLD_MS) promoteBuildingMove(operation);
       for (const building of buildings.values()) {
         building.visual.setSelected(building === selected);
-        building.visual.animate(elapsed, operation?.building === building, dt);
+        let producing = false;
         building.constructionOutline?.animate(elapsed);
         building.penVisual?.setEditing(buildMode && building === selected && isPenDraft(building));
         if (building.gateVisual) {
@@ -700,12 +770,22 @@ export function createBuildingManager({
             && (!building.pen || repaintRequested === building || (operation?.kind === 'lasso-pen' && operation.building === building));
           building.gateVisual.animate(elapsed);
         }
+        if (isProcessor(building.type) && building.placed && isComplete(building)) {
+          const definition = ISLAND_SERVICES[building.type];
+          producing = processService(building.service, definition, dt) > 0;
+        }
         if (building.type === 'cattle-barn' && building.placed && isComplete(building)) {
           building.nextCowId = Math.max(building.nextCowId, nextCowId);
+          const previousMilk = building.milkLitres;
           updateCattleBarn(building, dt, elapsed, { parent, terrain: getTerrain(), onChange });
+          producing = building.milkLitres > previousMilk;
           nextCowId = Math.max(nextCowId, building.nextCowId);
         }
+        building.visual.animate(elapsed, operation?.building === building, dt, producing);
       }
+    },
+    setNightAmount(amount) {
+      for (const building of buildings.values()) setGameBuildingNightAmount(building.visual.group, amount);
     },
     ...storage,
     repaintSelected() {
@@ -727,7 +807,9 @@ export function createBuildingManager({
         if (!building.placed) return false;
         const span = definitions[building.type].footprintSpan;
         const buildingGx = Math.round(building.site.x / TILE), buildingGz = Math.round(building.site.z / TILE);
-        return Math.abs(gx - buildingGx) <= span && Math.abs(gz - buildingGz) <= span;
+        const area = definitions[building.type].footprint || { minX: -span, maxX: span, minZ: -span, maxZ: span };
+        return gx - buildingGx >= area.minX && gx - buildingGx <= area.maxX
+          && gz - buildingGz >= area.minZ && gz - buildingGz <= area.maxZ;
       });
     },
     constructionState() {
@@ -758,7 +840,7 @@ export function createBuildingManager({
     confirmSelectedConstruction() {
       const building = selected;
       if (!building?.placed || !building.site?.valid || isComplete(building) || operation?.building === building) return false;
-      if (building.type === 'silo' && isDraft(building)) {
+      if ((building.type === 'silo' || isProcessor(building.type)) && isDraft(building)) {
         building.constructionPhase = 'complete';
         repaintRequested = null;
         clearConstructionOutline(building);

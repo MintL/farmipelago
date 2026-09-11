@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#203a43">
+  <meta name="description" content="Compare voxel, low-poly and hybrid Farmipelago buildings in one animated gallery.">
+  <title>Building gallery · Farmipelago</title>
+  <link rel="stylesheet" href="/src/building-studies/styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="./index.html"><span aria-hidden="true">F</span> Farmipelago</a>
+    <span class="collection-title">Building gallery <span>/</span> Style comparison</span>
+    <a href="./materials.html">Material palette <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>
+    <section class="viewer" aria-label="Building model preview">
+      <div class="heading"><div><p id="modelCategory" class="eyebrow">01 / Processing</p><h1 id="modelName">Grain mill</h1></div><span id="styleTag" class="study-tag">Hybrid</span></div>
+      <div class="style-bar"><span>Style</span><div class="style-switch" role="group" aria-label="Building style">
+        <button type="button" data-style="voxel" aria-pressed="false">Voxel</button>
+        <button type="button" data-style="low-poly" aria-pressed="false">Low poly</button>
+        <button type="button" data-style="hybrid" aria-pressed="true">Hybrid</button>
+      </div></div>
+      <div class="stage">
+        <canvas id="scene" tabindex="0" aria-label="Grain mill 3D model. Drag to orbit, pinch or scroll to zoom. Arrow keys orbit, plus and minus zoom, 0 resets, Space pauses."></canvas>
+        <p id="renderError" role="alert" hidden></p>
+        <span class="stage-caption" id="scaleCaption">A little mill with a big job.</span>
+      </div>
+      <div class="camera-bar">
+        <div class="views" role="group" aria-label="Camera view">
+          <button type="button" data-view="perspective" aria-pressed="true">Overview</button>
+          <button type="button" data-view="front" aria-pressed="false">Front</button>
+          <button type="button" data-view="back" aria-pressed="false">Back</button>
+        </div>
+        <button type="button" id="resetView" title="Reset camera (0)">Reset view ↺</button>
+      </div>
+      <p class="orbit-hint">Drag to orbit <span>·</span> Scroll or pinch to zoom</p>
+    </section>
+    <aside class="inspector">
+      <label class="building-picker" for="buildingSelect">Building<select id="buildingSelect"></select></label>
+      <p id="styleNote" class="style-note">Voxel architecture with detailed working machinery.</p>
+      <div class="controls">
+        <div class="control-heading"><h2>See it working</h2><span id="motionStatus" role="status">Milling</span></div>
+        <div class="mode-buttons" role="group" aria-label="Building operation"><button id="runBuilding" type="button" aria-pressed="true">Working</button><button id="idleBuilding" type="button" aria-pressed="false">Idle</button></div>
+        <label class="toggle-row" for="animate"><span>Animation</span><input id="animate" type="checkbox" role="switch" checked></label>
+        <label class="toggle-row" for="autoRotate"><span>Turntable</span><input id="autoRotate" type="checkbox" role="switch"></label>
+        <label class="toggle-row" for="tractor"><span>Tractor for scale</span><input id="tractor" type="checkbox" role="switch"></label>
+        <label class="light-row" for="lighting"><span>Lighting</span><select id="lighting"><option value="day">Daylight</option><option value="evening">Evening</option><option value="studio">Studio</option></select></label>
+      </div>
+      <details class="model-notes"><summary>About this model</summary><p id="modelIntro" class="intro"></p><ol id="modelProcess" class="process"></ol></details>
+      <p class="review-note">Ten buildings. One collection.<br><span>Hybrid available for every building.</span></p>
+    </aside>
+  </main>
+  <script type="module" src="/src/building-studies/main.js"></script>
+</body>
+</html>

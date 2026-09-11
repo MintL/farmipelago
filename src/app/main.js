@@ -37,7 +37,6 @@ const openingReducedRevealSeconds = 1.1;
 const openingCameraReducedReturnSeconds = 1;
 const baseDriveCameraFov = 38;
 const defaultDriveCameraFov = 28;
-const driveCameraFovs = [38, 30, 28, 24];
 const driveCameraZoomScale = .9;
 const defaultDriveCameraCounterClockwiseDegrees = 12;
 const defaultDriveCameraYaw = defaultDriveCameraCounterClockwiseDegrees * Math.PI / 180;
@@ -121,7 +120,7 @@ let fpsFrameCount = 0;
 let gameplayWasBlocked = false;
 let renderRequested = true;
 let viewMode = 'drive';
-let driveCameraFov = defaultDriveCameraFov;
+const driveCameraFov = defaultDriveCameraFov;
 const cameraZoom = { drive: 1, build: 1 };
 const cameraZoomTarget = { drive: 1, build: 1 };
 let driveCameraRotationStep = 0;
@@ -170,7 +169,7 @@ function vehicleStorageKind(vehicle = activeVehicle()) {
 
 function setStorageCapacity(vehicle) {
   vehicle.storage.capacity = storageCapacityFor(vehicle);
-  vehicle.visual.setStorageAmount(storageAmount(vehicle), vehicle.storage.capacity);
+  vehicle.visual.setStorageAmount(storageAmount(vehicle), vehicle.storage.capacity, storageItemId(vehicle));
 }
 
 function canTransferCargo(vehicle = activeVehicle()) {
@@ -291,18 +290,6 @@ function updateCameraZoom(dt) {
   setCameraFogScale(mode === 'drive' ? driveCameraDistanceScale(driveCameraFov) * cameraZoom.drive : cameraZoom.build);
 }
 
-function setDriveCameraPreset(nextFov) {
-  const fov = Number(nextFov);
-  if (!driveCameraFovs.includes(fov)) return false;
-  driveCameraFov = fov;
-  if (viewMode === 'drive' && !openingCinematic) {
-    applyDriveCameraProjection();
-    updateDriveCamera(activeVehicleState(), 0, true);
-    renderRequested = true;
-  }
-  return true;
-}
-
 function currentEnvironmentFocus() {
   if (openingCinematic) return openingCinematic.target;
   return viewMode === 'build' ? mapCameraTarget : driveCameraTarget;
@@ -310,6 +297,7 @@ function currentEnvironmentFocus() {
 
 function applyNightLighting(state) {
   farm?.setNightAmount(state.nightAmount, state.lanternAmount);
+  buildings?.setNightAmount(state.lanternAmount);
   fleet.forEach(vehicle => vehicle.visual.setNightAmount(state.lanternAmount));
 }
 
@@ -409,7 +397,7 @@ function beforeIslandDetach(island) {
 }
 
 function afterIslandAttach(island) {
-  if (island.suspendedBuildings) buildings.resumeIsland(island);
+  if (island.suspendedBuildings || island.placedProcessors?.length) buildings.resumeIsland(island);
 }
 
 function openingFleetCenter() {
@@ -711,7 +699,7 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
     }
     vehicle.visual.setLoadout(vehicle.loadout);
     vehicle.visual.setRearJointYaw(saved.equipmentState?.rearJointYaw);
-    vehicle.visual.setStorageAmount(storageAmount(vehicle), vehicle.storage.capacity);
+    vehicle.visual.setStorageAmount(storageAmount(vehicle), vehicle.storage.capacity, storageItemId(vehicle));
     vehicle.visual.setToolEnabled('front', vehicle.frontToolEnabled, true);
     vehicle.visual.setToolEnabled('rear', vehicle.rearToolEnabled, true);
     if (validSavedPosition(saved.position)) physics.placeVehicle(vehicle.id, saved.position, saved.grounded);
@@ -802,6 +790,7 @@ function syncUnlockedProgressionUi() {
   }
   ui.setUnlockedGates(state.unlockedGates);
   ui.setDebugUnlockables(state.unlockables);
+  ui.setDebugTiers(state.tiers);
   syncActiveVehicleUi();
   return state;
 }
@@ -809,6 +798,15 @@ function syncUnlockedProgressionUi() {
 function syncProgressionUi() {
   const state = syncUnlockedProgressionUi();
   return state;
+}
+
+function openDebugTier(tierId) {
+  if (!progression.openDebugTier(tierId)) return false;
+  palletTransfers.cancel();
+  syncProgressionUi();
+  scheduleSave();
+  renderRequested = true;
+  return true;
 }
 
 function setUnlockOverride(gateId, enabled) {
@@ -873,7 +871,7 @@ function activeInventoryHud(vehicle = activeVehicle()) {
 function syncInventoryUi() {
   const vehicle = activeVehicle();
   const storage = vehicle.storage;
-  vehicle.visual.setStorageAmount(storageAmount(vehicle), storage.capacity);
+  vehicle.visual.setStorageAmount(storageAmount(vehicle), storage.capacity, storageItemId(vehicle));
   ui?.setInventoryHud(activeInventoryHud(vehicle));
 }
 
@@ -929,6 +927,7 @@ function syncCargoPort() {
 
 const palletTransfers = createPalletTransfers({
   scene, getVehicle: activeVehicle, getState: activeVehicleState, getFarm: () => farm, getProgression: () => progression,
+  getBuildingPorts: () => buildings.servicePorts(),
   isBlocked: () => viewMode !== 'drive' || Boolean(openingCinematic || vehicleTransition || farm?.attachments.pendingState())
     || ui.isGameplayBlocked() || transferController.isActive(),
   onChange: () => { syncInventoryUi(); syncProgressionUi(); syncCargoPort(); scheduleSave(); }, reducedMotion,
@@ -1040,21 +1039,21 @@ const transferController = createTransferController({
   buildPointerCancel: () => buildings?.cancelDrag(),
   overrideUnlock: setUnlockOverride,
   clearUnlockOverrides,
-  changeCameraPreset: setDriveCameraPreset,
+  openDebugTier,
   changeTimeOfDay: setTimeOfDay,
   palletTransfer: (id, direction) => palletTransfers.start(id, direction),
   cancelPalletTransfer: () => palletTransfers.cancel(),
+  changeQuickBuilding: enabled => { buildings?.setQuickBuilding(enabled); updateConstructionPopup(); },
   changeFastGrowth: enabled => farm.setFastGrowth(enabled, elapsed),
   changeFastIslands: enabled => farm.driftingIslands.setFastIslands(enabled),
   rotateCameraStep: rotateDriveCamera,
   zoomCamera,
   persistentStateChange: scheduleSave,
   },
-  cameraPresetFov: defaultDriveCameraFov,
   panSurface: renderer.domElement,
 });
 buildings = createBuildingManager({
-  getSiteAt: (x, z, radius) => farm?.buildingSiteAt(x, z, radius),
+  getSiteAt: (x, z, radius, footprint) => farm?.buildingSiteAt(x, z, radius, footprint),
   getTerrain: () => farm?.terrain,
   setCollider: (id, obstacle) => farm?.setBuildingCollider(id, obstacle),
   registerOccluder: object => farm?.registerOccluder(object),
@@ -1428,7 +1427,7 @@ function updateStoragePopup() {
   const barn = buildings?.cattleBarnAt(state.x, state.z);
   if (barn) {
     const summary = buildings.cattleBarnSummary(barn.id);
-    siloPopupWorld.set(barn.site.x, barn.site.y + 3.15, barn.site.z).project(camera);
+    siloPopupWorld.set(barn.site.x, barn.site.y + 5.4, barn.site.z).project(camera);
     if (siloPopupWorld.z >= -1 && siloPopupWorld.z <= 1 && Math.abs(siloPopupWorld.x) <= 1 && Math.abs(siloPopupWorld.y) <= 1) {
       ui.setStoragePopup({
         kind: 'cattle-barn', id: barn.id, ...summary, machine,
@@ -1446,7 +1445,7 @@ function updateStoragePopup() {
     ui.setStoragePopup(null);
     return;
   }
-  siloPopupWorld.set(silo.site.x, silo.site.y + 4.05, silo.site.z).project(camera);
+  siloPopupWorld.set(silo.site.x, silo.site.y + 6.2, silo.site.z).project(camera);
   if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
     ui.setStoragePopup(null);
     return;
@@ -1486,8 +1485,10 @@ function update(dt) {
   const environmentState = environment.update(dt, currentEnvironmentFocus(), travelState);
   applyNightLighting(environmentState);
   ui.setDebugTimeOfDay(environmentState.phase);
+  const workshopVehicle = activeVehicleState();
   farm?.animate(elapsed, dt, (x, z) =>
-    buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z), travelState);
+    buildings?.isBuildingAt(x, z) || buildings?.isPastureAt(x, z), travelState,
+    farm.insideWorkshop(workshopVehicle.x, workshopVehicle.z));
   if (openingCinematic) updateOpeningCamera(dt);
   buildings?.animate(elapsed, dt);
   transferEffects.animate(elapsed);

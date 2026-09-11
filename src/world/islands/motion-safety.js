@@ -91,7 +91,7 @@ function columnsOf(boxes) {
   return [...columns.values()];
 }
 
-export function solidVisualBoxes(group, relativeTo = group, skipBuildings = false) {
+export function solidVisualBoxes(group, relativeTo = group, skipBuildings = false, excludedRoots = null) {
   const boxes = [];
   group.updateWorldMatrix(true, true);
   relativeTo.updateWorldMatrix(true, false);
@@ -99,8 +99,11 @@ export function solidVisualBoxes(group, relativeTo = group, skipBuildings = fals
   const matrix = new THREE.Matrix4(), instance = new THREE.Matrix4();
   const box = new THREE.Box3();
   const visit = object => {
-    if (skipBuildings && /^(silo|cattle-barn|barn-pen|pen-lasso)/.test(object.name)) return;
-    if (object !== group && /^(water|passing-islands|island-placement-ghost|connection-chains|drifting-island-)/.test(object.name)) return;
+    if (excludedRoots?.has(object)) return;
+    if (skipBuildings && /^(silo|cattle-barn|barn-pen|pen-lasso|placed-processor)/.test(object.name)) return;
+    // Anchor chains touch the shore and disappear when their island releases;
+    // they must never become permanent collision boxes after restoring a save.
+    if (object !== group && /^(water|passing-islands|island-placement-ghost|(?:island-)?connection-chains|drifting-island-)/.test(object.name)) return;
     if (object.isMesh && !/^(terrain-|lower-layers-|ground-|tall-grass|crop|furrow)/.test(object.name)
       && !object.userData.isAttachmentGhost && object.renderOrder !== 90) {
       const materials = Array.isArray(object.material) ? object.material : [object.material];
@@ -138,10 +141,11 @@ export function envelopesIntersect(a, pa, da, b, pb, db = ORIGIN, margin = 0) {
   return false;
 }
 
-export function createMotionSafety(getFixed) {
+export function createMotionSafety(getFixed, passagesClear = () => false) {
   let fixed = [], fixedBounds = null, index = new Map(), signature = '', revision = 0;
   const envelopes = new WeakMap();
   const reservations = new Map();
+  const passages = new Map();
   const cells = bounds => {
     const result = [];
     for (let x = Math.floor(bounds.minX / CELL); x <= Math.floor(bounds.maxX / CELL); x++) {
@@ -174,18 +178,23 @@ export function createMotionSafety(getFixed) {
     return island.encounter === false ? { boxes: [shape.bounds], bounds: shape.bounds } : shape;
   };
   const reservationFor = (island, route, extras = [], bounds = envelope(island).bounds) => [
-    ...routeReservationBoxes(bounds, route, TILE, 2 * TILE),
+    ...routeReservationBoxes(bounds, route.length > 1 ? route : [route[0], route[0]], TILE, 2 * TILE),
     ...extras.map(box => sweptBounds(box, ORIGIN, TILE)),
   ];
-  const reservationClear = (id, boxes) => [...reservations].every(([otherId, other]) =>
-    otherId === id || !reservationsOverlap(boxes, other));
+  const reservationClear = (island, route, boxes, passage, restoring = false) => [...reservations].every(([otherId, other]) =>
+    otherId === island.id || !reservationsOverlap(boxes, other)
+      || passage && restoring && !reservationsOverlap(envelope(island).boxes
+        .map(box => sweptBounds(translateBox(box, route[0]), ORIGIN, .1)), other)
+      || passage && passages.has(otherId) && (restoring || passagesClear(island, route, passages.get(otherId))));
   const clear = (island, from, to, { margin = .1, ignoreId = island.id, reservations: includeReservations = true, ignoreSources = null, traffic = false } = {}) => {
     refresh();
     const shape = traffic ? trafficEnvelope(island) : envelope(island);
     const delta = { x: to.x - from.x, y: (to.y || 0) - (from.y || 0), z: to.z - from.z };
     if (!sweptIntersection(translateBox(shape.bounds, from), fixedBounds, delta, margin) && !reservations.size) return true;
     const candidates = new Set(cells(sweptBounds(translateBox(shape.bounds, from), delta, margin)).flatMap(key => index.get(key) || []));
-    if (includeReservations) for (const [id, boxes] of reservations) if (id !== ignoreId) boxes.forEach(box => candidates.add(box));
+    if (includeReservations) for (const [id, boxes] of reservations) {
+      if (id !== ignoreId && !(traffic && passages.has(id))) boxes.forEach(box => candidates.add(box));
+    }
     for (const obstacle of candidates) {
       if (obstacle.islandId === ignoreId || ignoreSources?.has(obstacle.source)) continue;
       if (!sweptIntersection(translateBox(shape.bounds, from), obstacle, delta, margin)) continue;
@@ -214,14 +223,37 @@ export function createMotionSafety(getFixed) {
     },
     invalidate(island) { revision++; if (island) envelopes.delete(island); },
     fixedBounds() { refresh(); return fixedBounds; },
-    canReserve(island, route, extras = []) { return reservationClear(island.id, reservationFor(island, route, extras)); },
-    reserve(island, route, extras = [], bounds = envelope(island).bounds) {
+    canReserve(island, route, extras = [], passage = false) {
+      return reservationClear(island, route, reservationFor(island, route, extras), passage);
+    },
+    reserve(island, route, extras = [], bounds = envelope(island).bounds, passage = false, restoring = false) {
       const boxes = reservationFor(island, route, extras, bounds);
-      if (!reservationClear(island.id, boxes)) return false;
+      if (!reservationClear(island, route, boxes, passage, restoring)) return false;
       reservations.set(island.id, boxes);
+      if (passage) passages.set(island.id, island);
+      else passages.delete(island.id);
       return true;
     },
-    unreserve(id) { reservations.delete(id); },
+    reservePriority(island, route, extras, occupied, commit = true) {
+      const boxes = reservationFor(island, route, extras);
+      // Player actions take priority over future passages, but cannot claim
+      // occupied space or another connection/release's exclusive corridor.
+      if (reservationsOverlap(boxes, occupied) || [...reservations].some(([id, other]) =>
+        id !== island.id && !passages.has(id) && reservationsOverlap(boxes, other))) return false;
+      if (commit) {
+        reservations.set(island.id, boxes);
+        passages.delete(island.id);
+      }
+      return true;
+    },
+    advancePassage(island, route) {
+      if (!passages.has(island.id)) return;
+      // Keep the occupied footprint even when the last waypoint is reached.
+      const remaining = route.length > 1 ? route : [route[0], route[0]];
+      reservations.set(island.id, reservationFor(island, remaining, [], island.reservationBounds || envelope(island).bounds));
+    },
+    isPassage: island => passages.has(island.id),
+    unreserve(id) { reservations.delete(id); passages.delete(id); },
     reservationBoxes: () => [...reservations].map(([id, boxes]) => ({ id, boxes: boxes.map(box => ({ ...box })) })),
     routeClear(island, route, options) { return route.slice(1).every((to, i) => clear(island, route[i], to, options)); },
     resolve(records, dt) {
@@ -231,7 +263,7 @@ export function createMotionSafety(getFixed) {
       for (const record of result) {
         const delta = movement(record);
         const to = { x: record.position.x + delta.x, y: record.position.y + delta.y, z: record.position.z + delta.z };
-        if (!clear(record.island, record.position, to)) stop(record, 'Reserved route or retained land');
+        if (!clear(record.island, record.position, to, { traffic: true })) stop(record, 'Reserved route or retained land');
       }
       // Stopping one member changes relative motion. Repeat until every pair is safe.
       for (let pass = 0; pass <= result.length; pass++) {

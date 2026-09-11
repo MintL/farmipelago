@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#152a31">
+  <meta name="description" content="Review Farmipelago's voxel material palette: sixteen colors with subtle wood, stone, plaster, roof and metal textures.">
+  <title>Voxel materials · Farmipelago</title>
+  <link rel="stylesheet" href="/src/building-gallery/styles.css">
+  <link rel="stylesheet" href="/src/material-palette/styles.css">
+</head>
+<body>
+  <header class="masthead"><a class="brand" href="./buildings.html">F<span>Farmipelago</span></a><span class="collection-label">The material collection</span><nav class="page-nav" aria-label="Review pages"><a href="./materials.html" aria-current="page">Materials</a><a href="./buildings.html">Buildings ↗</a></nav></header>
+  <main class="workspace material-workspace">
+    <section class="viewer" aria-label="Interactive material samples">
+      <div class="model-heading"><span id="materialFamily" class="eyebrow">Sixteen shared materials</span><h1 id="materialName">A palette for the islands.</h1><p id="materialCue">Select a material to inspect its grain, color and finish.</p></div>
+      <canvas id="scene" tabindex="0" aria-label="3D material samples. Drag to orbit, scroll or pinch to zoom. Select a block to inspect it. Arrow keys rotate, plus and minus zoom."></canvas>
+      <p id="renderError" role="alert" hidden></p>
+      <div class="sample-caption" id="sampleCaption">Plaster & timber / Painted accents / Stone & roofing / Metal & glazing</div>
+      <div class="view-tools" role="group" aria-label="Sample view"><button id="showPalette" class="selected" aria-pressed="true">Full palette</button><button id="frontView">Front</button><button id="resetView">Reset view ↺</button></div>
+      <div class="stage-bottom"><span>Drag to orbit <b>·</b> Scroll / pinch to zoom</span><span id="textureStatus">Subtle textures · 65%</span></div>
+    </section>
+    <aside class="inspector">
+      <div class="collection-heading"><h2>Voxel materials</h2><span>16</span></div>
+      <nav id="materialList" aria-label="Select a material"></nav>
+      <section class="material-notes" aria-live="polite"><div class="material-meta"><span id="materialFinish">A common material language</span><code id="materialColor">16 colors</code></div><p id="materialUse">Light walls and warm timber form the base. Painted accents identify each building; roofs and foundations anchor it.</p><p id="materialDetail">Compare the palette together first, then select a material to see a block, a joined wall and a beam at the same texture scale.</p></section>
+      <div class="material-controls">
+        <div class="toggle-row"><label for="textures">Textures</label><input id="textures" type="checkbox" role="switch" checked></div>
+        <label class="strength-label" for="textureStrength">Surface detail <output id="strengthValue" for="textureStrength">65%</output></label>
+        <input id="textureStrength" type="range" min="0" max="100" step="5" value="65">
+        <div class="lighting"><label for="lighting">Light</label><select id="lighting"><option value="studio">Studio</option><option value="day">Daylight</option><option value="evening">Evening</option></select></div>
+      </div>
+      <p class="palette-review-note">Palette study for review. Buildings retain their current materials.</p>
+    </aside>
+  </main>
+  <script type="module" src="/src/material-palette/main.js"></script>
+</body>
+</html>

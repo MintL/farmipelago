@@ -221,6 +221,7 @@ function hasCardinalBlocks(tile, terrain, islandId, opening = null) {
 }
 
 function addWaterSurface(tile, water, lake) {
+  tile.lake = lake;
   // Top-only, edge-to-edge planes avoid the dark box sides and gaps that made
   // the first water pass read as individually bordered tiles.
   const surface = new THREE.Mesh(new THREE.PlaneGeometry(TILE, TILE), mats.water);

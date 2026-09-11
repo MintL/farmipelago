@@ -58,7 +58,7 @@ export function randomIslandSettings(seed) {
     groundCoverDensity: between(.55, 1.15),
     moistureBias: between(-.22, .22),
     sunlightBias: between(-.22, .22),
-    waterStyle: random() < .5 ? 'coast' : 'watercourse',
+    waterStyle: random() < .25 ? (random() < .5 ? 'coast' : 'watercourse') : 'none',
   };
 }
 

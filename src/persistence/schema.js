@@ -58,7 +58,7 @@ function validEncounters(saved, world, islandIds) {
     if (!isObject(island) || !validNaturalIsland(island) || ids.has(island.id) || !position(island.position) ||
       !['drifting', 'releasing'].includes(island.status) ||
       !['encounter', 'arrived', 'routeComplete'].every(key => typeof island[key] === 'boolean') ||
-      !Array.isArray(island.route) || island.route.length < 2 || island.route.length > 64 || !island.route.every(position) ||
+      !Array.isArray(island.route) || island.route.length < 2 || island.route.length > 2048 || !island.route.every(position) ||
       !Number.isInteger(island.routeIndex) || island.routeIndex < 1 || island.routeIndex > island.route.length ||
       !Number.isFinite(island.speed) || island.speed <= 0 || island.speed > 1000 || !box(island.reservationBounds) ||
       !Array.isArray(island.extraMotionBoxes) || island.extraMotionBoxes.length > 100000 || !island.extraMotionBoxes.every(box)) return false;

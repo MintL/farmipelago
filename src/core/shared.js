@@ -125,13 +125,12 @@ export const mats = {
     opacity: .72,
     depthWrite: false,
   }),
-  waterSplash: new THREE.MeshBasicMaterial({
-    color: new THREE.Color().setRGB(.035, .24, .34),
+  waterSplash: new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setRGB(.07, .38, .50),
+    roughness: .48,
+    metalness: 0,
     depthTest: true,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
+    depthWrite: true,
   }),
 };
 

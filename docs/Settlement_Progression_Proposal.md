@@ -961,11 +961,40 @@ No ted/dry step is added. Grass/hay unlocks, mowing, baling, fork handling and t
 four-bale settlement requirement are already implemented. Both production builds
 and diff checks pass; timing, toggle, reload and mow/regrowth checks remain manual.
 
-**Next task: Step 10 — Oil Press islands.** Add Tier 2 Oil Press islands,
-Canola-to-Vegetable-oil processing and normal transport/settlement delivery.
-Reuse the continuous processor system and shared transfer UI established by
-Windmills. Plan the conversion rate, storage/transport units, encounter mix and
-limited opportunity fallback before implementation. Ted/dry and weeds stay paused.
+**Step 10 — Oil route implemented, build 0.403; awaiting manual review.** Oil Presses share
+Windmill services and transfers, consuming 1,000 L Canola/minute and producing
+500 L Vegetable oil/minute continuously (same input timing, half yield), with
+separate 8,000 L input/output storage and exact fractional stock persistence.
+Oil uses 1,000 L pallets and litre labels. The provisional 3,600 L Tier 2 Oil
+target is aligned to 4,000 L so four full pallets fulfill it without discarding
+surplus. Completed requirements remain complete; incomplete legacy Oil litres
+round upward to pallet credit, preserving prior progress without partial pallets.
+Saved requirements record their unit so migration happens once.
+
+New Tier 2 encounters use an explicit seeded 50% Windmill / 50% Oil Press testing
+mix, with no saved-island rerolls. Oil Trader supplies four Oil pallets once for
+3,600 L Canola through the reusable opportunity system. Its random generation,
+and other opportunity generation, remains suppressed by that testing mix until
+encounter balancing resumes. Existing Old Miller trades remain usable. No stock
+fixture is added to Debug or the Workshop.
+
+Saved default-off **Quick building** exposes both processors in the ordinary
+build tray. Clear level placement, collision checks and confirmation remain
+required. Drafts neither produce nor accept goods. Disabling the toggle removes
+processor drafts and hides their choices; confirmed processors continue normally.
+Placed processors share service definitions, ports, fractional stock and HUDs
+with encounter processors. Their saved construction and exact stocks travel
+with released/pending islands and restore on reconnection, without offline work.
+The 180-pixel processor/cattle HUDs and accessible round transfer controls remain.
+
+Manual review: normal Canola transport, 1:0.5 timing, 8,000 L capacities, whole
+pallet collection/remainders, target/surplus delivery, cancellation and reload;
+Quick building default/toggle, invalid sites, draft inactivity, confirmation,
+demolition, multiple placed processors and release → save/reload → reconnect;
+normal Oil island Connect/Release, matching collision and desktop/touch HUDs.
+Fallback random-encounter verification remains blocked by the intentional testing
+mix, not by an inventory shortcut. Ted/dry and weeds remain paused. Stop here;
+Step 11 has not started.
 
 **Step 7 manual checklist:** in Tier 2 connect an Old Miller island normally, Trade
 one full grain input, return with Flatbed, Load four pallets and Deliver them.
@@ -1229,9 +1258,11 @@ Stop for approval before commit or Step 8.
 **Implementation:**
 
 - Add an Oil Press specialist-island type, gated to Tier 2+.
-- Convert Canola into Vegetable Oil in readable batches.
+- Continuously consume 1,000 L Canola/minute and produce 500 L Vegetable oil/minute, using the shared Windmill timing and processor system (1:0.5 yield).
 - Add a limited opportunity fallback that can provide enough Oil to bridge the Tier 2 requirement without giving permanent production.
-- Make Oil a normal transferable good and Tier 2 settlement requirement.
+- Make Oil a normal 1,000 L palleted good with litre labels and a 4,000 L Tier 2 requirement.
+- Include the saved, default-off Quick building access toggle for normal Windmill/Oil Press placement; drafts remain inert, confirmed buildings share processor service behavior and persistence.
+- Use the explicit 50/50 processor testing mix for new Tier 2 islands; retain existing islands and suppress random fallback generation for now.
 
 **User verification gate:**
 

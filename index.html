@@ -9,7 +9,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.402</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.418</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
       </div>
@@ -85,6 +85,14 @@
       <button id="cattleBarnOption" class="buildingOption" type="button" data-building-id="cattle-barn" aria-pressed="false" hidden>
         <svg class="icon" aria-hidden="true"><use href="#icon-cattle-barn"></use></svg>
         <span><strong>Cattle Barn</strong><small>Barn + custom pen</small></span><em>Free</em>
+      </button>
+      <button class="buildingOption" type="button" data-building-id="windmill" aria-pressed="false" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-windmill"></use></svg>
+        <span><strong>Windmill</strong><small>Grain → Flour</small></span>
+      </button>
+      <button class="buildingOption" type="button" data-building-id="oil-press" aria-pressed="false" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#icon-vegetable-oil"></use></svg>
+        <span><strong>Oil Press</strong><small>Canola → Oil</small></span>
       </button>
       <button id="repaintPen" type="button">Repaint border</button>
     </aside>
@@ -203,28 +211,16 @@
             <div id="debugPanel" hidden>
               <strong class="debugSectionLabel">Time of day</strong>
               <label class="debugGrowthControl"><span>Fast growth</span><input id="debugFastGrowth" type="checkbox" checked></label>
+              <label class="debugGrowthControl"><span>Quick building</span><input id="debugQuickBuilding" type="checkbox"></label>
               <label class="debugGrowthControl"><span>Island speed ×10</span><input id="debugFastIslands" type="checkbox"></label>
               <div class="debugTimeControl">
                 <div class="debugTimeHeader"><label for="debugTimeSlider">Farm clock</label><output id="debugTimeValue" for="debugTimeSlider">10:00 · Day</output></div>
                 <input id="debugTimeSlider" type="range" min="0" max="1439" step="15" value="600" aria-label="Time of day" aria-valuetext="10:00, Day">
                 <div class="debugTimeTicks" aria-hidden="true"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
               </div>
-              <strong class="debugSectionLabel">Camera</strong>
-              <p class="debugIntro">Compare perspective compression while keeping the active vehicle approximately the same size.</p>
-              <div id="debugCameraPresets" aria-label="Drive camera preset">
-                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="38" data-camera-label="38 degrees, original camera">
-                  <span><strong>38°</strong><small>Original</small></span><small class="debugUnlockState">Select</small>
-                </button>
-                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="30" data-camera-label="30 degrees, mild diorama">
-                  <span><strong>30°</strong><small>Mild diorama</small></span><small class="debugUnlockState">Select</small>
-                </button>
-                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="28" data-camera-label="28 degrees, default camera">
-                  <span><strong>28°</strong><small>Default</small></span><small class="debugUnlockState">Active</small>
-                </button>
-                <button class="debugUnlock debugCameraPreset" type="button" data-camera-fov="24" data-camera-label="24 degrees, strong diorama">
-                  <span><strong>24°</strong><small>Strong diorama</small></span><small class="debugUnlockState">Select</small>
-                </button>
-              </div>
+              <strong class="debugSectionLabel">Tiers</strong>
+              <p class="debugIntro">Open a later settlement tier and save its unlocks. Existing delivery progress is kept; earlier tiers cannot be reopened.</p>
+              <div id="debugTierList" aria-label="Settlement tiers"></div>
               <strong class="debugSectionLabel">Unlocks</strong>
               <p class="debugIntro">Preview capabilities planned for future islands. Starter and previously earned capabilities remain unlocked.</p>
               <div id="debugUnlockList" aria-label="Unlockable overrides"></div>
@@ -282,6 +278,7 @@
       <path d="M8.7 15.1c0-1.1 1.1-1.8 3.3-1.8s3.3.7 3.3 1.8v1.2c0 1.2-1.2 2-3.3 2s-3.3-.8-3.3-2Z" fill="#d9a38d" stroke="currentColor" />
       <circle cx="10.6" cy="15.8" r=".5" fill="currentColor" stroke="none" /><circle cx="13.4" cy="15.8" r=".5" fill="currentColor" stroke="none" />
     </symbol>
+    <symbol id="icon-windmill" viewBox="0 0 24 24"><path d="M8 12 6 22h12l-2-10M10 22v-5h4v5M12 9V2h3v5l-3 2 7 3v3h-5l-2-6-3 6H6v-5l6-1-6-3V3h5z" /></symbol>
     <symbol id="icon-cattle-barn" viewBox="0 0 24 24"><path d="M3 10 12 3l9 7v11H3zM8 21v-8h8v8M8 8h8M10 13l4 4M14 13l-4 4" /></symbol>
     <symbol id="icon-eggs" viewBox="0 0 24 24"><path d="M12 20c-4 0-6-2.5-6-6S9 4 12 4s6 6.5 6 10-2 6-6 6Z" fill="#eee3cb" stroke="#8c7654" /></symbol>
     <symbol id="icon-vegetable-oil" viewBox="0 0 24 24"><path d="M9 3h6v5l3 4v9H6v-9l3-4Z" fill="#e7c65f" stroke="#827342" /><path d="M9 3h6v3H9Z" fill="#66834e" /><path d="M7 13h10M10 16h4" stroke="#a28738" /></symbol>

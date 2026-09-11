@@ -36,7 +36,7 @@ export function createTransferController({
     if (transfer.kind === 'cargo') return getFarm().cargoPort.isNear(state.x, state.z);
     if (transfer.kind === 'barn-load-milk') {
       const barn = getBuildings()?.cattleBarn(transfer.barnId);
-      return Boolean(barn?.pen && Math.hypot(state.x - barn.site.x, state.z - barn.site.z) <= 3.05);
+      return Boolean(barn?.pen && Math.hypot(state.x - barn.site.x, state.z - barn.site.z) <= 4.2);
     }
     return getBuildings()?.siloAt(state.x, state.z)?.id === transfer.siloId;
   };
@@ -201,7 +201,7 @@ export function createTransferController({
       if (silo?.id !== siloId) return;
       start({
         kind: 'unload', vehicleId: vehicle.id, siloId, itemId, amount,
-        target: { x: silo.site.x, y: silo.site.y + 3.58, z: silo.site.z },
+        target: getBuildings().transferPort(silo.id, 'input', itemId),
       });
     },
     loadSilo(siloId, cropId) {
@@ -223,7 +223,7 @@ export function createTransferController({
       const buildings = getBuildings();
       const farm = getFarm();
       const barn = buildings?.cattleBarn(barnId);
-      if (!barn?.pen || Math.hypot(state.x - barn.site.x, state.z - barn.site.z) > 3.05) return;
+      if (!barn?.pen || Math.hypot(state.x - barn.site.x, state.z - barn.site.z) > 4.2) return;
       const baleId = vehicle.equipmentState.carriedBaleId;
       if (!baleId || !farm.hasBale(baleId) || !buildings.addHayBale(barnId, HAY_BALE_LITRES)) return;
       if (!farm.removeBale(baleId)) return;
@@ -237,7 +237,7 @@ export function createTransferController({
       if (vehicleStorageKind(vehicle) !== 'liquid') return;
       const state = getActiveVehicleState();
       const barn = getBuildings()?.cattleBarn(barnId);
-      if (!barn?.pen || Math.hypot(state.x - barn.site.x, state.z - barn.site.z) > 3.05
+      if (!barn?.pen || Math.hypot(state.x - barn.site.x, state.z - barn.site.z) > 4.2
         || (storageItemId(vehicle) && storageItemId(vehicle) !== 'milk')) return;
       const amount = Math.min(Math.floor(barn.milkLitres), vehicle.storage.capacity - storageAmount(vehicle));
       if (amount > 0) start({ kind: 'barn-load-milk', vehicleId: vehicle.id, barnId, itemId: 'milk', amount });
@@ -257,6 +257,7 @@ export function createTransferController({
           || !requirement?.accepting || requirement.target - requirement.amount < HAY_BALE_LITRES
           || !farm.hasBale(baleId) || !farm.removeBale(baleId)) return;
         progression.accept({ 'hay-bale': HAY_BALE_LITRES });
+        farm.cargoPort.receiveShipment();
         vehicle.equipmentState.carriedBaleId = null;
         vehicle.baleReleasePending = false;
         vehicle.balePickupCooldown = getElapsed() + .65;

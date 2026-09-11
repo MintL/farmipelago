@@ -3,7 +3,7 @@ import { BARN_HAY_CAPACITY, BARN_MILK_CAPACITY, HAY_BALE_LITRES } from '../lives
 import { isComplete, normalizedContents } from './state.js';
 
 export function createBuildingStorage(buildings, onChange) {
-  const siloAt = (x, z, range = 2.45) => nearestBuilding(
+  const siloAt = (x, z, range = 3.6) => nearestBuilding(
     buildings,
     x,
     z,
@@ -15,9 +15,9 @@ export function createBuildingStorage(buildings, onChange) {
     return building?.type === 'cattle-barn' && building.placed && isComplete(building) ? building : null;
   };
   return {
-    isNearSilo: (x, z, range = 2.45) => Boolean(siloAt(x, z, range)),
+    isNearSilo: (x, z, range = 3.6) => Boolean(siloAt(x, z, range)),
     siloAt,
-    storeAt(x, z, contents, elapsed = 0, range = 2.45) {
+    storeAt(x, z, contents, elapsed = 0, range = 3.6) {
       const building = siloAt(x, z, range);
       if (!building) return null;
       for (const [cropId, amount] of Object.entries(normalizedContents(contents))) {
@@ -47,13 +47,13 @@ export function createBuildingStorage(buildings, onChange) {
       if (notify) onChange();
       return amount;
     },
-    unloadTargetAt(x, z, elapsed = 0, range = 2.45) {
+    unloadTargetAt(x, z, elapsed = 0, range = 3.6) {
       const building = siloAt(x, z, range);
       if (!building) return null;
       building.visual.receive(elapsed);
       return siloTarget(building);
     },
-    cattleBarnAt(x, z, range = 3.05) {
+    cattleBarnAt(x, z, range = 4.2) {
       return nearestBuilding(buildings, x, z, range, building =>
         building.type === 'cattle-barn' && building.placed && isComplete(building)
           && building.pen && building.derived?.valid);
@@ -96,9 +96,9 @@ export function createBuildingStorage(buildings, onChange) {
     transferPort(id, direction, itemId) {
       const building = buildings.get(id);
       if (!building?.placed || !isComplete(building)) return null;
-      if (building.type === 'silo' && itemId !== 'milk') return { x: building.site.x, y: building.site.y + 3.76, z: building.site.z };
+      if (building.type === 'silo' && itemId !== 'milk') return buildingPort(building, direction);
       if (building.type === 'cattle-barn' && direction === 'output' && itemId === 'milk') {
-        return { x: building.site.x + .86, y: building.site.y + .56, z: building.site.z + 1.12 };
+        return buildingPort(building, 'output');
       }
       return null;
     },
@@ -121,4 +121,8 @@ function nearestBuilding(buildings, x, z, range, accepts) {
   return closest?.building || null;
 }
 
-const siloTarget = building => ({ x: building.site.x, y: building.site.y + 3.58, z: building.site.z });
+const buildingPort = (building, role) => {
+  const point = building.visual.ports[role];
+  return { x: building.site.x + point.x, y: building.site.y + point.y, z: building.site.z + point.z };
+};
+const siloTarget = building => buildingPort(building, 'input');

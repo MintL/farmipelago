@@ -251,6 +251,14 @@ body[data-view-mode="build"] #viewHint { display: block; }
   backdrop-filter: blur(16px) saturate(120%);
   -webkit-backdrop-filter: blur(16px) saturate(120%);
 }
+#buildPalette[data-option-count="3"],
+#buildPalette[data-option-count="4"] {
+  width: min(688px, calc(100vw - 28px));
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: 154px;
+  overflow-x: auto;
+}
 #buildPalette[data-option-count="1"] { width: 172px; grid-template-columns: minmax(0, 1fr); }
 .buildingOption {
   width: 100%;

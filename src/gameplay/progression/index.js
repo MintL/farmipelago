@@ -45,8 +45,9 @@ export function createSettlementProgression(savedState = null) {
         ? savedState.tiers?.[definition.id]?.requirements?.[need.id]
           ?? (definition.id === 1 ? savedState.requirements?.[need.id] : null)
         : null;
-      const value = Number(isSettlement ? saved?.delivered
+      let value = Number(isSettlement ? saved?.delivered
         : definition.id === 1 ? (isVillage ? savedState.stock : savedState?.delivered)?.[need.id] : 0);
+      if (need.id === 'vegetable-oil' && saved?.unit !== 'pallets') value = Math.ceil(value / 1000);
       const delivered = saved?.complete === true ? need.target
         : Number.isFinite(value) ? Math.min(need.target, Math.max(0, value)) : 0;
       return [need.id, { delivered, complete: delivered >= need.target }];
@@ -80,6 +81,10 @@ export function createSettlementProgression(savedState = null) {
       return {
         id: `settlement-tier-${definition.id}`,
         tier: definition.id,
+        tiers: SETTLEMENT_TIERS.map((tier, index) => ({
+          id: tier.id, summary: tier.unlockSummary.join(', '),
+          active: index === tierIndex, opened: index <= tierIndex,
+        })),
         complete: completedCount(definition) >= definition.requiredCompletions,
         completedCount: completedCount(definition),
         requiredCompletions: definition.requiredCompletions,
@@ -113,6 +118,13 @@ export function createSettlementProgression(savedState = null) {
       }
       return {};
     },
+    openDebugTier(tierId) {
+      const nextIndex = SETTLEMENT_TIERS.findIndex(definition => definition.id === tierId);
+      if (nextIndex <= tierIndex) return false;
+      tierIndex = nextIndex;
+      advance();
+      return true;
+    },
     setUnlockOverride(gate, enabled) {
       if (!unlockableIds.has(gate) || earnedGates.has(gate)) return false;
       if (enabled) overrideGates.add(gate);
@@ -122,7 +134,7 @@ export function createSettlementProgression(savedState = null) {
     persistentState() {
       return { kind: 'settlement', tier: SETTLEMENT_TIERS[tierIndex].id,
         tiers: Object.fromEntries(Object.entries(tiers).map(([id, requirements]) => [id, {
-          requirements: Object.fromEntries(Object.entries(requirements).map(([itemId, requirement]) => [itemId, { ...requirement }])),
+          requirements: Object.fromEntries(Object.entries(requirements).map(([itemId, requirement]) => [itemId, { ...requirement, ...(itemId === 'vegetable-oil' ? { unit: 'pallets' } : {}) }])),
         }])),
         earnedGates: [...earnedGates], overrideGates: [...overrideGates] };
     },

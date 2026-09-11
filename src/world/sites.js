@@ -5,12 +5,12 @@ export function findWorkshopSite(terrain, island) {
   const candidates = [];
   for (const tile of terrain.values()) {
     if (tile.islandId !== FARM_ISLAND_ID) continue;
-    const hasWorkshopPad = [-1, 0, 1].every(dx => [-1, 0, 1].every(dz => {
+    const hasWorkshopPad = [-3, -2, -1, 0, 1, 2, 3].every(dx => [-3, -2, -1, 0, 1, 2, 3].every(dz => {
       const neighbor = terrain.get(gridKey(tile.gx + dx, tile.gz + dz));
-      return neighbor?.islandId === FARM_ISLAND_ID && Math.abs(neighbor.topY - tile.topY) < .01;
+      return neighbor?.islandId === FARM_ISLAND_ID && !neighbor.water && Math.abs(neighbor.topY - tile.topY) < .01;
     }));
     if (!hasWorkshopPad) continue;
-    // Prefer the westernmost safe 3x3 footprint, then the northernmost site
+    // Prefer the westernmost safe seven-tile footprint, then the northernmost site
     // along that edge. The workshop's open bay faces east.
     candidates.push({ ...tile });
   }
@@ -28,7 +28,7 @@ export function reserveWorkshopGround(terrain, site) {
     const dz = tile.z - site.z;
     const localX = dx * cos - dz * sin;
     const localZ = dx * sin + dz * cos;
-    const onWorkshopPad = Math.abs(localX) <= 2.45 && localZ >= -3.15 && localZ <= 2.0;
+    const onWorkshopPad = Math.abs(localX) <= 3.5 * TILE && localZ >= -4 * TILE && localZ <= 3 * TILE;
     if (onWorkshopPad) {
       tile.noDecoration = true;
       tile.reserved = true;
@@ -43,8 +43,8 @@ export function findVehicleSpawnPoints(terrain, start, islandId, workshopSite = 
     const dz = tile.z - workshopSite.z;
     const localX = dx * Math.cos(WORKSHOP_YAW) - dz * Math.sin(WORKSHOP_YAW);
     const localZ = dx * Math.sin(WORKSHOP_YAW) + dz * Math.cos(WORKSHOP_YAW);
-    const clearWidth = TILE * 3 + 1.6;
-    const clearDepth = TILE * 3 + 1.7;
+    const clearWidth = TILE * 4.8 + 1.6;
+    const clearDepth = TILE * 3.6 + 1.7;
     return Math.abs(localX) > clearWidth * .5 + .8 || Math.abs(localZ) > clearDepth * .5 + .8;
   };
   const candidates = [...terrain.values()].filter(tile =>

@@ -4,7 +4,7 @@ import { routeLength } from './attachment-route.js';
 
 // Tune these independently of interaction, animation, physics and persistence.
 export const ATTACHMENT_RULES = Object.freeze({
-  range: 12 * TILE,
+  range: 15 * TILE,
   passingClearance: 5.5 * TILE,
   // Five tile centers leave exactly four tiles between the facing edges.
   bridgeMin: 5,
@@ -15,6 +15,7 @@ export const ATTACHMENT_RULES = Object.freeze({
   boundsGrowth: 6,
   centerDistance: 2,
   approachDistance: 100,
+  approachSlack: 2 * TILE,
 });
 const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 export const boundaryTiles = terrain => [...terrain.values()].filter(tile =>
@@ -134,23 +135,27 @@ function* placementSteps(incoming, terrain, bridgeBlocks = [], rules = ATTACHMEN
   }
   if (routeTo?.collect) return candidates;
   if (!routeTo) return best;
-  // Straight-line distance is a lower bound on travel, so this ordering lets
-  // us stop once no remaining candidate can beat the best actual clear route.
+  // Compactness may break ties between nearby routes, but must never buy a
+  // long tow to a remote island. Straight-line bounds prune the local search.
   const penalty = (rules.approachDistance ?? 100) / TILE;
+  const slack = rules.approachSlack ?? 2 * TILE;
   for (const candidate of candidates) {
     candidate.compactScore = candidate.score;
-    candidate.score -= (routeTo.minimumDistance?.(candidate) ?? 0) * penalty;
+    candidate.minimumDistance = routeTo.minimumDistance?.(candidate) ?? 0;
   }
-  let routedBest = null;
-  for (const candidate of candidates.sort((a, b) => b.score - a.score)) {
-    if (routedBest && candidate.score <= routedBest.score) break;
+  let nearestDistance = Infinity;
+  const routed = [];
+  for (const candidate of candidates.sort((a, b) => a.minimumDistance - b.minimumDistance || b.score - a.score)) {
+    if (candidate.minimumDistance > nearestDistance + slack) break;
     const route = routeTo(candidate);
     if (!route) continue;
     const approachDistance = routeLength(route);
+    nearestDistance = Math.min(nearestDistance, approachDistance);
     const score = candidate.compactScore - approachDistance * penalty;
-    if (!routedBest || score > routedBest.score) routedBest = { ...candidate, score, approachDistance, route };
+    routed.push({ ...candidate, score, approachDistance, route });
   }
-  return routedBest;
+  return routed.filter(candidate => candidate.approachDistance <= nearestDistance + slack)
+    .sort((a, b) => b.score - a.score || a.approachDistance - b.approachDistance)[0] ?? null;
 }
 
 export function canReleaseIsland(id, islands, connections, rootId = 'island-0') {

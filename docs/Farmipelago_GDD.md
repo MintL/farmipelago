@@ -1,8 +1,8 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-09\
-**Design direction updated:** 2026-09-09
+**Updated from implementation:** 2026-09-11\
+**Design direction updated:** 2026-09-11
 
 ## 1. Game Concept
 
@@ -94,9 +94,9 @@ Long-term play revolves around making the persistent Farmipelago capable of prod
 
 The game implements permanent Tier 1 requirements for **Wheat, Barley, Canola and Soybeans**, all available from the start with unlimited seeds. Each requires **3,600 L**. Completing any three immediately opens **Tier 2**. Tier 1 records remain saved; the storehouse moves to the new requirements and stops taking Tier 1 crops. Completed requirements never drain, and deliveries stop at the target, leaving surplus cargo in the vehicle.
 
-Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. All Tier 2 delivery requirements are enabled and display normal progress states. Eggs and Vegetable oil still await production routes; their cards do not show an Unavailable state. Flour is available through continuous Windmill production, existing Old Miller opportunities and flatbed delivery; the current build still cannot complete all of Tier 2. Targets are provisional: 14,400 L Hay (four bales) and 3,600 L Vegetable oil, 4,000 L Flour (four pallets), and 24 Eggs. The existing mow/bale loop supplies settlement hay: deliver four 3,600 L bales, one at a time on the bale fork, using Deliver in the normal settlement panel. Carried bales sit at a 90° yaw offset to the vehicle on the fork and retain that orientation on release. The bale is consumed immediately on delivery; completed requirements reject further bales. A tedder is not implemented. Pallet Forks remain unavailable; packaged goods use automatic flatbed transfers.
+Tier 2 opening permanently grants unlimited Grass seed and the existing hay equipment: front/rear mowers, baler and bale fork. The workshop and seed controls update immediately. All Tier 2 delivery requirements are enabled and display normal progress states. Eggs still await a production route; their cards do not show an Unavailable state. Flour is available through continuous Windmill production, existing Old Miller opportunities and flatbed delivery; Hay, Flour and Vegetable oil can now satisfy Tier 2’s 3-of-4 rule. Targets are 14,400 L Hay (four bales), 4,000 L Vegetable oil (four pallets), 4,000 L Flour (four pallets), and 24 Eggs. The existing mow/bale loop supplies settlement hay: deliver four 3,600 L bales, one at a time on the bale fork, using Deliver in the normal settlement panel. Carried bales sit at a 90° yaw offset to the vehicle on the fork and retain that orientation on release. The bale is consumed immediately on delivery; completed requirements reject further bales. A tedder is not implemented. Pallet Forks remain unavailable; packaged goods use automatic flatbed transfers.
 
-Opening Tier 2 also records eligibility for chicken-farm, windmill and oil-press islands. Windmills now arrive as permanent processor islands; chicken farms and oil presses remain future content. For feature testing, 100% of newly generated Tier 2 encounters carry a Windmill. Existing islands, including Old Miller trades, retain their content. The Windmill is acquired through normal connection. Corn and livestock still require retained earned gates or Debug overrides. Tier opening earns only its defined capabilities, regardless of any other Debug settings.
+Opening Tier 2 also records eligibility for chicken-farm, windmill and oil-press islands. Windmills and Oil Presses now arrive as permanent processor islands; chicken farms remain future content. For feature testing, newly generated Tier 2 encounters use a seeded 50% Windmill / 50% Oil Press mix. Existing islands, including Old Miller trades, retain their content. The Windmill is acquired through normal connection. Corn and livestock still require retained earned gates or Debug overrides. Tier opening earns only its defined capabilities, regardless of any other Debug settings.
 
 ### Permanent 3-of-4 tiers
 
@@ -125,7 +125,7 @@ There should be no continuously draining food meters tied to settlement progress
 
 The intended split is:
 
-- **Settlement tiers provide guaranteed progression.** Opening a tier makes its core crops/seeds and essential farming equipment available and adds relevant specialist-island categories to the encounter pool.
+- **Settlement tiers provide guaranteed progression.** Opening a tier makes its core crops/seeds, essential farming equipment and basic support infrastructure available and adds relevant specialist-island categories to the encounter pool. The planned Pallet Shed permanently unlocks for player placement when Tier 2 opens (see Storage and Logistics).
 - **Drifting islands provide physical infrastructure and opportunities.** Specialist buildings such as windmills, oil presses, bakeries, cattle farms, chicken farms, dairies and food kitchens should generally arrive on islands rather than being bought from a construction menu.
 - **Optional mastery milestones provide improvements and convenience.** Examples include larger trailers, wider equipment or combination tools that improve systems the player has already demonstrated.
 
@@ -272,9 +272,9 @@ The world consists of multiple voxel islands generated from a persistent seed.
 
 The current generator provides a permanent two-island opening:
 
-- a dominant, level Farm Island with the farmyard, starter field space and a walk-in 3×3 workshop at the northern end of its west edge
+- a dominant, level Farm Island with the farmyard, starter field space and a walk-in hybrid Fieldworks workshop at the northern end of its west edge
 - a broad, irregular lake along the Farm Island's south coast, feeding an east-flowing river and waterfall
-- a much smaller, mostly level Settlement Island held stationary directly north, with the tractor and combine spawns, reserved turnaround space, and the Settlement Storehouse
+- a smaller, mostly level Settlement Island held stationary directly north, with the tractor and combine spawns, reserved turnaround space, and the Settlement Storehouse
 - a compact settlement with voxel-built homes, an interactive storehouse, worn paths and warm lighting
 - a fresh opening cinematic that first establishes both parked vehicles on Settlement, pans to reveal the visible, non-colliding Farm approaching from the south along negative Z, travels with its final docking, then eases back over the vehicles into the normal drive camera; HUD and gameplay input remain suppressed until that camera release, and the final center-aligned separation is measured from the generated shores before either footprint is placed
 - two metal chains extend between the facing undersides of Settlement and the approaching Farm, tightening as the islands dock; their anchors follow the perimeter at one-quarter and three-quarters of each island’s full width; the camera then holds on the connection while bridge planks assemble from Settlement toward Farm, followed by railings and lanterns; the chains remain as visible underside connections, and reduced motion preserves the ordered reveal without the pieces dropping into place
@@ -287,7 +287,10 @@ environmental coloring, trees, ground cover, lakes, rivers and waterfalls as the
 starter islands. About 80% of ordinary generated islands have 4–5.5-tile radii;
 the others vary from 7–10 tiles. Generation settings explicitly control size,
 elevation, terraces, underside depth/taper, vegetation, moisture, sunlight and
-water style. The starter islands retain their fixed presets.
+water style. New ordinary islands have a 25% chance of water, split evenly
+between coastal lakes and watercourses; the remaining 75% have no water.
+Saved islands retain their water settings, and service islands retain their dry preset.
+The starter islands retain their fixed presets.
 
 The shared sky flow starts southwest and turns clockwise through a full circle
 every ten active minutes. Relative passing motion runs opposite that heading at
@@ -296,34 +299,38 @@ one shared cruise of 180% of the travel speed for encounters and decorations
 upstream side after roughly five minutes. The farm and its camera do not rotate.
 All environmental travel cues follow this same changing direction.
 
-The encounter scheduler targets one suitable shore arrival roughly every **20 active seconds**,
-with a seeded **16–24-second** spacing for each candidate and off-screen approach
+The encounter scheduler targets one suitable shore arrival roughly every **30 active seconds**,
+with a seeded **26–34-second** spacing for each candidate and off-screen approach
 time accounted for before launch. This is a target, not a guaranteed deadline:
 long approaches, occupied routes and population limits can delay arrivals.
 The rare event should be seeing an island worth permanently keeping, not seeing
 an island at all.
 
 The scheduler prefers valid connection sites near
-the active vehicle, within the normal 12-tile interaction range, or the nearest
+the active vehicle, within the normal 15-tile interaction range, or the nearest
 valid shore when none is in reach. Encounter sites are searched nearest-first relative to the active vehicle, with
 compact layouts and multiple neighboring connections breaking distance ties. Generated candidates
 must have compatible bridge landings and a clear direct connection route. A
 small, flat island with clear landings is used as a generation fallback.
 
-Encounter routes validate a straight passage through a nearby shore waypoint,
-with the same incoming and outgoing heading. Both types use the current heading
+Encounter routes prefer a shallow curve through a nearby shore waypoint,
+with a continuous tangent there and an outward bend of up to three tiles on
+the approach and departure. They try a smaller bend and then a straight passage
+when the full curve cannot clear land or traffic. Both types use the current heading
 when planning; encounters allow up to 30 degrees of bias to find a clear passage.
 Encounter timing holds a prepared candidate off-scene until its launch time,
 using up to two reserved approaches in flight. Entry stays near the current camera edge instead of being pushed
 farther upstream to fill the schedule. Individual islands never
 speed up or slow down to meet the schedule. A longer or occupied approach may
 delay an arrival; collision clearance takes priority. The waypoint marks the encounter; the island
-continues along the same heading through departure. Encounter islands
+continues along its preplanned curve through departure. Encounter islands
 pass normally, with no scheduled hovering or special waiting window. Moving the
 vehicle away can miss an encounter. Candidates stay unpublished until their
 complete passage is clear and reserved. Published islands never teleport, pursue
-the vehicle, change direction, or discard their route when blocked. Unexpected
-obstructions still trigger the fixed-step safety stop, preserving the route. Normal passage maintains at
+the vehicle, replan their passage, or discard their route when blocked. Unexpected
+obstructions still trigger the fixed-step safety stop, preserving the route. Curves
+are sampled at no more than one-tile spacing and share the same route data for
+movement, reservations, arrival timing, traffic predictions and saves. Normal passage maintains at
 least 5.5 tiles of terrain clearance. Passing islands have no vehicle colliders
 and cannot be boarded.
 
@@ -341,9 +348,25 @@ never receive selection outlines or Connect actions. New routes follow the
 changing world heading; a published island keeps its own planned heading.
 
 Every passing island reserves its complete entry-to-exit route before becoming
-visible, including its swept solid bounds and a one-tile buffer. Complete
-reservation volumes must be mutually disjoint: a new corridor cannot block an
-older island's future path. The first encounter has priority over initial
+visible, including its swept solid bounds and a one-tile buffer. Reservations
+shrink to the remaining passage as the island moves, retaining its occupied
+footprint at a stopped endpoint. Ordinary passages may overlap spatially when
+simultaneous swept-bounds predictions, including off-scene launch waits, keep
+them at least two tiles apart. This lets following islands use the same lane
+without waiting for the previous island to disappear. The prediction accounts
+for each waypoint and retirement at off-screen exits. Actual motion still uses
+fixed-step swept checks with a one-tile gap, so unexpected stops or delayed
+retirement cause safe yielding. Connection and release reservations remain
+exclusive. Requested connections and releases take priority over future ordinary passages
+when their full motion corridors (including bridges for connections) are physically empty. Nearby traffic yields
+at that reservation; unpublished candidates are canceled and replanned. Actual
+occupied space and other connection/release reservations still block the action.
+Release priority also applies when its departure extends beyond a moved camera.
+Released islands restore before ordinary passages so this priority survives reloads.
+Restored passages may cross a priority connection or release reservation in the future, but
+must start outside it and yield before entering.
+Restored passages retain their positions, including any safety stop,
+and resume collision checks without requiring a new cruise-speed forecast. The first encounter has priority over initial
 decoration. Entry and exit use the current game camera and zoom, with a two-tile
 buffer around the complete visual bounds. There is no fixed distance margin
 around the whole farm. Full-route shore and collision checks still apply. Islands
@@ -363,12 +386,17 @@ turning it off restores normal island speed.
 All island motion uses swept solid-envelope checks against land, bridges, other
 moving islands and reserved connection/release routes. Solid envelopes include
 undersides, props and carried structures; spray and particles are not solid.
+Anchor chains are presentation-only and excluded from solid envelopes, including
+the permanent obstacle snapshot taken after restoring connected islands.
 Unrelated moving islands retain a one-tile envelope gap. Decorative traffic uses
 its complete solid bounds so irregular edges and overhangs cannot interleave.
 Traffic yields or stops
 before contact. Connection reservations cover the whole pull and bridge-building
 space. Releases preflight a clear lift/exit/descent, and preserve vertical physics
-motion. A blocked release remains attached with “No clear departure.” Collision
+motion. Release checks eight exit directions, preferring a clear level route,
+then trying lifted routes when land or traffic blocks those departures. Every
+candidate must pass the complete collision and reservation checks. Only when
+all candidates fail does the island remain attached with “No clear departure.” Collision
 avoidance overrides encounter timing: a blocked or geometrically impossible
 opportunity remains pending rather than causing an overlap or a burst of arrivals.
 
@@ -380,10 +408,11 @@ passage routes, route progress and encounter/decorative roles. Reload restores
 their locations and route reservations before new arrivals are scheduled, with
 no offline catch-up. Older saves without island locations start new approaches.
 
-Within 12 tiles of the active vehicle, measured to the nearest shore edge, a
+Within 15 tiles of the active vehicle, measured to the nearest shore edge, a
 thin white silhouette marks the whole passing island as selectable. Distant
-islands have no outline and ignore selection taps. Leaving range clears the
-selection and action; switching vehicles uses the new vehicle’s position. Tap any visible part for a brighter selection outline,
+islands have no outline and ignore selection taps. Outlines start hidden during
+shader preparation and appear only after the selection range check. Leaving range clears the
+selection and action; switching vehicles uses the new vehicle’s position. Tap any visible part for a brighter golden selection outline,
 then use the small contextual Connect action. There is no destination ghost or preview camera zoom. Connect and Release are
 anchored beside the selected island with a fine pointer, fitted within the screen
 and placed clear of visible HUD controls. Both actions use the same compact cream single-row control with muted amber
@@ -515,8 +544,25 @@ Reduced motion automatically slows it with the rest of the travel presentation.
 
 Ambient reindeer and foxes are temporarily absent from the two-island opening.
 Their implementation remains available for a later island slice, but the
-current Farmipelago owns no ambient wildlife scene or simulation. Cattle and
+current Farmipelago does not run their forest wildlife simulation. Cattle and
 their farming gameplay remain unchanged.
+
+Three small mallard-style voxel ducks live in the starting Farm lake. They swim
+independently inside its banks for a randomized 3–5 active minutes, then take off
+as a loosely staggered flock. Takeoff and return follow continuous sweeping curves,
+with gradual acceleration and altitude gain on departure and gradual deceleration
+and descent on return, ending tangent to the water. After the entire flock exits the current camera
+view, they spend 60 active seconds away before flying back, descending over the
+lake, flaring their wings and skimming into separate water landings. Touchdown
+and the short landing skim reuse the existing jump-water particles. A clear burst
+of twelve shaded droplets spreads around each duck at touchdown, with smaller
+follow-up bursts during the skim; reduced motion lowers the burst count. Both effects use opaque, lit voxel droplets with shaded faces and a
+day/night water palette, emitted at the water surface with normal depth occlusion.
+The ducks follow the Farm during its opening arrival; trip scheduling begins
+after attachment. They are ambient scenery with no collision, interaction or
+progression. Pause and hidden tabs freeze their clocks, build mode continues
+them, and reload restarts swimming without offline catch-up or saved duck state.
+Reduced motion removes bobbing, softens wingbeats and reduces landing spray.
 
 ---
 
@@ -548,7 +594,7 @@ Crop durations are catalog-driven. Wheat, Barley, Canola and Soybeans take **3 a
 
 These are design targets rather than final balance values. Later crops should not automatically grow more slowly only because they belong to a higher tier. A crop that already has a complex multi-step harvest may need less additional waiting. Growth time should encourage the player to leave a planted field and inspect islands, transport goods or work elsewhere rather than wait beside it.
 
-With a relevant passing-island target near 20 seconds, a three-minute starter crop creates room for roughly nine island encounters during one growth cycle.
+With a relevant passing-island target near 30 seconds, a three-minute starter crop creates room for roughly six island encounters during one growth cycle.
 
 The **Fast growth** Debug toggle is **on by default**, retaining the prototype
 speed: 3 seconds per ordinary crop stage, including grass (9 seconds to maturity).
@@ -677,8 +723,8 @@ Transfers occur in rapid 10 L steps and are reflected in vehicle/building invent
 
 A shared goods catalog separates product identity, units and storage compatibility
 from planting. Combine storage accepts crops, Grain Trailers and silos accept
-bulk crops, and the Water / Milk Tank retains liquid storage. Flour is the first
-packaged product, counted as whole pallets. It cannot enter seed selection,
+bulk crops, and the Water / Milk Tank retains liquid storage. Flour and Vegetable oil are
+packaged products, counted as whole pallets. It cannot enter seed selection,
 combine harvesting, silos or Grain Trailers. Hay and bale handling are unchanged.
 
 Packaged products remain as counts in a building's stock HUD. **Load** moves
@@ -691,7 +737,7 @@ cannot be unequipped. Pallet Forks are unavailable, and packaged goods have no
 manual pickup, drop or loose physics bodies.
 
 **Island opportunities:** Old Miller retains a seeded 50% definition for normal
-encounter balancing. The current Windmill testing override takes precedence for
+encounter balancing. The current 50/50 processor testing override takes precedence for
 new Tier 2 islands; existing **Old Miller** trading stalls remain usable. Service
 islands use a small flat, clear terrain preset so the voxel stall has an accessible
 yard. Its structure is included in route bounds, collision data and reserved land.
@@ -745,7 +791,7 @@ legacy stock is never converted into new Workshop inventory.
 
 ### Windmill islands
 
-New Tier 2 encounters currently carry Windmills 100% of the time for testing.
+New Tier 2 encounters currently use a seeded 50% Windmill / 50% Oil Press mix for testing.
 Tier 1 receives ordinary islands; existing saved islands are never rerolled.
 Each Windmill is a voxel building with thick walls, constructed openings, stepped
 roof and rotating sails. The complete sail rotation envelope participates in
@@ -781,7 +827,69 @@ retain fractional litres through reload. Definitions keep conversion rate,
 capacities, input alternatives, visual type and terrain requirements separate
 from each island’s saved stock.
 
+### Oil Press route and Quick building
+
+Oil Presses use the same service, stock ports, transfer animation and production
+system as Windmills. Each consumes **1,000 L Canola per active minute** and
+produces **500 L Vegetable oil per minute**: the same input timing at half the
+Windmill’s yield (1:0.5). Input and output each have a separate **8,000 L** capacity.
+The compact voxel workshop has constructed openings, thick walls, a stepped
+roof and a clear receiving yard, with matching collision and travel bounds.
+Canola unloads from the combine or Grain Trailer. A Flatbed collects only whole
+**1,000 L Oil pallets**, represented as golden containers; fractional Oil remains
+in the processor. All Oil quantities display in litres, including the shared
+settlement requirements popup and Deliver control. Processor/cattle HUDs retain
+the 180-pixel cap and round accessible Load/Unload/Cancel controls.
+
+The Tier 2 Oil target changes from the provisional **3,600 L to 4,000 L**, allowing
+four complete pallets to fulfill it without discarding surplus. Existing completed
+Oil requirements stay complete. Legacy incomplete litre progress receives credit
+rounded up to the next 1,000 L pallet, never losing delivered progress; saves mark
+the new pallet unit to avoid converting it again. New delivery always stops at
+four pallets and retains surplus cargo.
+
+The reusable **Oil Trader** opportunity exchanges **3,600 L Canola once for four
+Oil pallets (4,000 L)**. Its trade limit and remaining stock use the existing
+opportunity persistence and arrival-commit behavior. **Random opportunity generation
+is suppressed by the explicit processor testing mix**, including this fallback.
+Old Miller trades already present in saves remain functional. Encounter balancing
+and normal fallback testing remain deferred; no Debug inventory fixture is added.
+
+The saved, default-off **Quick building** Debug toggle exposes Windmill and Oil
+Press choices in the normal construction tray. They require clear level land,
+normal placement validation and Confirm. Drafts cannot produce or transfer goods;
+disabling Quick building cancels their drafts and hides those choices while
+confirmed processors keep operating. This toggle only grants construction access;
+it does not change production speed. Confirmed placed processors use the same
+service definitions, exact fractional stock, HUD and transfers as encounter
+processors. Their stock and placement persist on attached land and in released
+or pending-connection islands, including reload and reconnection. Production
+freezes during pause, hidden tabs and release, with no offline catch-up. Demolish
+removes the processor and its contents. Workshop recovery stock remains absent.
+
 Other specialist processors remain future content.
+
+### Pallet Shed
+
+The following is planned design, not yet implemented.
+
+Opening Settlement Tier 2 permanently unlocks the Pallet Shed as player-placeable support infrastructure.
+
+The Pallet Shed is basic farm logistics rather than specialist production infrastructure. It is therefore unlocked predictably through settlement progression instead of arriving randomly on a drifting island.
+
+The player places it through the normal construction mode on valid clear, level terrain. The initial shed stores up to **8 whole pallets** of packaged agricultural goods. It accepts any compatible packaged product, beginning with Flour and later including products such as Vegetable Oil, Bread, Cheese and Fabric.
+
+A nearby Flatbed can **Load** or **Unload** pallets one at a time using the normal packaged-goods transfer rules. Goods remain stored by product identity and persist across saves.
+
+The purpose of the Pallet Shed is to give surplus processed goods somewhere useful to go. Settlement deliveries stop at their exact requirement target, so excess Flour or other packaged goods can be stored instead of remaining indefinitely on the Flatbed. Stored goods can later be transported to processors, future settlement requirements or other opportunities.
+
+Example flow:
+
+**Windmill → Flour pallet → Flatbed → Settlement requirement or Pallet Shed → Bakery later**
+
+The Settlement Storehouse should not act as general player storage. Its role remains progression delivery, while the Pallet Shed belongs to the player's own logistics network.
+
+The first Pallet Shed should be intentionally modest rather than a large industrial warehouse. Larger capacity may later come from optional mastery progression or a larger storage building.
 
 ### Grain Silos
 
@@ -808,7 +916,7 @@ The game now has an implemented construction mode rather than buildings being en
 
 A round build button opens a dedicated elevated, pannable construction view. Available buildings appear as a single-row tray centered along the bottom of the screen. Selecting a type immediately creates a draft at the nearest suitable clear site around the current view, after which the player can reposition it before confirmation or remove it with a contextual Cancel action. The tray stays visually compact and does not carry barn-placement instructional copy.
 
-The player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn** in the current prototype.
+The normal player-placeable buildings are the **grain silo** and progression-gated **Cattle Barn**. The default-off Quick building Debug toggle additionally exposes Windmill and Oil Press for placement testing.
 
 The long-term drifting-island direction should avoid turning specialist agricultural production buildings into a conventional purchase/build menu. Processors and distinctive farm infrastructure should generally arrive as part of passing islands, making attachment decisions part of progression. Basic support infrastructure may remain player-placeable where needed.
 
@@ -838,7 +946,7 @@ Future buildings may support:
 - equipment
 - new progression systems
 
-Every new building must follow the small-voxel building construction standard in the Art Direction section. This applies equally to permanent world structures and player-placeable buildings.
+Every integrated building must follow the small-voxel building construction standard in the Art Direction section. This applies equally to permanent world structures and player-placeable buildings. The separate vehicle-inspired grain mill and Settlement Storehouse studies described below are explicitly approved modeling exceptions for review.
 
 The design should continue to require buildings to have clear gameplay functions rather than adding structures purely because farming games conventionally contain them.
 
@@ -908,7 +1016,9 @@ Both driving and construction support smooth, bounded distance zoom, from close-
 
 Construction mode switches to an elevated pannable overview camera.
 
-The pause menu's Debug section includes a time-of-day slider. It previews the complete environment while paused, saves the selected phase and resumes the normal cycle when play continues.
+The pause menu's Debug section lists the implemented settlement tiers and can permanently open a later tier with its normal capability unlocks, preserving delivery history without completing skipped requirements. Earlier tiers cannot be reopened. Camera FOV is fixed at 28° for normal driving; Debug camera presets are removed.
+
+The Debug section also includes a time-of-day slider. It previews the complete environment while paused, saves the selected phase and resumes the normal cycle when play continues.
 
 The camera should preserve the miniature-diorama feeling while keeping vehicle control readable on a phone screen.
 
@@ -965,7 +1075,7 @@ Current visual language includes:
 - animated trees and vegetation
 - compact voxel-built settlement homes and a storehouse with stepped roofs, constructed openings and warm doorway lighting
 - sparse environment-driven prop clusters across both elevations, with off-grid placement and subtle rotation, mirroring and scale variation
-- outlet-anchored segmented waterfalls with backward-trailing foam and solid voxel spray, flat landing splashes matched to the day/night base-water palette, and environmental motion
+- outlet-anchored segmented waterfalls with backward-trailing foam and solid voxel spray, shaded 3D landing splashes using the day/night water palette, and environmental motion
 - guided crop and milk transfer swarms made from small color-matched cuboids, coordinated with animated machinery, responsive storage objects and delivery crates
 
 The overall feeling should be:
@@ -978,9 +1088,203 @@ The overall feeling should be:
 
 It should not look like a realistic simulator, but farming machinery and agricultural processes should remain recognizable.
 
+### Buildings and comparison gallery
+
+**Unified building gallery:** `/buildings.html` contains the original voxel
+collection and the newer vehicle-inspired studies in one viewer. A three-way
+**Voxel / Low poly / Hybrid** switch compares the available styles. All ten
+buildings have Voxel and Hybrid versions; the grain mill and Settlement
+Storehouse also have Low poly versions. The other Low poly options remain
+disabled because those alternatives have not been designed.
+`/buildings-next.html` redirects here and preserves earlier study links.
+
+For the vehicle-inspired studies, low-poly and beveled
+primitive construction is expressly allowed instead of requiring voxel-only
+geometry. Prioritize chunky proportions, strong identity colors, exposed working
+parts and a purpose that reads at a glance. Terrain retains its voxel grid.
+The user approved the low-poly grain mill, requested the Settlement Storehouse,
+then requested hybrid versions of both and subsequently authorized Hybrid
+versions of the entire gallery collection. Direct links include
+`#grain-mill/voxel`, `#grain-mill/low-poly`,
+`#grain-mill/hybrid`, `#storehouse/low-poly` and `#storehouse/hybrid`. Original
+voxel deep links remain valid. Every building accepts `#building-id/hybrid`.
+The complete hybrid collection is now approved and used in the game, replacing
+all prior buildings: the starter workshop, settlement storehouse and cottages,
+placed silos and barns, processor islands and Old Miller/Oil Trader stalls.
+Restored buildings use the same factories; no save schema or stored quantities
+change. The comparison gallery remains available with all three styles.
+
+The hybrid grain mill retains the new mill's detailed working sails, flywheel,
+millstones, hopper, grain streams and filling sacks. Its architecture returns
+to the shared five-model-voxels-per-tile grid: a square tower with thick walls,
+constructed openings and recessed windows, an asymmetrical timber balcony,
+a stepped blue roof and a block-built bagging wing. The shortened left balcony
+leaves the hopper mouth clear. Freely modeled mechanical parts remain separate
+from the voxel architecture. The game uses this hybrid mill for both island
+processors and placed Windmills.
+
+The hybrid Settlement Storehouse follows the same combination. Its wide hall,
+two-course foundation, timber dock, thick cream walls, recessed side windows,
+parked teal doors, rear service entrance and stepped teal barrel roof use the
+shared construction grid. A deep canopy with timber corbels shelters the dock;
+crossbeams and metal hangers support the overhead rail. The detailed wheat
+shield, stocked racks, pallet truck, crate hoist, lanterns and waving flag retain
+their finer forms. The shared stock and hoist assembly is raised to meet the
+voxel dock, while yard cargo stays at ground level. Both newer storehouses share
+the same continuous lift-and-travel animation and lighting controls. The hybrid
+version now serves as the in-game Settlement Storehouse.
+
+The complete hybrid collection extends this visual language to the remaining
+eight buildings, with shared materials, five-voxels-per-tile architecture,
+constructed openings and a distinct activity for each purpose:
+
+| Building | Architecture and identity | Fine detail and motion |
+| --- | --- | --- |
+| Oil Press | Open cream press house, stepped teal roof and oil crest | Seed hopper, screw and moving platen, turning flywheel, copper oil line and receiving jug |
+| Fieldworks Workshop | Teal service bay, stepped sawtooth skylights and yellow gantry | Suspended wheel on a traveling hoist, vise, tools, rolling chest, tires and hose |
+| Cattle Barn | Red walls, broad stepped gambrel roof, hayloft and ventilated cupola | Hay manger, rolled bale, milk collection, stowed milking hose and moving weather vane; no built-in cow |
+| Grain Silo | Stepped galvanized shell, teal hoops and voxel roof cap | Moving elevator buckets, fine ladder and handrails, discharge spout and spinning ventilator |
+| Bluebell Cottage | Steep blue roof, projecting dormer, recessed windows and sheltered door | Bluebell pots, rain barrel, watering can, moving shutter and chimney smoke |
+| Clover Cottage | Low red roof, timber veranda and green shutters | Rocking chair, small table, flowers, moving laundry and chimney smoke |
+| Old Miller | Timber stall with a red-and-cream stepped canopy | Detailed flour sacks and scoop, moving suspended balance and swinging wheat sign |
+| Oil Trader | Timber stall with a teal-and-cream stepped canopy | Handled cans, copper reserve barrel, moving counter pump, measuring jug and swinging oil sign |
+
+Working/Idle freezes the process clock for the press, hoists, grain elevator,
+balance and oil pump. Weather vanes, cottage activity and hanging
+signs use the separate ambient clock. Animation pauses both clocks; reduced
+motion removes loose particles and smoke and subdues ambient movement. Windows
+and lanterns respond to the existing lighting selector in the gallery.
+
+In the game, each building has an independent working clock. Windmills and Oil
+Presses advance it only when their existing processor update actually produces
+goods; empty input, full output, drafts and detached islands stop both machinery
+and product streams. Barn milk flow appears only while milk stock increases,
+including the existing grazing production; it stops at capacity or without a
+productive herd. Cows remain separate animals. The silo elevator runs during
+input transfers, while its outlet valve and grain stream run during output
+transfers. Storehouse hoists follow deliveries and short bale-handling activity;
+rack stock reflects settlement progress. Trader pumps/balances run during trades
+or cargo transfers, and the workshop hoist runs while a vehicle occupies its
+service area. Flags, weather vanes, cottage details and the silo ventilator use
+an independent ambient clock. Pausing or hiding the game freezes both clocks;
+reduced motion hides particles/smoke and reduces ambient motion.
+
+All game buildings retain their authored construction scale: **MODEL_VOXEL =
+TILE / 5**, with no per-building resizing. Differences in overall size come
+from the number of cells in each model. Full-size collision boxes and transfer
+ports follow the same transforms. The settlement reserves all three building
+sites together, connects their entrances to the bridge, then allocates vehicle
+parking. Starter radii are now 7.8 for Farm and 7.0 for Settlement before the
+shared 1.5 layout factor: 11.7 and 10.5 terrain tiles respectively, plus the
+existing small seeded jitter. This is roughly 8–9% more radius (17–20% more
+nominal area) to leave room around the new buildings and vehicle approaches.
+Settlement remains smaller than Farm, and the shore-based placement retains
+the two-tile bridge target. This changes the starter
+settlement layout; existing vehicle positions and attached island clearance
+need manual save/reload verification after this art-layout update.
+
+The tractor establishes the size hierarchy: small market stalls, modest homes,
+and substantial production/storage buildings. Bluebell now has a 12-by-10-cell
+hall (formerly 16 by 14), Clover a 14-by-10-cell hall (formerly 20 by 14).
+Their smaller stepped roofs retain the dormer and veranda identities; windows,
+doors, chimneys and domestic props are refitted to these footprints. Trader
+canopies are 14 cells wide instead of 20, with shallower shelves and an exposed
+counter extension for the animated balance or pump. All four revisions use
+fewer cells at the same 0.2-tile cell size, in both gameplay and the Hybrid
+gallery. Household ambient motion and transfer-driven trader motion remain.
+The larger farm buildings and tractor retain their dimensions.
+
+The workshop reserves a seven-tile pad and keeps its hanging wheel beside the
+access lane. The barn sits 2.2 tiles behind its existing site anchor so its
+pasture gate and saved pen vertices retain their coordinates. New construction
+reserves the larger building envelopes; confirmed saved buildings retain their
+sites and inventories. Crowded old sites need manual clearance review.
+Structural collision boxes come from the same occupied voxel cells as the
+meshes, with compact volumes for machinery, cargo and the mill's sail sweep.
+Instanced construction outlines, occlusion and day/night lighting support the
+new meshes without changing shared vehicle materials.
+
+The barn model contains no built-in animals. Cows remain separate wandering
+gameplay animals rather than permanent parts of the building mesh.
+The hay fork is stored beside the exterior hay bale, with grounded tines and a
+wall keeper supporting its shaft. The Oil Press has no exterior tank or looping
+oil lines. A short copper outlet pours directly into a jug in the open bay.
+
+Style changes retain the camera pose, common per-building framing, actual model
+scale, lighting, tractor comparison, pause state and animation clocks. The
+original voxel animations remain as authored; the hybrid and low-poly mill
+share the same process animation. The building picker retains all ten original
+building types. No production, collision, terrain or save state is created by
+the comparison viewer. Keyboard/touch interaction and phone layout remain manual
+verification tasks.
+
+The grain mill combines a squat cream octagonal tower, a broad blue enamel cap,
+oversized cream-and-gold sails, a yellow grain hopper, visible grinding stones
+and a lower bagging wing. Production animation connects turning sails and
+flywheel, shaking hopper, falling grain, milling and flour sacks filling and
+moving along a short roller table. The existing tractor is an optional reference
+at its real model scale. Working/Idle controls the process, while Animation
+pauses the whole preview. Hidden tabs freeze it; reduced motion defaults to
+paused and removes streams and shake. This is illustrative motion with no
+production, inventory, footprint, collision, progression or save changes.
+Existing models remain available through the style switch.
+
+The new Settlement Storehouse is the settlement delivery destination, distinct
+from the planned player-owned Pallet Shed. A broad faceted teal barrel roof,
+cream walls, substantial painted corner posts and an open receiving hall give
+it a compact warehouse silhouette. Shelves of grain crates and flour sacks,
+a large wheat shield and the gold-and-cream village flag make the civic purpose
+visible. A palletized delivery crate hangs from a trolley on an overhead rail:
+it lifts from the dock, travels into the hall, settles, then returns through
+the same clear route without teleporting. Idle freezes the machinery and cargo,
+while the flag retains ambient motion. Animation and hidden tabs freeze both
+clocks; reduced motion starts paused and slows the mechanism and flag when
+enabled. Evening lighting brightens the dock lanterns. The tractor comparison
+uses a temporary front apron in this preview. These illustrative movements do
+not award deliveries or change stocks, progression, gameplay geometry or saves.
+This low-poly alternative remains in the gallery; the hybrid version is used in the settlement.
+
+The Voxel options preserve earlier models for comparison with the approved
+hybrids now used in gameplay. The voxel Settlement Storehouse direction
+is a compact public warehouse: cream masonry, heavy dark
+timber piers, a low charcoal stepped roof, a broad loading canopy and a large
+golden wheat crest distinguish it from the village homes. Its eleven-by-nine
+model-voxel foundation and receiving face remain fixed. Stock shelves and banded
+crates make its purpose visible through the open hall, and the village flag is
+mounted clearly above the ridge. The gallery demonstrates a lifting crate hoist
+with the Working machinery switch while the flag continues its ambient motion.
+On eventual game integration, hoist and cargo motion should follow deliveries;
+the preview does not change settlement stocks, progression or gameplay collision.
+
+### Shared voxel material palette
+
+Basic surface textures are now part of the intended building direction. Establish
+the common material library before applying it to buildings. `/materials.html`
+is the review surface: sixteen named materials appear together and individually
+on a block, a merged wall, a beam and a single voxel. Texture on/off, surface
+detail and lighting controls make color, grain and finish directly comparable.
+This palette is a candidate library; existing game and gallery buildings retain
+their current materials until the material review is complete.
+
+The base palette uses lime plaster, chalk-painted timber, dark oak, honey oak,
+fieldstone and basalt. Barn red, workshop teal, cottage blue and orchard green
+are the painted identity colors. Terracotta and charcoal slate provide roof
+finishes; galvanized steel, warm copper, harvest-yellow enamel and blue glazing
+complete the functional accents. Their colors, uses and material properties live
+in `src/world/buildings/material-palette.js`.
+
+Textures express material rather than a drawn voxel grid: fine plaster pores,
+wood grain, quiet mineral flecks, slate layers and soft metal mottling. Use small
+repeatable maps with no painted lighting, fake bevels, black outlines or seams
+around every cube. Texture detail has one shared scale in model space so merging
+cells into walls does not stretch it; long wood members orient grain along their
+length. Mipmapped sampling softens texture at gameplay distance. Keep the color
+families clear enough for a building to remain recognizable when its surface
+detail is no longer visible.
+
 ### Building Voxel Construction Standard
 
-The starter workshop establishes the mandatory visual construction language for every new or rebuilt building.
+The approved hybrid collection establishes the visual construction language for integrated buildings. Author architecture on the shared grid with thick walls, constructed openings and stepped roofs; machinery, cargo and domestic details may use finer primitives. The game adapter must preserve MODEL_VOXEL in world space for every building; site footprints must accommodate the model rather than shrinking its cells. The low-poly gallery alternatives remain comparison options.
 
 - Use the shared small-model grid of **five construction voxels across one terrain tile**. Building dimensions, offsets, thicknesses and details must resolve to integer spans on that local grid.
 - Author the building as occupied voxel cells or rectangular runs of repeated cells. Runs may be merged or instanced by material for performance, but the resulting form must retain a voxel-built silhouette.
@@ -989,7 +1293,7 @@ The starter workshop establishes the mandatory visual construction language for 
 - Roof pitch must be expressed with stepped courses, stepped gables and a voxel-scale ridge or edge treatment. Do not use a single rotated box or smooth sloped prism as a roof plane.
 - Beams, posts, trim, vents, lamps, gutters, ladders and similar details must use the same construction grid. Avoid arbitrary thin strips, smooth curves and decorative polygons that do not belong to the voxel assembly.
 - Large clean surfaces are allowed when they represent contiguous repeated cells, but their boundaries, openings, depth changes and attached details must make the smaller construction scale legible in silhouette.
-- Communicate the grid through geometry rather than visible grid lines, checkerboards or cube textures. Continue using flat, simple materials from the existing Farmipelago palette.
+- Communicate the grid through geometry. Basic surface textures from the shared material palette are allowed and encouraged where they clarify wood, stone, plaster, roof or metal. Keep them subtle and consistently scaled; avoid drawn cube grids, checkerboards, baked shading and noisy outlines.
 - Keep visual and gameplay geometry separate. A richer stepped model must not change its footprint, collider, entrance position, interaction point or camera framing unless the gameplay design explicitly calls for that change.
 
 A building passes the visual test when, beside the terrain, the terrain reads as large world blocks while the building clearly reads as a model assembled from many smaller voxels rather than as a few generic low-poly primitives.

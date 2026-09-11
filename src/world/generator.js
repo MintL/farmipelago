@@ -1,3 +1,5 @@
+import { animateGameBuildingAmbient, setGameBuildingNightAmount } from './buildings/game.js';
+import { restorePlacedProcessors } from './services/visual.js';
 import { chooseIslandService, restoreIslandServices, islandServicePorts, updateIslandServices } from './services/index.js';
 import { cropProgress, paintFieldTile, restoreCrop, saveFieldTiles } from './fields/state.js';
 import { finishPreparation } from '../core/preparation.js';
@@ -25,7 +27,6 @@ import {
   findCargoSite,
   findVehicleSpawnPoints,
   findWorkshopSite,
-  reserveCargoApproach,
   reserveVehicleSpawnGround,
   reserveWorkshopGround,
 } from './sites.js';
@@ -42,8 +43,9 @@ import {
   reserveBridgeLandings,
   resolveNorthernIslandPlacement,
 } from './bridges.js';
-import { WATER_DEPTH, addStarterCoastLake, addWatercourse } from './water/system.js';
+import { addStarterCoastLake, addWatercourse } from './water/system.js';
 import { createWaterfallEffects } from './water/waterfall.js';
+import { createDuckSystem } from './wildlife/ducks.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
 import { GRASS_TILE_YIELD_LITRES, CROP_TILE_YIELD_MIN_LITRES, CROP_TILE_YIELD_MAX_LITRES, WEED_CHANCE } from './fields/config.js';
 import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
@@ -137,6 +139,8 @@ function* generateFarmSteps(
   const waterMotion = [];
   const waterfalls = [];
   const waterParticles = [];
+  const waterParticlePool = [];
+  const splashRandom = seededRandom(seed ^ 0x714dc325);
   const farmRevealObjects = [];
   const bridgeRevealObjects = [];
   const bridgeLanternGlowMaterial = new THREE.MeshStandardMaterial({
@@ -156,7 +160,7 @@ function* generateFarmSteps(
     .forEach(resource => options.preparationResources?.add(resource));
   let tallGrassGeometry = null;
   let workshopArea = null;
-  let setWorkshopNightAmount = () => {};
+  let workshopVisual = null;
   let plantedCount = 0;
   let readyCount = 0;
   let weedCount = 0;
@@ -174,27 +178,41 @@ function* generateFarmSteps(
   group.add(water);
   farmRevealObjects.push(water);
 
-  const emitSplash = (x, y, z, impact, material, countScale = 1, sizeScale = 1) => {
+  const emitSplash = (x, y, z, impact, material, countScale = 1, sizeScale = 1, parent = group, spread = 0) => {
+    const isWater = material === mats.waterSplash;
+    const particleRandom = isWater ? splashRandom : random;
     const count = Math.max(2, Math.round((10 + Math.min(8, impact * 1.2)) * countScale));
     for (let index = 0; index < count; index++) {
-      const size = (.13 + random() * .13) * sizeScale;
-      const mesh = box(size, size, size, material, false, false);
-      mesh.position.set(x, y + .32, z);
-      mesh.renderOrder = 10;
-      group.add(mesh);
-      const angle = random() * Math.PI * 2;
+      const size = (.13 + particleRandom() * .13) * sizeScale;
+      let mesh;
+      if (isWater) {
+        mesh = waterParticlePool.find(candidate => !candidate.visible);
+        if (!mesh && waterParticlePool.length < 96) {
+          mesh = new THREE.Mesh(waterParticlePool[0]?.geometry || new THREE.BoxGeometry(1, 1, 1), material);
+          waterParticlePool.push(mesh);
+        }
+        if (!mesh) continue;
+        mesh.visible = true;
+        mesh.scale.setScalar(size);
+      }
+      else mesh = box(size, size, size, material, false, false);
+      mesh.position.set(x, isWater ? y + size * .5 : y + .32, z);
+      mesh.rotation.set(0, 0, 0);
+      mesh.renderOrder = isWater ? 0 : 10;
+      parent.add(mesh);
+      const angle = particleRandom() * Math.PI * 2;
       const velocityScale = .42 + countScale * .58;
-      const speed = (.65 + random() * (1.1 + impact * .07)) * velocityScale;
+      const speed = (.65 + particleRandom() * (1.1 + impact * .07)) * velocityScale;
       waterParticles.push({
-        mesh,
-        x: x + (random() - .5) * .14,
-        y: y + .28 + random() * .18,
-        z: z + (random() - .5) * .14,
+        mesh, isWater, surfaceY: y,
+        x: x + Math.cos(angle) * spread + (particleRandom() - .5) * .14,
+        y: isWater ? y + size * .5 : y + .28 + particleRandom() * .18,
+        z: z + Math.sin(angle) * spread + (particleRandom() - .5) * .14,
         vx: Math.cos(angle) * speed,
-        vy: (3.15 + random() * 1.65 + impact * .18) * velocityScale,
+        vy: (3.15 + particleRandom() * 1.65 + impact * .18) * velocityScale,
         vz: Math.sin(angle) * speed,
-        spinX: (random() - .5) * 18,
-        spinZ: (random() - .5) * 18,
+        spinX: (particleRandom() - .5) * 18,
+        spinZ: (particleRandom() - .5) * 18,
         born: waterElapsed,
       });
     }
@@ -853,8 +871,8 @@ function* generateFarmSteps(
 
   const addWorkshop = (x, y, z) => {
     const workshop = new THREE.Group();
-    const width = TILE * 3;
-    const depth = TILE * 3;
+    const width = TILE * 4.8;
+    const depth = TILE * 3.6;
     const yaw = WORKSHOP_YAW;
     workshop.name = 'starter-workshop';
     workshop.position.set(x, y, z);
@@ -876,6 +894,7 @@ function* generateFarmSteps(
       });
     };
     const fieldworks = createFieldworksWorkshop();
+    workshopVisual = fieldworks;
     workshop.add(fieldworks.group);
     fieldworks.colliders.forEach(collider => addStaticBox(
       collider.width, collider.height, collider.depth, collider.x, collider.z, collider.y,
@@ -887,16 +906,14 @@ function* generateFarmSteps(
         return new THREE.Vector3(position.x, y + height + .004, position.z);
       }));
     };
-    addWorkshopLightSurface(-1.7, -1.7, 1.7, 1.7);
-    addWorkshopLightSurface(-1.3, -1.3, 1.3, 1.3, MODEL_VOXEL * 2);
-    addWorkshopLightSurface(-.7, -2.7, .7, -1.7);
+    addWorkshopLightSurface(-2.6, -2.6, 2.6, 1.8);
+    addWorkshopLightSurface(-2.4, -1.8, 2.4, 1.8, MODEL_VOXEL * 2);
+    addWorkshopLightSurface(-1.8, -3, 1.8, -1.8);
 
-    const lanternPosition = localToWorld(fieldworks.lightPosition.x, fieldworks.lightPosition.z);
-    staticLanternPositions.push(new THREE.Vector3(lanternPosition.x, y + fieldworks.lightPosition.y, lanternPosition.z));
-    setWorkshopNightAmount = amount => {
-      const nightAmount = THREE.MathUtils.clamp(Number(amount) || 0, 0, 1);
-      fieldworks.glowMaterial.emissiveIntensity = .25 + nightAmount * 2.75;
-    };
+    for (const point of fieldworks.lanternPositions) {
+      const position = localToWorld(point.x, point.z);
+      staticLanternPositions.push(new THREE.Vector3(position.x, y + point.y, position.z));
+    }
   };
 
   const decorateIsland = function* ({ island, cells, waterTiles, settings }, workshopSite = null) {
@@ -1110,6 +1127,7 @@ function* generateFarmSteps(
         this.departureFields = display;
       },
       animate(elapsed, travelState) {
+        animateGameBuildingAmbient(group, elapsed, this.status !== 'attached');
         water.userData.waterPatternOffset.x = group.position.x;
         water.userData.waterPatternOffset.z = group.position.z;
         animateNature(elapsed, travelState, waterfallEffects);
@@ -1191,7 +1209,6 @@ function* generateFarmSteps(
     return yield* generateFarmSteps(scene, physics, (seed + 0x9e3779b9) >>> 0, attempt + 1, onChange, options);
   }
   if (workshopSite) reserveWorkshopGround(terrain, workshopSite);
-  reserveCargoApproach(terrain, cargoSite, settlementIsland.id);
 
   const terrainGaps = islandConnections
     .map(connection => closestIslandGap(terrain, connection.fromId, connection.toId))
@@ -1217,8 +1234,6 @@ function* generateFarmSteps(
   bridgeGaps.forEach(gap => reserveBridgeLandings(terrain, gap));
   const start = terrain.get(gridKey(settlementIsland.cx, settlementIsland.cz));
   if (!start) throw new Error('Settlement Island requires a solid center spawn tile');
-  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, settlementIsland.id);
-  reserveVehicleSpawnGround(terrain, vehicleSpawnPositions);
   const settlementBridgeGap = bridgeGaps.find(gap => gap.from.islandId === settlementIsland.id || gap.to.islandId === settlementIsland.id);
   const settlementBridgeLanding = settlementBridgeGap?.from.islandId === settlementIsland.id
     ? settlementBridgeGap.from
@@ -1231,6 +1246,8 @@ function* generateFarmSteps(
     bridgeLanding: settlementBridgeLanding,
     reducedMotion,
   });
+  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, settlementIsland.id);
+  reserveVehicleSpawnGround(terrain, vehicleSpawnPositions);
   const cargoGroundTile = cargoSite
     ? terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)))
     : null;
@@ -1246,7 +1263,7 @@ function* generateFarmSteps(
   obstacles.push(...settlement.colliders);
   staticLanternPositions.push(...settlement.lanternPositions);
   staticLightSurfaceQuads.push(...settlement.lightSurfaceQuads);
-  const cargoPort = createSettlementStorehouse(settlement.receivingSite);
+  const cargoPort = createSettlementStorehouse(settlement.receivingSite, settlement.storehouseVisual);
   group.add(cargoPort.group);
   cargoPort.lanternPositions.forEach(position => {
     staticLanternPositions.push(cargoPort.group.localToWorld(position.clone()));
@@ -1362,6 +1379,12 @@ function* generateFarmSteps(
   };
 
   const forage = createForageSystem(terrain, group, physics, onChange, tile => islandAllows(tile, 'farming'));
+  const ducks = createDuckSystem({
+    terrain, parent: water, seed, camera: options.camera, reducedMotion,
+    splash: (point, countScale, sizeScale) => emitSplash(
+      point.x, point.y, point.z, 0, mats.waterSplash, countScale, sizeScale, water, .24 * TILE,
+    ),
+  });
   const occlusion = createOcclusionSystem(group, [...cargoPort.occluders, ...settlement.occluders]);
   const farmArrivalVisual = new THREE.Group();
   farmArrivalVisual.name = 'farm-island-arrival';
@@ -1510,6 +1533,7 @@ function* generateFarmSteps(
       island.id = saved.id;
       island.terrain.forEach(tile => { tile.islandId = saved.id; });
       restoreIslandServices(island, saved.services);
+      restorePlacedProcessors(island, saved.placedProcessors);
       attachments.restore(island, { gx: saved.transform.x / TILE, gz: saved.transform.z / TILE, x: saved.transform.x, z: saved.transform.z, gaps });
       pendingIslands.splice(index, 1);
       progress = true;
@@ -1523,6 +1547,7 @@ function* generateFarmSteps(
     island.terrain.forEach(tile => { tile.islandId = saved.id; });
     if (saved.fields) island.restoreFields(saved.fields);
     restoreIslandServices(island, saved.services);
+    restorePlacedProcessors(island, saved.placedProcessors);
     attachments.restorePending(island, saved);
   }
   driftingIslands.restore();
@@ -1598,7 +1623,7 @@ function* generateFarmSteps(
       return null;
     },
     setNightAmount(amount, lanternAmount = amount) {
-      setWorkshopNightAmount(lanternAmount);
+      setGameBuildingNightAmount(group, lanternAmount);
       cargoPort.setNightAmount(amount, lanternAmount);
       const bridgeLanternAmount = THREE.MathUtils.clamp(Number(lanternAmount) || 0, 0, 1);
       arrivalLanternAmount = bridgeLanternAmount;
@@ -1608,13 +1633,15 @@ function* generateFarmSteps(
     dispose() {
       driftingIslands.dispose();
       forage.dispose();
+      ducks.dispose();
       bridgeLanternGlowMaterial.dispose();
       Object.values(grainSplashMaterials).forEach(material => material.dispose());
       disposeObjectResources(group);
     },
-    animate(elapsed, delta = 0, isWildlifeBlockedAt = () => false, travelState = null) {
+    animate(elapsed, delta = 0, isWildlifeBlockedAt = () => false, travelState = null, workshopWorking = false) {
       let persistentChange = false;
       settlement.animate(elapsed, travelState);
+      workshopVisual?.update(delta, workshopWorking, elapsed);
       driftingIslands.update(delta, travelState, arrivalComplete);
       attachments.update(delta);
       attachments.attached.forEach(island => island.animate(elapsed, travelState));
@@ -1632,20 +1659,25 @@ function* generateFarmSteps(
       }
       waterElapsed = elapsed;
       effectElapsed = elapsed;
+      ducks.update(elapsed, delta, arrivalComplete);
       mats.water.uniforms.time.value = elapsed;
       animateNature(elapsed, travelState, waterfallEffects);
       for (let index = waterParticles.length - 1; index >= 0; index--) {
         const particle = waterParticles[index];
         const age = elapsed - particle.born;
-        if (age > 1.15) {
-          particle.mesh.removeFromParent();
-          particle.mesh.geometry.dispose();
+        const height = particle.y + particle.vy * age - 7.2 * age * age;
+        if (age > 1.15 || particle.isWater && age > .1 && height < particle.surfaceY) {
+          if (particle.isWater) particle.mesh.visible = false;
+          else {
+            particle.mesh.removeFromParent();
+            particle.mesh.geometry.dispose();
+          }
           waterParticles.splice(index, 1);
           continue;
         }
         particle.mesh.position.set(
           particle.x + particle.vx * age,
-          particle.y + particle.vy * age - 7.2 * age * age,
+          height,
           particle.z + particle.vz * age,
         );
         particle.mesh.rotation.x = age * particle.spinX;
@@ -1697,14 +1729,15 @@ function* generateFarmSteps(
       }
       return null;
     },
-    buildingSiteAt(x, z, radius) {
+    buildingSiteAt(x, z, radius, footprint) {
       const gx = Math.floor(x / TILE + .5);
       const gz = Math.floor(z / TILE + .5);
       const center = terrain.get(gridKey(gx, gz));
       if (!center || center.water || !islandAllows(center, 'construction')) return null;
       const span = Math.max(0, Math.ceil(radius - .5));
-      for (let dx = -span; dx <= span; dx++) {
-        for (let dz = -span; dz <= span; dz++) {
+      const area = footprint || { minX: -span, maxX: span, minZ: -span, maxZ: span };
+      for (let dx = area.minX; dx <= area.maxX; dx++) {
+        for (let dz = area.minZ; dz <= area.maxZ; dz++) {
           const tile = terrain.get(gridKey(gx + dx, gz + dz));
           if (!tile || !islandAllows(tile, 'construction') || tile.water || tile.hasTree || tile.reserved || Math.abs(tile.topY - center.topY) > .01) return null;
         }
@@ -1716,7 +1749,7 @@ function* generateFarmSteps(
         const localZ = dx * Math.sin(workshopArea.yaw) + dz * Math.cos(workshopArea.yaw);
         if (Math.abs(localX) < workshopArea.width * .5 + radius && Math.abs(localZ) < workshopArea.depth * .5 + radius) return null;
       }
-      for (const obstacle of buildingObstacles.values()) {
+      for (const obstacle of [...buildingObstacles.values()].flat()) {
         if (Math.hypot(center.x - obstacle.x, center.z - obstacle.z) < radius + obstacle.radius + .25) return null;
       }
       return { x: center.x, y: center.topY, z: center.z };
@@ -1725,17 +1758,22 @@ function* generateFarmSteps(
       driftingIslands.invalidate();
       const existing = buildingObstacles.get(id);
       if (existing) {
-        const index = obstacles.indexOf(existing);
-        if (index !== -1) obstacles.splice(index, 1);
+        for (const part of [existing].flat()) {
+          const index = obstacles.indexOf(part);
+          if (index !== -1) obstacles.splice(index, 1);
+        }
         buildingObstacles.delete(id);
       }
       if (obstacle) {
-        const tile = terrain.get(gridKey(Math.round(obstacle.x / TILE), Math.round(obstacle.z / TILE)))
-          || [...terrain.values()].reduce((nearest, candidate) => !nearest
-            || Math.hypot(candidate.x - obstacle.x, candidate.z - obstacle.z) < Math.hypot(nearest.x - obstacle.x, nearest.z - obstacle.z) ? candidate : nearest, null);
-        obstacle.islandId = tile?.islandId;
-        buildingObstacles.set(id, obstacle);
-        obstacles.push(obstacle);
+        const parts = [obstacle].flat();
+        for (const obstacle of parts) {
+          const tile = terrain.get(gridKey(Math.round(obstacle.x / TILE), Math.round(obstacle.z / TILE)))
+            || [...terrain.values()].reduce((nearest, candidate) => !nearest
+              || Math.hypot(candidate.x - obstacle.x, candidate.z - obstacle.z) < Math.hypot(nearest.x - obstacle.x, nearest.z - obstacle.z) ? candidate : nearest, null);
+          obstacle.islandId = tile?.islandId;
+          obstacles.push(obstacle);
+        }
+        buildingObstacles.set(id, parts);
       }
       physics.rebuildStaticColliders(terrain, obstacles, lowerBlocks, bridgeBlocks);
     },
@@ -1858,7 +1896,7 @@ function* generateFarmSteps(
     splashAt(x, z, impact) {
       const tile = terrain.get(gridKey(Math.floor(x / TILE + .5), Math.floor(z / TILE + .5)));
       if (!tile?.water || islandById.get(tile.islandId)?.status !== 'attached') return false;
-      emitSplash(x, tile.topY + WATER_DEPTH, z, impact, mats.waterSplash);
+      emitSplash(x, tile.topY + .012, z, impact, mats.waterSplash);
       return true;
     },
     grainSplashAt(x, y, z, impact, cropId, countScale = 1, sizeScale = 1) {

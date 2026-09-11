@@ -25,7 +25,7 @@ export const SETTLEMENT_TIERS = [
       { id: 'hay-bale', name: 'Hay', icon: 'hay-bale', unit: 'litres', target: 4 * HAY_BALE_LITRES, available: true },
       { id: 'eggs', name: 'Eggs', icon: 'eggs', unit: 'items', target: 24 },
       { id: 'flour', name: 'Flour', icon: 'flour', unit: 'pallets', target: 4, available: true },
-      { id: 'vegetable-oil', name: 'Vegetable oil', icon: 'vegetable-oil', unit: 'litres', target: 3600 },
+      { id: 'vegetable-oil', name: 'Vegetable oil', icon: 'vegetable-oil', unit: 'pallets', target: 4 },
     ].map(requirement => ({ ...requirement, available: true })),
   },
 ];

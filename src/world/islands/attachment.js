@@ -81,9 +81,9 @@ export function createIslandAttachments({ group, terrain, islands, connections, 
         return plan.route;
       };
       routeTo.minimumDistance = placement => from.distanceTo(new THREE.Vector3(placement.x, 0, placement.z));
-      const route = routeTo(preview);
-      const chosen = route ? { ...preview, route }
-        : findAttachmentPlacement(island.terrain, terrain, bridgeBlocks, ATTACHMENT_RULES, routeTo);
+      // The island keeps drifting after selection; rank destinations again
+      // using the current launch and catch instead of keeping a stale socket.
+      const chosen = findAttachmentPlacement(island.terrain, terrain, bridgeBlocks, ATTACHMENT_RULES, routeTo);
       if (!chosen || !drifting.reserveConnection(island, chosen.route, chosen.gaps)) {
         api.blockedConnection = island.id;
         return false;
@@ -171,7 +171,7 @@ export function createIslandAttachments({ group, terrain, islands, connections, 
       if (!motion || motion.complete) return null;
       const { island, placement, from } = motion;
       const point = tile => ({ gx: tile.gx, gz: tile.gz, x: tile.x, z: tile.z, topY: tile.topY, islandId: tile.islandId });
-      return { id: island.id, seed: island.seed, settings: { ...island.settings }, fields: island.persistentFields(), services: structuredClone(island.services || []), from: { x: from.x, y: from.y, z: from.z },
+      return { id: island.id, seed: island.seed, settings: { ...island.settings }, fields: island.persistentFields(), services: structuredClone(island.services || []), placedProcessors: structuredClone(island.placedProcessors || []), from: { x: from.x, y: from.y, z: from.z },
         placement: { gx: placement.gx, gz: placement.gz, x: placement.x, z: placement.z, route: placement.route, pull: placement.pull,
           gaps: placement.gaps.map(gap => ({ from: point(gap.from), to: point(gap.to), distance: gap.distance, centerDistance: gap.centerDistance })) } };
     },

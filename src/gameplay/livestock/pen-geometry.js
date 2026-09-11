@@ -99,13 +99,16 @@ export function barnPenAnchors(site) {
 
 export function barnPenConnectorSegments(site) {
   const [leftAnchor, rightAnchor] = barnPenAnchors(site).map(cornerToWorld);
-  const wallHalfWidth = 1.34;
-  return [
-    { a: { x: site.x - wallHalfWidth, z: site.z }, b: { x: leftAnchor.x, z: site.z } },
-    { a: { x: leftAnchor.x, z: site.z }, b: leftAnchor },
-    { a: { x: site.x + wallHalfWidth, z: site.z }, b: { x: rightAnchor.x, z: site.z } },
-    { a: { x: rightAnchor.x, z: site.z }, b: rightAnchor },
-  ];
+  const wallHalfWidth = 2.4 * TILE;
+  const wallZ = site.z - .4 * TILE, apronZ = site.z + .7 * TILE;
+  return [leftAnchor, rightAnchor].flatMap((anchor, index) => {
+    const wallX = site.x + (index ? wallHalfWidth : -wallHalfWidth);
+    return [
+      { a: { x: wallX, z: wallZ }, b: { x: wallX, z: apronZ } },
+      { a: { x: wallX, z: apronZ }, b: { x: anchor.x, z: apronZ } },
+      { a: { x: anchor.x, z: apronZ }, b: anchor },
+    ];
+  });
 }
 
 const fenceCrossesBlockedTiles = (segments, blockedAt) => segments.some(segment => {
@@ -132,7 +135,7 @@ export function computePenGeometry(vertices, terrain, barnSite, context = {}) {
   const excluded = context.occupiedTileKeys || new Set();
   const barnGx = Math.round(barnSite.x / TILE), barnGz = Math.round(barnSite.z / TILE);
   const blockedAt = (gx, gz) => excluded.has(gridKey(gx, gz))
-    || (Math.abs(gx - barnGx) <= 1 && Math.abs(gz - barnGz) <= 1);
+    || (Math.abs(gx - barnGx) <= 3 && gz - barnGz >= -4 && gz - barnGz <= 1);
   const visibleSegments = segmentsFor(clean).filter(segment => !segment.hidden);
   if (fenceCrossesBlockedTiles(visibleSegments, blockedAt)) return invalid('Fence cannot pass through a building');
   const area = Math.abs(clean.reduce((sum, vertex, index) => {
@@ -151,7 +154,7 @@ export function computePenGeometry(vertices, terrain, barnSite, context = {}) {
       if (!pointInsidePolygon(gx, gz, clean)) continue;
       const key = gridKey(gx, gz);
       const tile = terrain?.get(key);
-      const inBarn = Math.abs(gx - barnGx) <= 1 && Math.abs(gz - barnGz) <= 1;
+      const inBarn = Math.abs(gx - barnGx) <= 3 && gz - barnGz >= -4 && gz - barnGz <= 1;
       if (!tile || tile.water || tile.reserved || tile.ploughed || tile.crop || tile.hasTree
         || Math.abs(tile.topY - barnLevel) > .01 || inBarn || excluded.has(key)) return invalid('The enclosed pasture must be clear, level grass');
       tiles.push(tile);
@@ -355,7 +358,7 @@ export function penGeometryFromLasso(samples, terrain, barnSite, context = {}) {
   const barnGx = Math.round(barnSite.x / TILE), barnGz = Math.round(barnSite.z / TILE);
   const validTile = candidate => {
     const tile = candidate.tile;
-    const inBarn = Math.abs(candidate.gx - barnGx) <= 1 && Math.abs(candidate.gz - barnGz) <= 1;
+    const inBarn = Math.abs(candidate.gx - barnGx) <= 3 && candidate.gz - barnGz >= -4 && candidate.gz - barnGz <= 1;
     return tile && !tile.water && !tile.reserved && !tile.ploughed && !tile.crop && !tile.hasTree
       && Math.abs(tile.topY - levelY) <= .01 && !inBarn && !excluded.has(candidate.key);
   };

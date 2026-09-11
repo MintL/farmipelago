@@ -7,7 +7,7 @@ export const isPenDraft = building => building?.constructionPhase === 'pen-draft
 export const isComplete = building => building?.constructionPhase === 'complete';
 
 export function normalizedConstructionPhase(saved) {
-  if (saved?.type === 'silo' && ['draft', 'complete'].includes(saved?.constructionPhase)) return saved.constructionPhase;
+  if (['silo', 'windmill', 'oil-press'].includes(saved?.type) && ['draft', 'complete'].includes(saved?.constructionPhase)) return saved.constructionPhase;
   if (saved?.type === 'cattle-barn' && CONSTRUCTION_PHASES.has(saved?.constructionPhase)) return saved.constructionPhase;
   if (saved?.type === 'silo' || saved?.pen?.vertices?.length >= 4 || saved?.animals?.length) return 'complete';
   return 'draft';

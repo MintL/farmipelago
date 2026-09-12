@@ -3,6 +3,7 @@ import { createGrainMillConcept } from '../world/buildings/grain-mill-concept.js
 import { createStorehouseConcept } from '../world/buildings/storehouse-concept.js';
 import { BUILDING_MODELS } from '../world/buildings/models.js';
 import { HYBRID_STUDIES } from './hybrid-studies.js';
+import { createSettlementStudy } from './settlement.js';
 
 export const BUILDING_STYLES = [
   { id: 'voxel', name: 'Voxel' },
@@ -152,3 +153,17 @@ for (const original of BUILDING_MODELS) {
     variants: { voxel: voxelVariant(original), hybrid: HYBRID_STUDIES[original.id] },
   });
 }
+
+BUILDING_STUDIES.push({
+  id: 'settlement', name: 'Settlement', kind: 'settlement', category: 'Village development', color: '#408a7d',
+  status: 'Village life', caption: 'A small island, made into a place to belong.',
+  intro: 'Five stages of settlement life.\nSee the village grow, piece by piece.',
+  note: 'A gallery study of settlement growth and redevelopment.',
+  steps: [
+    ['Keep what stays', 'Unchanged walls, roofs and furnishings remain in place.'],
+    ['Upgrade the pieces', 'Only replaced parts lift away and new pieces settle into place.'],
+    ['Make it a village', 'Trim, flowers and lanterns finish each upgrade.'],
+  ],
+  target: [0, 1.3, 1], tractor: [0, .02, 6.2], tractorYaw: Math.PI, ownGround: true,
+  defaultStyle: 'hybrid', variants: { hybrid: { create: createSettlementStudy } },
+});

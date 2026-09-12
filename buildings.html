@@ -17,10 +17,17 @@
   <main>
     <section class="viewer" aria-label="Building model preview">
       <div class="heading"><div><p id="modelCategory" class="eyebrow">01 / Processing</p><h1 id="modelName">Grain mill</h1></div><span id="styleTag" class="study-tag">Hybrid</span></div>
-      <div class="style-bar"><span>Style</span><div class="style-switch" role="group" aria-label="Building style">
+      <div class="style-bar" id="styleBar"><span>Style</span><div class="style-switch" role="group" aria-label="Building style">
         <button type="button" data-style="voxel" aria-pressed="false">Voxel</button>
         <button type="button" data-style="low-poly" aria-pressed="false">Low poly</button>
         <button type="button" data-style="hybrid" aria-pressed="true">Hybrid</button>
+      </div></div>
+      <div class="tier-bar" id="tierBar" hidden><span>Settlement</span><div class="tier-switch" role="group" aria-label="Settlement tier">
+        <button type="button" data-tier="1" aria-pressed="true">Tier 1</button>
+        <button type="button" data-tier="2" aria-pressed="false">Tier 2</button>
+        <button type="button" data-tier="3" aria-pressed="false">Tier 3</button>
+        <button type="button" data-tier="4" aria-pressed="false">Tier 4</button>
+        <button type="button" data-tier="5" aria-pressed="false">Tier 5</button>
       </div></div>
       <div class="stage">
         <canvas id="scene" tabindex="0" aria-label="Grain mill 3D model. Drag to orbit, pinch or scroll to zoom. Arrow keys orbit, plus and minus zoom, 0 resets, Space pauses."></canvas>
@@ -40,16 +47,21 @@
     <aside class="inspector">
       <label class="building-picker" for="buildingSelect">Building<select id="buildingSelect"></select></label>
       <p id="styleNote" class="style-note">Voxel architecture with detailed working machinery.</p>
+      <div class="settlement-controls" id="settlementControls" hidden>
+        <div class="upgrade-buttons"><button type="button" id="nextUpgrade">Next upgrade →</button><button type="button" id="replayUpgrade">Replay upgrade</button></div>
+        <p id="upgradeStatus" role="status">Choose a tier, or watch the next upgrade.</p>
+        <div class="upgrade-progress" id="upgradeProgress" role="progressbar" aria-label="Settlement construction" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span></span></div>
+      </div>
       <div class="controls">
-        <div class="control-heading"><h2>See it working</h2><span id="motionStatus" role="status">Milling</span></div>
-        <div class="mode-buttons" role="group" aria-label="Building operation"><button id="runBuilding" type="button" aria-pressed="true">Working</button><button id="idleBuilding" type="button" aria-pressed="false">Idle</button></div>
+        <div class="control-heading"><h2 id="operationHeading">See it working</h2><span id="motionStatus" role="status">Milling</span></div>
+        <div class="mode-buttons" id="operationControls" role="group" aria-label="Building operation"><button id="runBuilding" type="button" aria-pressed="true">Working</button><button id="idleBuilding" type="button" aria-pressed="false">Idle</button></div>
         <label class="toggle-row" for="animate"><span>Animation</span><input id="animate" type="checkbox" role="switch" checked></label>
         <label class="toggle-row" for="autoRotate"><span>Turntable</span><input id="autoRotate" type="checkbox" role="switch"></label>
         <label class="toggle-row" for="tractor"><span>Tractor for scale</span><input id="tractor" type="checkbox" role="switch"></label>
         <label class="light-row" for="lighting"><span>Lighting</span><select id="lighting"><option value="day">Daylight</option><option value="evening">Evening</option><option value="studio">Studio</option></select></label>
       </div>
       <details class="model-notes"><summary>About this model</summary><p id="modelIntro" class="intro"></p><ol id="modelProcess" class="process"></ol></details>
-      <p class="review-note">Ten buildings. One collection.<br><span>Hybrid available for every building.</span></p>
+      <p class="review-note">Ten buildings. A growing settlement.<br><span>Five village tiers, ready to review.</span></p>
     </aside>
   </main>
   <script type="module" src="/src/building-studies/main.js"></script>

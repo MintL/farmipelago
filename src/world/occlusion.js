@@ -34,6 +34,18 @@ export function createOcclusionSystem(group, additionalObjects = []) {
   return {
     register,
     unregister,
+    reset() {
+      refreshElapsed = Infinity;
+      for (const entry of entries) {
+        entry.opacity = entry.targetOpacity = 1;
+        entry.materials.forEach(({ material, opacity, transparent, depthWrite }) => {
+          material.opacity = opacity;
+          material.transparent = transparent;
+          material.depthWrite = depthWrite;
+          material.needsUpdate = true;
+        });
+      }
+    },
     update(cameraPosition, vehicleState, delta) {
       if (!cameraPosition || !vehicleState) return;
       refreshElapsed += delta;

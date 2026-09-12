@@ -56,11 +56,12 @@ function perimeterAnchor(blocks, terrain, tile, fraction, towardZ) {
     : new THREE.Vector3(targetX, targetY, tile.z);
 }
 
-export function createConnectionChains(group, gap, lowerBlocks, terrain) {
+export function createConnectionChains(group, gap, lowerBlocks, terrain, incomingSide = 'from') {
   const pairs = [.25, .75].map(fraction => ({
     start: perimeterAnchor(lowerBlocks, terrain, gap.to, fraction, 1),
     end: perimeterAnchor(lowerBlocks, terrain, gap.from, fraction, -1),
   }));
+  if (incomingSide === 'to') pairs.forEach(pair => { [pair.start, pair.end] = [pair.end, pair.start]; });
   const chains = createAnchorChains(group, pairs);
   return { update(farmOffsetZ, extension) { chains.update(new THREE.Vector3(0, 0, farmOffsetZ), extension); } };
 }

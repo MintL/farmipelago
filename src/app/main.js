@@ -2,7 +2,8 @@ import { migratePalletState } from '../persistence/pallet-migration.js';
 import { createPalletTransfers } from '../gameplay/logistics/pallet-transfer.js';
 import { goodDefinition, storageAcceptsGood } from '../gameplay/catalog/goods.js';
 import { attachmentCameraSide, attachmentCameraFrame } from './attachment-camera.js';
-import { THREE } from '../core/shared.js';
+import { THREE, TILE } from '../core/shared.js';
+import { settlementCameraFrame } from './settlement-camera.js';
 import { createPhysics } from '../physics/index.js';
 import { createVehicle } from '../gameplay/vehicles/visual.js';
 import { createLoadoutPreview } from '../gameplay/vehicles/loadout-preview.js';
@@ -385,6 +386,91 @@ function beginOpeningCinematic(attachment = false) {
   return true;
 }
 
+function beginSettlementUpgrade() {
+  const development = farm?.settlementDevelopment;
+  if (!development || openingCinematic || vehicleTransition || viewMode !== 'drive' ||
+    farm.attachments.arrivalState()?.complete === false || !farm.arrivalState().complete || development.tier >= progression.state().tier) return;
+  const nextTier = development.tier + 1;
+  transferController.cancel();
+  palletTransfers.cancel();
+  transferEffects.clear();
+  // Only new solid geometry can displace a parked vehicle. Keep cargo and the
+  // vehicle's own reserved Farm spawn when clearing a construction parcel.
+  const key = collider => ['x', 'y', 'z', 'width', 'height', 'depth'].map(field => collider[field].toFixed(4)).join(',');
+  const previous = new Set(development.collidersFor(development.tier).map(key));
+  const incoming = development.collidersFor(nextTier).filter(collider => !previous.has(key(collider)));
+  let activeMoved = false;
+  for (const vehicle of fleet) {
+    const state = physics.vehicleState(vehicle.id);
+    const blocked = incoming.some(solid => Math.abs(state.x - solid.x) < solid.width / 2 + .9 * TILE &&
+      Math.abs(state.z - solid.z) < solid.depth / 2 + 1.2 * TILE &&
+      state.y < solid.y + solid.height && state.y + 1.8 * TILE > solid.y);
+    if (blocked) {
+      physics.resetVehicle(vehicle.id, farm.vehicleSpawnPoint(vehicle.spawnPoint).position);
+      syncCarriedBale(vehicle, physics.vehicleState(vehicle.id));
+      activeMoved ||= vehicle === activeVehicle();
+    }
+    vehicle.visual.resetTransientState();
+  }
+  if (activeMoved) updateDriveCamera(activeVehicleState(), 0, true);
+  const bounds = development.beginUpgrade(nextTier);
+  if (!bounds) return;
+  openingCinematic = {
+    settlement: true, elapsed: 0, committed: false, bounds,
+    target: driveCameraTarget.clone(),
+    savedPosition: camera.position.clone(), savedTarget: driveCameraTarget.clone(), savedFov: camera.fov,
+  };
+  cameraRotationTransition = null;
+  ui.setConstructionPopup(null);
+  ui.setStoragePopup(null);
+  ui.setCinematicActive(true);
+}
+
+function updateSettlementCamera(dt) {
+  const cinematic = openingCinematic, development = farm.settlementDevelopment;
+  const frameSeconds = reducedMotion ? 0 : 1, buildSeconds = reducedMotion ? 4 : 8;
+  const returnSeconds = reducedMotion ? 0 : 1;
+  cinematic.elapsed += dt;
+  const progress = THREE.MathUtils.clamp((cinematic.elapsed - frameSeconds) / buildSeconds, 0, 1);
+  if (!cinematic.committed) {
+    development.setConstructionProgress(progress);
+    if (progress === 1) {
+      development.finishUpgrade();
+      cinematic.committed = true;
+      syncCargoPort();
+      scheduleSave();
+    }
+  }
+  const frame = settlementCameraFrame(cinematic.bounds, camera.aspect);
+  if (cinematic.elapsed < frameSeconds + buildSeconds) {
+    const amount = reducedMotion ? 1 : THREE.MathUtils.smoothstep(cinematic.elapsed / frameSeconds, 0, 1);
+    camera.position.lerpVectors(cinematic.savedPosition, frame.position, amount);
+    cinematic.target.lerpVectors(cinematic.savedTarget, frame.target, amount);
+    camera.fov = THREE.MathUtils.lerp(cinematic.savedFov, frame.fov, amount);
+  }
+  else {
+    const amount = reducedMotion ? 1 : THREE.MathUtils.smoothstep(
+      (cinematic.elapsed - frameSeconds - buildSeconds) / returnSeconds, 0, 1);
+    camera.position.lerpVectors(frame.position, cinematic.savedPosition, amount);
+    cinematic.target.lerpVectors(frame.target, cinematic.savedTarget, amount);
+    camera.fov = THREE.MathUtils.lerp(frame.fov, cinematic.savedFov, amount);
+    if (amount === 1) {
+      driveCameraTarget.copy(cinematic.savedTarget);
+      camera.updateProjectionMatrix();
+      camera.lookAt(driveCameraTarget);
+      setCameraFogScale(driveCameraDistanceScale(camera.fov));
+      openingCinematic = null;
+      ui.setCinematicActive(false);
+      renderRequested = true;
+      return;
+    }
+  }
+  camera.updateProjectionMatrix();
+  camera.lookAt(cinematic.target);
+  driveCameraTarget.copy(cinematic.target);
+  setCameraFogScale(driveCameraDistanceScale(camera.fov));
+}
+
 function beforeIslandDetach(island) {
   island.suspendedBuildings = buildings.suspendIsland(island);
   for (const vehicle of fleet) {
@@ -426,10 +512,12 @@ function finishOpeningCinematic() {
 
 function updateOpeningCamera(dt) {
   const cinematic = openingCinematic;
+  if (cinematic?.settlement) { updateSettlementCamera(dt); return; }
   const arrival = cinematic?.attachment ? farm.attachments.arrivalState() : farm.arrivalState();
   if (!cinematic || !arrival) return;
   const fleetCenter = openingFleetCenter();
-  const farmCenter = new THREE.Vector3(arrival.farmCenter.x, arrival.farmCenter.y + .5, arrival.farmCenter.z);
+  const incoming = arrival.incomingCenter || arrival.farmCenter;
+  const farmCenter = new THREE.Vector3(incoming.x, incoming.y + .5, incoming.z);
   const bridgeCenter = new THREE.Vector3(arrival.bridgeCenter.x, arrival.bridgeCenter.y + .5, arrival.bridgeCenter.z);
   let targetGoal;
   let cameraGoal;
@@ -716,6 +804,7 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
 function initializeFarm(savedState) {
   savedState = migratePalletState(savedState);
   palletTransfers.cancel();
+  progression = createSettlementProgression(savedState?.progression);
   const attachmentComplete = savedState?.world?.connections?.[0]?.status === 'attached';
   farm = createArchipelagoRuntime(generateFarm(
     scene,
@@ -738,7 +827,6 @@ function initializeFarm(savedState) {
   }, farm.seed, travel.snapshot());
   physics.setSupportResolver((x, z) => farm.islandAtWorld(x, z)?.id || null);
   buildings.setParent(farm.group);
-  progression = createSettlementProgression(savedState?.progression);
   syncProgressionUi();
   if (savedState) {
     const savedBuildings = savedState.buildings.map(building => {
@@ -1464,6 +1552,7 @@ function update(dt) {
   ui.animate(dt);
   if (ui.isGameplayBlocked() || document.hidden) return;
   elapsed += dt;
+  beginSettlementUpgrade();
   if (!openingCinematic) updateCameraZoom(dt);
   if (viewMode === 'drive' && !openingCinematic) updateDriveCameraRotation(dt);
   if (openingCinematic) updateOpeningPhysics(dt);

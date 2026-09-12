@@ -8,9 +8,9 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - camera zoom for close-up detail or a broad overview: pinch over the world on phones, use the + / − buttons, scroll the mouse wheel, or press + / −; available in driving and construction, with independent zoom levels
 - smooth high-angle follow camera that keeps the controlled vehicle framed, with four camera-relative 90° orientations selected by a two-finger horizontal swipe over the world or the `[` / `]` desktop fallback and joined by a fast eased quarter-turn
 - persistent uniform-speed 10-minute day/night cycle with extended clear-blue daytime, shorter bright dawn/dusk, a time-varying flat-color backdrop, sun/moon-driven global lighting, a darker readable blue night, animated celestial shadows, precomputed local surface lighting from static lanterns, dynamic vehicle headlights, and a Debug time-of-day scrubber
-- cinematic two-island opening: an establishing view frames both parked vehicles on the stationary Settlement Island, reveals and follows the non-colliding Farm Island approaching from the south, two metal chains extend from Settlement’s rock underside and tighten as the Farm docks, then the roughly two-tile bridge assembles plank by plank followed by its railings and lanterns; the camera returns to driving after construction and collision activate across the clear air gap; the HUD and gameplay input stay suppressed until that release
+- the new starter bridge joins the village’s central street with three tiles clear between its rails; its length fits the generated Farm shore, with matching deck collision and more than one tile of terrain separation
 - continuous southwest travel presentation through a clear, saturated, square-tile-rendered green/blue/brown planetary map with palette-preserving distance sampling and broad quantized plateau levels far below the Farmipelago, a dense field of smaller northeast-moving distant voxel clouds, a much smaller population of faster near clouds at island-edge and underside height, and terrain-aware dust and loose leaves that skim northeast from dry open ground and vegetation; the distant surface uses a broad two-triangle plane beneath a fixed 3×3 horizon-biased footprint of stepped plateau tops, exposed dirt walls, and dense one-draw tiny trees, allowing only the extreme band to become texture-only while the base-plane edge remains beyond the extended camera frustum; all cues use fixed deterministic presentation resources, and reduced motion keeps calmer steady directional travel
-- the Farm Island contains the starter field, south-coast lake, and the teal Fieldworks workshop with stepped sawtooth skylights, lifting gantry and detailed service equipment built on the five-small-voxels-per-terrain-tile grid; the Settlement Island contains distinct tractor/combine spawns with reserved turnaround space, a compact non-interactive cluster of voxel-built homes, a communal receiving structure, worn paths, warm lighting, and no player farming or construction
+- the Farm Island contains the starter field, south-coast lake, and the teal Fieldworks workshop with stepped sawtooth skylights, lifting gantry and detailed service equipment built on the five-small-voxels-per-terrain-tile grid; new games start both vehicles on reserved Farm ground while Settlement approaches from the north; the village has tiered homes, an interactive Storehouse, open streets and warm lighting, with no player farming or construction
 - permanent Settlement Storehouse on solid settlement ground, with a stepped voxel roof, open receiving bay and warm lantern. Tier 1 requests Wheat, Barley, Canola and Soybeans, all unlocked from the start with unlimited seeds. The compact 240-pixel-wide popup uses a two-column card grid, keeping quantities visible alongside permanent Complete states. Its round Deliver icon sits below the right edge, matching the silo transfer button. Cards are read-only; Deliver automatically recognizes the carried crop. Each requirement permanently completes at 3,600 L. A prominent Complete any 3 of 4 rule explains the optional route; a short Unlocks: Hay farming & equipment line previews direct capabilities. Completing any three immediately opens Tier 2 and retains Tier 1 progress in the save. Deliveries stop at the target and leave surplus cargo in the vehicle. Tier 2 grants grass seed and existing hay equipment; Hay requires four 3,600 L bales (14,400 L), carried one at a time on the bale fork and delivered with the normal Deliver icon; Flour takes 4,000 L, delivered as four 1,000 L pallets. All settlement delivery requirements are enabled without Unavailable labels; Vegetable oil takes four 1,000 L pallets through the Oil Press route; Eggs still await production
 - generated props, bridges, the Settlement Storehouse, and completed player-placed buildings fade when they block the camera's view of the active vehicle; bridges do not fade merely because the vehicle is driving across them
 - a large irregular lake along the Farm Island's south coast with an east-flowing river and waterfall; the fall stays fixed to its terrain outlet while ten connected voxel-water segments, three foam streams, and a fixed pool of 24 solid spray voxels curve and trail northeast through the air, with calmer steady motion under reduced motion; landing in water throws shaded 3D voxel droplets with a day/night water palette
@@ -25,7 +25,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - detailed blue tractor, green-and-cream combine, and all seven rear/five front attachments using smaller blocks and rotated assemblies, with stepped wheels, open equipment shells, shared coupling positions, moving lift links, and drawbars that pivot at the tractor hitch
 - walk-in workshop with live 3D previews for the controlled vehicle and its compatible rear/front equipment; select an equipped tool again to leave that slot empty, equip the Farm Tractor's 20,000 L Grain Trailer to carry one crop from silos to the Settlement Storehouse, while the combine's built-in header leaves its attachment bays unavailable; the trailer, baler, and liquid tank each follow their hitch with an independently persisted tow angle while mounted tools remain rigid
 - Corn and livestock capabilities remain available through retained earned gates or separate Debug overrides. Settlement transfers retain rapid 10 L steps and physical cargo effects
-- mostly small seeded voxel islands (80% with 4–5.5-tile radii, occasional 7–10-tile islands) target a suitable shore arrival roughly every 30 active seconds, with seeded 26–34-second variation, with decorative islands temporarily disabled because their distant lanes are not visible on small screens. Saved decorative islands are also skipped on load. Encounter planning checks the nearest valid shores to the active vehicle first. Encounters prefer a shallow shore-following curve, bending up to three tiles outward around a nearby encounter waypoint, with a smaller curve or straight route as fallback. Their central tangent stays within 30 degrees of the current used for decorative routes. All passing islands cruise at the same speed (2.07 tiles/second normally); encounter timing waits off-scene for the appropriate launch time instead of changing speed or stretching spawn distance. Every passing island validates its full entry-to-exit corridor before spawning. Passage reservations release cleared sections, and simultaneous swept-bounds predictions allow safely spaced islands to share a corridor. Fixed-step collision checks retain a one-tile gap; connection and release routes remain exclusive. Generation and route searches run in small preparation slices (a 2 ms target per update), and the game precompiles island and outline shaders off-scene before publication. Spawns and completed departures use the current camera/zoom with a two-tile visual buffer, and decorative lanes must cross that view; published routes remain fixed; departure endpoints extend beyond the current camera view as it moves, rotates or zooms, with checked and reserved clearance and no age-based disappearance. The shared world flow turns through all directions every ten minutes. Near routes maintain 5.5 tiles of shore clearance; swept motion checks and reserved connection/release corridors prevent solid intersections, with traffic yielding when necessary. Within 15 tiles of the active vehicle, tap a white-outlined island and use the Connect control anchored beside it; selection turns its outline gold and keeps the driving view without a destination ghost. Outlines remain hidden outside selection range, including on newly arriving islands. Compact Connect and Release pills sit outside the selected island with a pointer to the tapped surface, keeping clear of phone controls. Blocked actions keep the same single-row size and show a lock with a short status. Paired chains shoot from exposed shore faces while the island keeps drifting, tighten on attachment, and draw it into a smooth curved approach; placement checks the catch position and pulling angle, and the camera follows the pull that clears existing land and bridges, and bridge construction finishes the arrival at a four-tile shore gap. The chain camera looks across the gap and fits all anchors on narrow screens. Bridge planks build outward from the existing Farmipelago. Empty space between phone action buttons passes taps to the world; drag the joystick to drive, or tap it to select visible land beneath it. Connected land supports normal driving, farming, resources and buildings and persists in saves. Tap connected land to Release when doing so leaves the remaining Farmipelago connected; it drifts away with its content.
+- the new starter bridge joins the village’s central street with three tiles clear between its rails; its length fits the generated Farm shore, with matching deck collision and more than one tile of terrain separation
 - automatic browser-local saving of the opening lifecycle and generated Farmipelago, time of day, drifting island locations and route progress, fields, crops, construction, livestock, progression, vehicles and inventories under the fresh schema-0 `farmipelago.gameState.v2` lineage; refresh during the intro replays the cinematic from the start, while refresh afterward restores the attached pair without replaying it, and the legacy `farmipelago.gameState` value is ignored and preserved for rollback or manual recovery
 - visible four-share plough that changes grass tiles into ploughed soil with rolling voxel soil feedback
 - the seeder plants selectable Corn, Wheat, Barley, Canola, Soybeans, or Grass seed; crops sprout and grow with squash-and-stretch transitions, then all harvest-ready crops gently pulse 18% taller and 7% wider together every 3.2 seconds to signal readiness; reduced motion disables the pulse
@@ -136,14 +136,12 @@ Fieldworks Workshop, Settlement Storehouse, Cattle Barn, Grain Silo, Bluebell
 Cottage, Clover Cottage, Old Miller and Oil Trader. Existing saves pick up the
 new visuals on reload. Every building uses the same world-space voxel size
 (`MODEL_VOXEL = TILE / 5`), with larger site reservations and matching collision
-shapes and transfer ports. The settlement has more room for its full-size homes
-and storehouse; buildings are planned before vehicle parking. Starter island
-radii are 11.7 tiles for Farm and 10.5 for Settlement, plus seeded jitter—roughly
-8–9% wider than the previous layout, with the same two-tile bridge target.
-Confirmed saved
-buildings retain their stock and sites, and the barn keeps its pasture gate.
-Existing saves need manual checks for vehicle positions and clearance around
-expanded buildings and settlement land.
+shapes and transfer ports. Farm has an 11.7-tile radius plus seeded jitter.
+New worlds use the approved fixed settlement footprint described below, with
+vehicle spawns on Farm and a bridge centered on the village entrance. Older
+worlds retain their organic settlement footprint, 10.5-tile radius plus jitter,
+and original bridge. Confirmed saved buildings retain their stock and sites,
+and the barn keeps its pasture gate.
 The cottages and trader stalls use fewer full-size voxels to sit more naturally
 beside the tractor: compact homes with their dormer/veranda details, and narrow
 stalls with visible working counters. These proportions are shared with the
@@ -212,6 +210,61 @@ The gallery itself has no game-session, inventory, physics or save access; the
 game uses the same hybrid model factories at their authored voxel scale.
 Desktop keyboard/touch controls, style switching and phone layout remain for
 manual review; no automated gameplay tests were run.
+
+### Settlement tier study
+
+Open **`/buildings.html#settlement/hybrid/1`**, or choose **Settlement** in the
+existing gallery's Building picker. Five tier buttons show the completed
+appearances on the same island, with one shared framing envelope. Tier 1 starts
+with a modest Storehouse and two cottages. Tier 2 adds the timber well, handcart
+and pergola. Tier 3 adds the amber cottage and covered market, and improves the
+blue cottage, well and canopy. Tier 4 brings adjoining red-roof homes, richer
+amber cottage details and paving. Tier 5 has three finishing upgrades: the civic
+Storehouse replacement, a bell tower beside the well, and richer market details.
+
+The fixed island keeps three-tile streets and a market approach, a four-by-five
+tile arrival area for turning, and an eight-by-three tile clear delivery court.
+Buildings occupy the outside parcels; the market faces inward. There are no
+trees in this revision, with fewer lamps, fences and garden beds. Richer cottage
+details fit their existing parcels instead of adding larger projecting porches.
+The bridge entrance has three tiles of clearance between its rails.
+
+**Next upgrade** plays the following tier; **Replay upgrade** shows the selected
+tier's changes from its predecessor. Unchanged parts stay in place: cottage
+walls and roofs remain during trim upgrades, the market keeps its frame, canopy
+and stock while its finishes change, and the well keeps its posts and winch.
+Only removed or replaced parts lift away; new pieces and details assemble around
+what remains. Complete building replacements, such as the Storehouse and red
+cottage redevelopment, still rebuild from the ground up. A normal replay takes
+ten seconds including camera framing and return. Reduced motion uses a
+four-second ordered reveal without lifting or dropping pieces. Explicitly
+starting a replay enables Animation; the Animation switch or Space pauses it.
+Hidden tabs freeze playback. Selecting any tier or another building cancels
+the replay cleanly. Orbit is available when paused; the original view returns
+after construction. Lighting and the optional tractor for scale remain available.
+Links ending in `/2` through `/5` open those completed stages directly.
+
+The approved models are now shared with gameplay. **New games** start both
+vehicles on Farm, with Settlement arriving from the north. Opening Tier 2 builds
+the next appearance in pieces, frames the changing parcels, updates collision
+when construction finishes, and returns to the tractor. Existing delivery
+requirements and unlocks remain authoritative: only Tiers 1 and 2 are currently
+implemented in progression; all five visual stages can be reviewed here.
+
+Saves record the layout and completed visual tier. Reloading partway through an
+upgrade replays the pending build without repeating deliveries. **Older saved
+worlds keep their previous layout and opening**, preserving their terrain,
+connected islands and content. The new layout appears in a new game; this change
+does not restart or delete an existing farm.
+
+Manual review for build 0.423: inspect all five gallery stages and four replays,
+partial upgrades retaining unchanged structure, portrait framing, pause and
+cancellation, reduced motion and evening lighting. In a new game, check Farm
+spawns, Settlement arrival, the centered bridge, Tier 1 delivery access, the Tier
+2 build and camera return, driving through the village, and reload before,
+during and after an upgrade. Also check an older saved world and the standard
+driving, terrain, plough and phone-control checklist. No gameplay checks were
+automated.
 
 ### Workshop design preview
 

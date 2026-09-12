@@ -77,11 +77,15 @@ function validTopology(world) {
   if (!Array.isArray(world.islands) || world.islands.length < EXPECTED_ISLANDS.size || world.islands.length > 128 ||
     !Array.isArray(world.connections) || world.connections.length < 1) return null;
   const islandIds = new Set();
-  let farmStatus = null;
+  if ((world.settlementLayout != null && world.settlementLayout !== 1) ||
+    (world.settlementVisualTier != null && (!Number.isInteger(world.settlementVisualTier) ||
+      world.settlementVisualTier < 1 || world.settlementVisualTier > 5))) return null;
+  const incomingRole = world.settlementLayout === 1 ? 'settlement' : 'farm';
+  let incomingStatus = null;
   for (const island of world.islands) {
     const expected = EXPECTED_ISLANDS.get(island?.id) || (typeof island?.id === 'string' && /^drifting-\d+$/.test(island.id)
       ? { role: 'wild', farming: true, construction: true } : null);
-    const validStatus = expected?.role === 'farm'
+    const validStatus = expected?.role === incomingRole
       ? island.status === 'approaching' || island.status === 'attached'
       : island.status === 'attached';
     if (!expected || islandIds.has(island.id) || !validStatus || island.role !== expected.role ||
@@ -94,12 +98,12 @@ function validTopology(world) {
     if (expected.role === 'wild' && (!validNaturalIsland(island) || island.transform.y !== 0 || island.transform.yaw !== 0 ||
       !Number.isInteger(island.transform.x) || !Number.isInteger(island.transform.z))) return null;
     islandIds.add(island.id);
-    if (expected.role === 'farm') farmStatus = island.status;
+    if (expected.role === incomingRole) incomingStatus = island.status;
   }
   if (![...EXPECTED_ISLANDS.keys()].every(id => islandIds.has(id))) return null;
   const connection = world.connections[0];
   const endpointIds = new Set([connection?.from?.islandId, connection?.to?.islandId]);
-  if (typeof connection?.id !== 'string' || connection.status !== farmStatus || connection.kind !== 'bridge' ||
+  if (typeof connection?.id !== 'string' || connection.status !== incomingStatus || connection.kind !== 'bridge' ||
     endpointIds.size !== 2 || ![...EXPECTED_ISLANDS.keys()].every(id => endpointIds.has(id)) ||
     !validAnchor(connection.from?.anchor) || !validAnchor(connection.to?.anchor)) return null;
   const ids = new Set([connection.id]);

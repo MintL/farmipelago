@@ -50,6 +50,7 @@ import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCove
 import { GRASS_TILE_YIELD_LITRES, CROP_TILE_YIELD_MIN_LITRES, CROP_TILE_YIELD_MAX_LITRES, WEED_CHANCE } from './fields/config.js';
 import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
 import { createSettlementVisual } from './settlement/visual.js';
+import { SETTLEMENT_LAYOUT_VERSION, settlementCells } from './settlement/layout.js';
 
 const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;
 const PROP_SPREAD = TILE * .64;
@@ -112,6 +113,11 @@ function* generateFarmSteps(
   onChange = () => {},
   options = {},
 ) {
+  const developedSettlement = !options.naturalIsland && (!options.savedWorld ||
+    options.savedWorld.settlementLayout === SETTLEMENT_LAYOUT_VERSION);
+  const arrivalIslandId = developedSettlement ? SETTLEMENT_ISLAND_ID : FARM_ISLAND_ID;
+  const stationaryIslandId = developedSettlement ? FARM_ISLAND_ID : SETTLEMENT_ISLAND_ID;
+  const approachOffsetZ = FARM_APPROACH_START_TILES * TILE * (developedSettlement ? -1 : 1);
   let fastGrowth = options.fastGrowth !== false;
   const random = seededRandom(seed);
   const terrainNoise = createPerlin(seed ^ 0x9e3779b9);
@@ -141,7 +147,7 @@ function* generateFarmSteps(
   const waterParticles = [];
   const waterParticlePool = [];
   const splashRandom = seededRandom(seed ^ 0x714dc325);
-  const farmRevealObjects = [];
+  const arrivalRevealObjects = [];
   const bridgeRevealObjects = [];
   const bridgeLanternGlowMaterial = new THREE.MeshStandardMaterial({
     color: 0xffdfa0,
@@ -176,7 +182,7 @@ function* generateFarmSteps(
   scene.add(group);
   group.add(tallGrass);
   group.add(water);
-  farmRevealObjects.push(water);
+  if (!developedSettlement) arrivalRevealObjects.push(water);
 
   const emitSplash = (x, y, z, impact, material, countScale = 1, sizeScale = 1, parent = group, spread = 0) => {
     const isWater = material === mats.waterSplash;
@@ -451,7 +457,7 @@ function* generateFarmSteps(
         mesh.instanceMatrix.needsUpdate = true;
         mesh.computeBoundingSphere();
         tallGrass.add(mesh);
-        if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(mesh);
+        if (islandId === arrivalIslandId) arrivalRevealObjects.push(mesh);
       });
     }
   };
@@ -499,7 +505,7 @@ function* generateFarmSteps(
       mesh.computeBoundingBox();
       mesh.computeBoundingSphere();
       tallGrass.add(mesh);
-      if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(mesh);
+      if (islandId === arrivalIslandId) arrivalRevealObjects.push(mesh);
     }
   };
 
@@ -590,7 +596,7 @@ function* generateFarmSteps(
         mesh.computeBoundingBox();
         mesh.computeBoundingSphere();
         group.add(mesh);
-        if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(mesh);
+        if (islandId === arrivalIslandId) arrivalRevealObjects.push(mesh);
       }
     }
   };
@@ -757,7 +763,7 @@ function* generateFarmSteps(
       topGeometry.computeBoundingBox();
       topGeometry.computeBoundingSphere();
       group.add(surface, soil, top);
-      if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(surface, soil, top);
+      if (islandId === arrivalIslandId) arrivalRevealObjects.push(surface, soil, top);
     }
 
     for (const islandId of new Set([...terrain.values()].map(tile => tile.islandId))) {
@@ -787,7 +793,7 @@ function* generateFarmSteps(
       edgeCaps.computeBoundingBox();
       edgeCaps.computeBoundingSphere();
       group.add(edgeCaps);
-      if (islandId === FARM_ISLAND_ID) farmRevealObjects.push(edgeCaps);
+      if (islandId === arrivalIslandId) arrivalRevealObjects.push(edgeCaps);
     }
   };
 
@@ -835,7 +841,7 @@ function* generateFarmSteps(
     group.add(tree);
     const tile = tileAt(x, z, terrain);
     if (tile) {
-      if (tile.islandId === FARM_ISLAND_ID) farmRevealObjects.push(tree);
+      if (tile.islandId === arrivalIslandId) arrivalRevealObjects.push(tree);
       tile.hasTree = true;
       contactBedPlacements.push({ tile, x, z, radius: design.radius * scale * .82, pieces: 5 });
     }
@@ -862,7 +868,7 @@ function* generateFarmSteps(
     group.add(stone);
     const tile = tileAt(x, z, terrain);
     if (tile) {
-      if (tile.islandId === FARM_ISLAND_ID) farmRevealObjects.push(stone);
+      if (tile.islandId === arrivalIslandId) arrivalRevealObjects.push(stone);
       tile.stones.push(stone);
       contactBedPlacements.push({ tile, x, z, radius: .22 * scale, pieces: 3 });
       addPropDirt(tile, x, z, scale);
@@ -878,7 +884,7 @@ function* generateFarmSteps(
     workshop.position.set(x, y, z);
     workshop.rotation.y = yaw;
     group.add(workshop);
-    farmRevealObjects.push(workshop);
+    if (!developedSettlement) arrivalRevealObjects.push(workshop);
     workshopArea = { x, y, z, width, depth, yaw, spawnClearanceWidth: width + 1.6, spawnClearanceDepth: depth + 1.7 };
 
     const localToWorld = (localX, localZ) => ({
@@ -1149,7 +1155,7 @@ function* generateFarmSteps(
   const islands = STARTER_ISLAND_LAYOUT.map(source => ({
     ...scaleIslandLayout(source),
     capabilities: { ...source.capabilities },
-    status: source.role === 'farm' && !attachmentComplete ? 'approaching' : 'attached',
+    status: source.id === arrivalIslandId && !attachmentComplete ? 'approaching' : 'attached',
   }));
   const islandById = new Map(islands.map(island => [island.id, island]));
   const islandConnections = STARTER_ISLAND_CONNECTIONS.map(connection => ({
@@ -1166,7 +1172,8 @@ function* generateFarmSteps(
   });
   const localGeneration = islands.map(island => ({
     island,
-    cells: createOrganicCells(0, 0, island.r, seed + island.legacyId * 911),
+    cells: developedSettlement && island.id === SETTLEMENT_ISLAND_ID ? settlementCells()
+      : createOrganicCells(0, 0, island.r, seed + island.legacyId * 911),
   }));
   const farmIsland = islandById.get(FARM_ISLAND_ID);
   const settlementIsland = islandById.get(SETTLEMENT_ISLAND_ID);
@@ -1177,7 +1184,8 @@ function* generateFarmSteps(
     settlementIsland,
     farmLocalCells,
     settlementLocalCells,
-    settlementIsland.placement,
+    developedSettlement ? { ...settlementIsland.placement, landingX: 0, bridgeSpanToleranceTiles: Infinity }
+      : settlementIsland.placement,
   );
   settlementIsland.cx = settlementPlacement.cx;
   settlementIsland.cz = settlementPlacement.cz;
@@ -1201,8 +1209,8 @@ function* generateFarmSteps(
     { reducedMotion },
   );
   workshopSite = findWorkshopSite(terrain, farmIsland);
-  cargoSite = findCargoSite(terrain, settlementIsland);
-  if (!cargoSite) {
+  cargoSite = developedSettlement ? null : findCargoSite(terrain, settlementIsland);
+  if (!developedSettlement && !cargoSite) {
     scene.remove(group);
     disposeObjectResources(group);
     if (attempt >= 20) throw new Error('Unable to generate a clear settlement yard on the Settlement Island');
@@ -1216,14 +1224,18 @@ function* generateFarmSteps(
   if (terrainGaps.length !== islandConnections.length || terrainGaps.some(gap => gap.distance <= TILE)) {
     throw new Error('Permanent starter islands require a clear air gap wider than one terrain tile');
   }
-  const bridgeGaps = islandConnections.map(connection => facingIslandGap(
+  const plannedGap = settlementPlacement.bridgeGap;
+  const bridgeGaps = developedSettlement ? [{ ...plannedGap,
+    from: terrain.get(gridKey(plannedGap.from.gx, plannedGap.from.gz)),
+    to: terrain.get(gridKey(plannedGap.to.gx, plannedGap.to.gz)),
+  }] : islandConnections.map(connection => facingIslandGap(
     terrain,
     islandById.get(connection.fromId),
     islandById.get(connection.toId),
   )).filter(Boolean);
-  if (bridgeGaps.length !== islandConnections.length || bridgeGaps.some(gap =>
+  if (bridgeGaps.length !== islandConnections.length || (!developedSettlement && bridgeGaps.some(gap =>
     Math.abs(bridgeDeckSpan(gap) / TILE - settlementIsland.placement.bridgeSpanTiles) >
-      settlementIsland.placement.bridgeSpanToleranceTiles)) {
+      settlementIsland.placement.bridgeSpanToleranceTiles))) {
     throw new Error('Permanent starter bridge must remain within its configured two-tile span tolerance');
   }
   const starterBridgeGap = bridgeGaps[0];
@@ -1232,8 +1244,9 @@ function* generateFarmSteps(
     throw new Error('Permanent bridge endpoints must use the Farm north shore and Settlement south shore');
   }
   bridgeGaps.forEach(gap => reserveBridgeLandings(terrain, gap));
-  const start = terrain.get(gridKey(settlementIsland.cx, settlementIsland.cz));
-  if (!start) throw new Error('Settlement Island requires a solid center spawn tile');
+  const spawnLayout = islandById.get(stationaryIslandId);
+  const start = terrain.get(gridKey(spawnLayout.cx, spawnLayout.cz));
+  if (!start) throw new Error('The starting island requires a solid center spawn tile');
   const settlementBridgeGap = bridgeGaps.find(gap => gap.from.islandId === settlementIsland.id || gap.to.islandId === settlementIsland.id);
   const settlementBridgeLanding = settlementBridgeGap?.from.islandId === settlementIsland.id
     ? settlementBridgeGap.from
@@ -1244,9 +1257,12 @@ function* generateFarmSteps(
     terrain,
     cargoSite,
     bridgeLanding: settlementBridgeLanding,
+    developed: developedSettlement,
+    initialTier: Math.min(options.savedWorld?.settlementVisualTier ?? options.getSettlementTier?.() ?? 1,
+      options.getSettlementTier?.() ?? 1),
     reducedMotion,
   });
-  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, settlementIsland.id);
+  const vehicleSpawnPositions = findVehicleSpawnPoints(terrain, start, stationaryIslandId, developedSettlement ? workshopSite : null);
   reserveVehicleSpawnGround(terrain, vehicleSpawnPositions);
   const cargoGroundTile = cargoSite
     ? terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)))
@@ -1260,10 +1276,11 @@ function* generateFarmSteps(
 
   if (workshopSite) addWorkshop(workshopSite.x, workshopSite.topY, workshopSite.z);
   group.add(settlement.group);
+  if (developedSettlement) arrivalRevealObjects.push(settlement.group);
   obstacles.push(...settlement.colliders);
   staticLanternPositions.push(...settlement.lanternPositions);
   staticLightSurfaceQuads.push(...settlement.lightSurfaceQuads);
-  const cargoPort = createSettlementStorehouse(settlement.receivingSite, settlement.storehouseVisual);
+  const cargoPort = settlement.cargoPort || createSettlementStorehouse(settlement.receivingSite, settlement.storehouseVisual);
   group.add(cargoPort.group);
   cargoPort.lanternPositions.forEach(position => {
     staticLanternPositions.push(cargoPort.group.localToWorld(position.clone()));
@@ -1288,7 +1305,8 @@ function* generateFarmSteps(
       staticLanternPositions,
       staticLightSurfaceQuads,
       gap,
-      'to',
+      developedSettlement ? 'from' : 'to',
+      developedSettlement ? TILE * 3 + MODEL_VOXEL : TILE * 2,
     );
     if (bridge) bridgeRevealObjects.push(bridge);
   }
@@ -1386,58 +1404,58 @@ function* generateFarmSteps(
     ),
   });
   const occlusion = createOcclusionSystem(group, [...cargoPort.occluders, ...settlement.occluders]);
-  const farmArrivalVisual = new THREE.Group();
-  farmArrivalVisual.name = 'farm-island-arrival';
-  const farmArrivalEntries = farmRevealObjects.map(object => ({ object, parent: object.parent }));
-  farmArrivalVisual.position.z = FARM_APPROACH_START_TILES * TILE;
-  group.add(farmArrivalVisual);
+  const arrivalVisual = new THREE.Group();
+  arrivalVisual.name = 'starter-island-arrival';
+  const arrivalEntries = arrivalRevealObjects.map(object => ({ object, parent: object.parent }));
+  arrivalVisual.position.z = approachOffsetZ;
+  group.add(arrivalVisual);
   const bridgeBuildSeconds = reducedMotion ? 1.8 : 3;
   const arrivalDuration = farmApproachSeconds + bridgeBuildSeconds;
-  const connectionChains = createConnectionChains(group, starterBridgeGap, lowerBlocks, terrain);
-  connectionChains.update(attachmentComplete ? 0 : farmArrivalVisual.position.z, attachmentComplete ? 1 : 0);
+  const connectionChains = createConnectionChains(group, starterBridgeGap, lowerBlocks, terrain, developedSettlement ? 'to' : 'from');
+  connectionChains.update(attachmentComplete ? 0 : arrivalVisual.position.z, attachmentComplete ? 1 : 0);
   let arrivalComplete = attachmentComplete;
   let arrivalElapsed = 0;
   let arrivalLanternAmount = 0;
   const assertArrivalVisualOwnership = attached => {
-    const waterEntry = farmArrivalEntries.find(entry => entry.object === water);
+    const waterEntry = arrivalEntries.find(entry => entry.object === water);
     const patternOffset = water.userData.waterPatternOffset;
-    if (!waterEntry || water.position.lengthSq() > .000001) {
+    if ((!developedSettlement && !waterEntry) || water.position.lengthSq() > .000001) {
       throw new Error('Farm water requires a zero-offset arrival-owned visual root');
     }
-    if (Math.abs(patternOffset.x - (attached ? 0 : farmArrivalVisual.position.x)) > .000001 ||
-      Math.abs(patternOffset.z - (attached ? 0 : farmArrivalVisual.position.z)) > .000001) {
+    if (Math.abs(patternOffset.x - (attached || developedSettlement ? 0 : arrivalVisual.position.x)) > .000001 ||
+      Math.abs(patternOffset.z - (attached || developedSettlement ? 0 : arrivalVisual.position.z)) > .000001) {
       throw new Error('Farm water pattern offset must match its arrival transform');
     }
-    if (!attached && (farmArrivalEntries.some(entry => entry.object.parent !== farmArrivalVisual) ||
-      farmArrivalVisual.getObjectByName('combine-harvester'))) {
-      throw new Error('Approaching Farm visuals must be exclusively arrival-owned and vehicle-free');
+    if (!attached && (arrivalEntries.some(entry => entry.object.parent !== arrivalVisual) ||
+      arrivalVisual.getObjectByName('combine-harvester'))) {
+      throw new Error('Approaching island visuals must be exclusively arrival-owned and vehicle-free');
     }
-    if (attached && farmArrivalEntries.some(entry => entry.object.parent !== entry.parent)) {
-      throw new Error('Attached Farm visuals must return to their authored world roots');
+    if (attached && arrivalEntries.some(entry => entry.object.parent !== entry.parent)) {
+      throw new Error('Attached island visuals must return to their authored world roots');
     }
   };
   const setAttachedVisuals = attached => {
-    farmArrivalEntries.forEach(entry => {
-      const parent = attached ? entry.parent : farmArrivalVisual;
+    arrivalEntries.forEach(entry => {
+      const parent = attached ? entry.parent : arrivalVisual;
       if (entry.object.parent !== parent) parent.add(entry.object);
       entry.object.visible = true;
     });
     bridgeRevealObjects.forEach(object => object.userData.setConstructionProgress(attached ? 1 : 0, reducedMotion));
-    farmArrivalVisual.visible = !attached;
-    water.userData.waterPatternOffset.x = attached ? 0 : farmArrivalVisual.position.x;
-    water.userData.waterPatternOffset.z = attached ? 0 : farmArrivalVisual.position.z;
+    arrivalVisual.visible = !attached;
+    water.userData.waterPatternOffset.x = attached || developedSettlement ? 0 : arrivalVisual.position.x;
+    water.userData.waterPatternOffset.z = attached || developedSettlement ? 0 : arrivalVisual.position.z;
     assertArrivalVisualOwnership(attached);
   };
   const rebuildArrivalColliders = attached => {
     const activeTerrain = attached
       ? terrain
-      : new Map([...terrain].filter(([, tile]) => tile.islandId === SETTLEMENT_ISLAND_ID));
+      : new Map([...terrain].filter(([, tile]) => tile.islandId === stationaryIslandId));
     const activeObstacles = attached
       ? obstacles
-      : obstacles.filter(obstacle => obstacle.islandId === SETTLEMENT_ISLAND_ID);
+      : obstacles.filter(obstacle => obstacle.islandId === stationaryIslandId);
     const activeLowerBlocks = attached
       ? lowerBlocks
-      : lowerBlocks.filter(block => block.islandId === SETTLEMENT_ISLAND_ID);
+      : lowerBlocks.filter(block => block.islandId === stationaryIslandId);
     physics.rebuildStaticColliders(
       activeTerrain,
       activeObstacles,
@@ -1447,8 +1465,8 @@ function* generateFarmSteps(
   };
   setAttachedVisuals(arrivalComplete);
   if (arrivalComplete) {
-    farmArrivalVisual.removeFromParent();
-    farmArrivalVisual.clear();
+    arrivalVisual.removeFromParent();
+    arrivalVisual.clear();
   }
   rebuildArrivalColliders(arrivalComplete);
   const islandRecords = createIslandRecords(islands, terrain, seed);
@@ -1551,7 +1569,7 @@ function* generateFarmSteps(
     attachments.restorePending(island, saved);
   }
   driftingIslands.restore();
-  const spawnIsland = islandRecords.find(island => island.id === SETTLEMENT_ISLAND_ID);
+  const spawnIsland = islandRecords.find(island => island.id === stationaryIslandId);
   const vehicleSpawnPoints = Object.fromEntries(Object.entries(vehicleSpawnPositions).map(([id, position]) => [id, {
     islandId: spawnIsland.id,
     position: worldToIsland(spawnIsland.transform, position),
@@ -1560,13 +1578,13 @@ function* generateFarmSteps(
   const completeArrival = () => {
     if (arrivalComplete) return;
     arrivalComplete = true;
-    farmIsland.status = 'attached';
+    islandById.get(arrivalIslandId).status = 'attached';
     islandConnections.forEach(connection => { connection.status = 'attached'; });
-    islandRecords.find(island => island.id === FARM_ISLAND_ID).status = 'attached';
+    islandRecords.find(island => island.id === arrivalIslandId).status = 'attached';
     connectionRecords.forEach(connection => { connection.status = 'attached'; });
     setAttachedVisuals(true);
-    farmArrivalVisual.removeFromParent();
-    farmArrivalVisual.clear();
+    arrivalVisual.removeFromParent();
+    arrivalVisual.clear();
     rebuildArrivalColliders(true);
     staticLanternLighting.setAmount(arrivalLanternAmount);
     onChange();
@@ -1582,6 +1600,22 @@ function* generateFarmSteps(
     driftingIslands,
     attachments,
     cargoPort,
+    settlementDevelopment: settlement.development ? {
+      get tier() { return settlement.development.tier; },
+      beginUpgrade(tier) { occlusion.reset(); return settlement.development.beginUpgrade(tier); },
+      setConstructionProgress: value => settlement.development.setConstructionProgress(value, reducedMotion),
+      collidersFor: settlement.collidersFor,
+      finishUpgrade() {
+        settlement.finishUpgrade();
+        for (let index = obstacles.length - 1; index >= 0; index--) {
+          if (obstacles[index].settlementDevelopment) obstacles.splice(index, 1);
+        }
+        obstacles.push(...settlement.collidersFor(settlement.development.tier));
+        rebuildArrivalColliders(arrivalComplete);
+        driftingIslands.invalidate();
+        onChange();
+      },
+    } : null,
     setFastGrowth(enabled, elapsed) {
       if (fastGrowth === enabled) return;
       for (const tile of growingCrops) {
@@ -1601,15 +1635,20 @@ function* generateFarmSteps(
         duration: arrivalDuration,
         buildingBridge: !arrivalComplete && arrivalElapsed >= farmApproachSeconds,
         progress: arrivalComplete ? 1 : THREE.MathUtils.clamp(arrivalElapsed / arrivalDuration, 0, 1),
+        incomingCenter: {
+          x: islandById.get(arrivalIslandId).cx * TILE,
+          y: islandById.get(arrivalIslandId).h,
+          z: islandById.get(arrivalIslandId).cz * TILE + (arrivalComplete ? 0 : arrivalVisual.position.z),
+        },
         farmCenter: {
           x: farmIsland.cx * TILE,
           y: farmIsland.h,
-          z: farmIsland.cz * TILE + (arrivalComplete ? 0 : farmArrivalVisual.position.z),
+          z: farmIsland.cz * TILE + (!arrivalComplete && !developedSettlement ? arrivalVisual.position.z : 0),
         },
         settlementCenter: {
           x: settlementIsland.cx * TILE,
           y: settlementIsland.h,
-          z: settlementIsland.cz * TILE,
+          z: settlementIsland.cz * TILE + (!arrivalComplete && developedSettlement ? arrivalVisual.position.z : 0),
         },
         bridgeCenter: {
           x: (bridgeGap.from.x + bridgeGap.to.x) * .5,
@@ -1619,12 +1658,13 @@ function* generateFarmSteps(
       };
     },
     presentationOffsetForIsland(islandId) {
-      if (islandId === FARM_ISLAND_ID && !arrivalComplete) return farmArrivalVisual.position;
+      if (islandId === arrivalIslandId && !arrivalComplete) return arrivalVisual.position;
       return null;
     },
     setNightAmount(amount, lanternAmount = amount) {
       setGameBuildingNightAmount(group, lanternAmount);
       cargoPort.setNightAmount(amount, lanternAmount);
+      settlement.setNightAmount?.(lanternAmount);
       const bridgeLanternAmount = THREE.MathUtils.clamp(Number(lanternAmount) || 0, 0, 1);
       arrivalLanternAmount = bridgeLanternAmount;
       bridgeLanternGlowMaterials.forEach(material => { material.emissiveIntensity = .25 + bridgeLanternAmount * 2.75; });
@@ -1632,6 +1672,7 @@ function* generateFarmSteps(
     },
     dispose() {
       driftingIslands.dispose();
+      settlement.dispose?.();
       forage.dispose();
       ducks.dispose();
       bridgeLanternGlowMaterial.dispose();
@@ -1648,11 +1689,11 @@ function* generateFarmSteps(
       if (!arrivalComplete) {
         arrivalElapsed = Math.min(arrivalDuration, arrivalElapsed + delta);
         const progress = THREE.MathUtils.smoothstep(arrivalElapsed / farmApproachSeconds, 0, 1);
-        farmArrivalVisual.position.z = THREE.MathUtils.lerp(FARM_APPROACH_START_TILES * TILE, 0, progress);
-        water.userData.waterPatternOffset.x = farmArrivalVisual.position.x;
-        water.userData.waterPatternOffset.z = farmArrivalVisual.position.z;
+        arrivalVisual.position.z = THREE.MathUtils.lerp(approachOffsetZ, 0, progress);
+        water.userData.waterPatternOffset.x = developedSettlement ? 0 : arrivalVisual.position.x;
+        water.userData.waterPatternOffset.z = developedSettlement ? 0 : arrivalVisual.position.z;
         const chainExtension = THREE.MathUtils.smoothstep(arrivalElapsed / farmApproachSeconds, .3, .5);
-        connectionChains.update(farmArrivalVisual.position.z, chainExtension);
+        connectionChains.update(arrivalVisual.position.z, chainExtension);
         const construction = THREE.MathUtils.clamp((arrivalElapsed - farmApproachSeconds) / bridgeBuildSeconds, 0, 1);
         bridgeRevealObjects.forEach(object => object.userData.setConstructionProgress(construction, reducedMotion));
         if (arrivalElapsed >= arrivalDuration) completeArrival();
@@ -1857,7 +1898,9 @@ function* generateFarmSteps(
     },
     persistentState(elapsed) {
       const tiles = saveFieldTiles(terrain, elapsed, fastGrowth);
-      return { seed, tiles, forage: forage.persistentState(), pendingAttachment: attachments.pendingState() };
+      return { seed, tiles, forage: forage.persistentState(), pendingAttachment: attachments.pendingState(),
+        ...(developedSettlement ? { settlementLayout: SETTLEMENT_LAYOUT_VERSION, settlementVisualTier: settlement.development.tier } : {}),
+      };
     },
     restorePersistentState(savedState, elapsed, isBlockedAt = () => false) {
       if (!Array.isArray(savedState?.tiles)) return;

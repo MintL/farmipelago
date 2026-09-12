@@ -274,11 +274,11 @@ The current generator provides a permanent two-island opening:
 
 - a dominant, level Farm Island with the farmyard, starter field space and a walk-in hybrid Fieldworks workshop at the northern end of its west edge
 - a broad, irregular lake along the Farm Island's south coast, feeding an east-flowing river and waterfall
-- a smaller, mostly level Settlement Island held stationary directly north, with the tractor and combine spawns, reserved turnaround space, and the Settlement Storehouse
-- a compact settlement with voxel-built homes, an interactive storehouse, worn paths and warm lighting
-- a fresh opening cinematic that first establishes both parked vehicles on Settlement, pans to reveal the visible, non-colliding Farm approaching from the south along negative Z, travels with its final docking, then eases back over the vehicles into the normal drive camera; HUD and gameplay input remain suppressed until that camera release, and the final center-aligned separation is measured from the generated shores before either footprint is placed
-- two metal chains extend between the facing undersides of Settlement and the approaching Farm, tightening as the islands dock; their anchors follow the perimeter at one-quarter and three-quarters of each island’s full width; the camera then holds on the connection while bridge planks assemble from Settlement toward Farm, followed by railings and lanterns; the chains remain as visible underside connections, and reduced motion preserves the ordered reveal without the pieces dropping into place
-- one broad, gently crowned wooden bridge with railings and warm day/night lanterns providing the pair's only physical connection from the Farm Island's north shore to the Settlement Island's south shore; its modeled deck targets `2.0 ± 0.25` terrain tiles while the terrain itself retains an air gap greater than one tile
+- a smaller, level Settlement Island directly north, with a fixed village footprint and a clear Storehouse delivery court; both vehicles start on reserved Farm Island ground
+- the approved settlement tiers, with voxel-built homes, an interactive Storehouse, worn paths and warm lighting; new tiers build piece by piece on the same island
+- a fresh opening cinematic establishes both parked vehicles on Farm, reveals the visible, non-colliding Settlement approaching from the north along positive Z, follows docking and bridge construction, then returns to the drive camera; HUD and gameplay input stay suppressed until camera release
+- two metal chains extend between the facing undersides, with anchors at one-quarter and three-quarters of each island's width; bridge planks assemble from Farm toward Settlement, followed by rails and lanterns; reduced motion retains the sequence without falling pieces
+- one gently crowned wooden bridge meets the center of the Settlement's permanent south entrance, with three tiles clear between its rails; its length fits the generated Farm coast while keeping more than one tile of air between terrain footprints
 - grass, dirt and stone terrain layers with deep pointed undersides
 - generated trees, rocks and ground cover around the retained terrain
 
@@ -501,7 +501,7 @@ gust pulse.
 Small opaque voxel dust motes and loose leaf chips also skim with the relative flow through
 a shallow band above the playable land. Their deterministic sources are cached
 from dry open terrain and generated trees or vegetation respectively, including
-the Farm's presentation offset during its opening arrival. The shared gust adds
+each island's presentation offset during the opening (including Farm in older saved layouts). The shared gust adds
 subtle speed, lift, and lateral variation without affecting physics, crops, or
 input. Night lowers their palette brightness, while reduced motion halves the
 visible populations and removes gust lift and leaf tumble.
@@ -519,7 +519,7 @@ solid spray voxels recycles from the lower fall without physics or gameplay
 state. Normal motion uses only restrained shared-gust variation; reduced motion
 retains the backward lean and slower steady spray without turbulence. The
 complete lake, river, fall, foam, and spray assembly remains owned by the Farm
-during its opening arrival and after attachment.
+through the opening and normal play, including Farm arrival in older saved layouts.
 
 A vast saturated surface also follows the relative flow far below the cloud layers. One
 periodic top-down tile map supplies dense square cells of green grass, plain
@@ -558,7 +558,7 @@ and the short landing skim reuse the existing jump-water particles. A clear burs
 of twelve shaded droplets spreads around each duck at touchdown, with smaller
 follow-up bursts during the skim; reduced motion lowers the burst count. Both effects use opaque, lit voxel droplets with shaded faces and a
 day/night water palette, emitted at the water surface with normal depth occlusion.
-The ducks follow the Farm during its opening arrival; trip scheduling begins
+The ducks remain on Farm, including its arrival in older saved layouts; trip scheduling begins
 after attachment. They are ambient scenery with no collision, interaction or
 progression. Pause and hidden tabs freeze their clocks, build mode continues
 them, and reload restarts swimming without offline catch-up or saved duck state.
@@ -677,7 +677,7 @@ Vehicles are persistent world objects. The owned fleet currently contains:
 - **3,600 L** internal crop tank
 
 Both vehicles remain parked in the world when not controlled. Their positions, loadouts and compatible stored cargo are saved.
-The tractor and combine each have their own generated Settlement Island spawn point with reserved turnaround space. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
+The tractor and combine each have their own generated Farm Island spawn point with reserved turnaround space. Worlds saved before settlement-layout version 1 retain their original Settlement spawn points. Rescue and world regeneration return a vehicle to its own point rather than a shared fleet location.
 
 The Grain Trailer, Flatbed, Baler and Water / Milk Tank are articulated tow-behind
 equipment. Each follows its own hitch-to-axle geometry, keeps its joint angle
@@ -693,7 +693,7 @@ The player can cycle between owned vehicles. Vehicle switching briefly pauses dr
 
 ### Workshop
 
-The workshop is a permanent starter structure at the northern end of the Farm Island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area. The Settlement Storehouse is across the north bridge on the Settlement Island's outer east side.
+The workshop is a permanent starter structure at the northern end of the Farm Island's west edge. Its open bay faces east toward the farmyard and functions as the vehicle loadout area. The Settlement Storehouse is across the north bridge, west of the village's central street, with a south-facing delivery court. Older saved layouts retain their eastern Storehouse.
 
 The accepted Fieldworks design uses teal walls, twin stepped sawtooth skylights, a yellow lifting gantry, a raised hoist, and detailed service equipment on the shared five-voxels-per-tile grid. It retains the 3×3 enclosure, site, orientation and loadout trigger; its wider open bay and detailed structure have matching merged voxel collision. The entrance lantern follows the day/night cycle.
 
@@ -954,7 +954,7 @@ The design should continue to require buildings to have clear gameplay functions
 
 ## 16. Settlement Storehouse and Deliveries
 
-The progression receiver is a permanent **Settlement Storehouse** on the smaller northern Settlement Island, replacing its decorative receiving house. It is built on solid ground with cream walls, recessed side windows, a stepped red roof, a broad open receiving bay and a warm hanging lantern. A clear approach connects it to the settlement paths.
+The progression receiver is a permanent **Settlement Storehouse** on the smaller northern Settlement Island. New worlds start with the modest teal-roof receiving hall and a south-facing delivery court. The approved Tier 5 appearance replaces it with the civic Storehouse on the same parcel. Early tiers retain clear approaches and bounded staged crates; delivery behavior and requirement accounting are shared across appearances. Older saved worlds retain the previous eastern Storehouse and village layout.
 
 ### Current prototype
 
@@ -1256,6 +1256,75 @@ with the Working machinery switch while the flag continues its ambient motion.
 On eventual game integration, hoist and cargo motion should follow deliveries;
 the preview does not change settlement stocks, progression or gameplay collision.
 
+### Approved settlement development
+
+The building gallery now includes a separate **Settlement** study at
+`/buildings.html#settlement/hybrid/1`. Its five stages are designed from the
+finished village backwards, with the work spread across the earlier upgrades:
+
+- **Tier 1 — Sparse hamlet:** modest Storehouse, blue and red cottages, dirt streets.
+- **Tier 2 — Busier hamlet:** timber well, handcart, pergola and bench, a short
+  fence and the first lanterns.
+- **Tier 3 — Established village:** amber cottage, covered market and its paved
+  approach, richer blue cottage trim, stone well, broader Storehouse canopy,
+  painted fence and small gardens.
+- **Tier 4 — Prosperous village:** adjoining red-roof homes, richer amber
+  cottage details, and the paved delivery court.
+- **Tier 5 — Mature settlement:** the civic Storehouse replaces the modest hall,
+  canopy and flag; a bell tower rises beside the well; the market gains richer
+  counters, crests, lanterns and flowers. These three upgrades give the final
+  step a visible finish, with homes, gardens and shared spaces established earlier.
+
+Early stages mainly add content. Later stages replace modest structures and
+furnishings with richer versions within the same fixed island footprint. Trees
+are omitted from this revision. Cottage refinements fit the existing parcels
+instead of adding deeper porches; fewer lamps, fences and garden beds keep the
+village open. Author the largest buildings outside the reserved vehicle routes:
+three-tile streets, bridge entrance and inward-facing market approach, a
+four-by-five tile arrival area for turning, and an eight-by-three tile delivery
+court. Keep junctions and approaches clear of props at every tier.
+
+Tier buttons show complete appearances without changing the camera. Next
+upgrade and Replay upgrade demonstrate construction in architectural pieces:
+unchanged parts stay in place, only removed or replaced parts lift away, and
+new pieces assemble around the retained structure. Cottage walls and roofs stay
+during trim upgrades, market framing, canopy and stock remain while countertops
+and decorations change, and well posts and the winch survive its basin and roof
+upgrade. Whole-building redevelopment, such as the civic Storehouse or adjoining
+red-roof homes, still builds from the ground up. The camera frames the affected parcels and
+returns afterward. Each normal sequence lasts ten seconds including its camera
+transitions; reduced motion retains a four-second ordered reveal without piece
+translation. Animation/Space pauses playback, hidden tabs freeze it, and selecting
+another tier or building cancels the sequence. The existing lighting, scale
+reference and camera controls support review.
+
+The gallery and live game share these models and construction parts at the
+shared MODEL_VOXEL scale. New worlds use the approved fixed footprint, no trees,
+and reserved streets at every tier. Opening a tier frames the changing parcels,
+suppresses driving and deliveries during construction, commits the new collision
+shapes when the build completes, and returns the camera to the tractor. Only
+vehicles overlapping newly solid geometry return to their reserved Farm spawns;
+their cargo stays aboard. Pause and hidden tabs freeze construction. Reduced
+motion uses a four-second reveal and immediate camera cuts.
+
+Only Tiers 1 and 2 currently define gameplay requirements. Completing Tier 1 or
+opening Tier 2 through Debug triggers the first village upgrade. The remaining
+approved appearances are ready for future progression data and remain viewable
+in the gallery; this work does not invent later requirements or unlocks.
+
+New saves record settlement-layout version 1 and the last completed visual tier.
+A reload during construction restores that appearance and replays any pending
+upgrade after the opening, without awarding progression or accepting cargo again.
+Worlds without the layout marker retain their previous terrain, buildings,
+spawns and Farm-arrival opening to preserve connected islands and saved content.
+The approved layout and Farm start apply to new games; no save is regenerated
+automatically.
+
+Desktop/touch driving, portrait framing, delivery access, partial-part retention,
+lighting, pause/reload during construction and collision clearance remain manual
+checks, alongside the standard gameplay regression checklist. The gallery's
+tractor remains a scale reference; it does not simulate driving.
+
 ### Shared voxel material palette
 
 Basic surface textures are now part of the intended building direction. Establish
@@ -1307,8 +1376,9 @@ starts a fresh schema-0 lineage under `farmipelago.gameState.v2`. Older saves
 under `farmipelago.gameState` are ignored and left untouched for rollback or
 manual recovery rather than migrated into the new topology.
 
-Schema 0 records the Farm and bridge coherently as either `approaching` or
-`attached`, while Settlement is always attached. Reloading during the opening
+For settlement-layout version 1, schema 0 records the Settlement and bridge
+coherently as either `approaching` or `attached`, while Farm is attached. Older
+worlds keep the inverse opening status and their original generated layout. Reloading during the opening
 replays the deterministic cinematic from its establishing shot, with input and
 HUD suppression restored but without discarding the rest of the valid save.
 Once attachment completes, the status is saved and later reloads begin with the
@@ -1323,6 +1393,7 @@ The current save includes:
 - placed buildings and silo contents
 - cattle pens, individual cow movement/growth state, shared hay, milk and birth progress
 - active settlement tier, permanent requirement histories for each tier, retained earned capabilities and separate Debug unlock overrides
+- settlement layout version and completed visual tier for worlds using the approved village
 - vehicle positions
 - vehicle loadouts
 - vehicle storage, including whole-pallet flatbed cargo and fractional processor input/output litres

@@ -1,5 +1,6 @@
 :root { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #213d45; background: #20343c; font-synthesis: none; }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; }
 a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; -webkit-tap-highlight-color: transparent; }
@@ -23,6 +24,20 @@ h1 { margin: 0; font-size: clamp(28px, 3.6vw, 46px); font-weight: 750; line-heig
 .style-switch button { padding: 0 22px; font-size: 12px; border-radius: 6px; min-height: 40px; }
 .style-switch button[aria-pressed='true'] { background: #294c57; color: #fff9ec; }
 .style-switch button:disabled { color: #93a49b; cursor: default; }
+.tier-bar { display: flex; align-items: center; gap: 14px; padding: 16px 30px 4px; }
+.tier-bar > span { color: #667e78; font-size: 11px; }
+.tier-switch { display: flex; padding: 3px; gap: 3px; border-radius: 9px; background: #f5f8f2c7; }
+.tier-switch button { min-width: 46px; padding: 0 14px; border-radius: 6px; font-size: 12px; }
+.tier-switch button[aria-pressed='true'] { background: #294c57; color: #fff9ec; }
+.settlement-controls { padding-bottom: 20px; }
+.upgrade-buttons { display: grid; gap: 7px; }
+.upgrade-buttons button { border: 1px solid #cbd8cb; border-radius: 8px; font-size: 12px; padding: 0 12px; }
+#nextUpgrade { color: #fff9ec; background: #294c57; border-color: #294c57; }
+.upgrade-buttons button:disabled { opacity: .4; cursor: default; }
+#upgradeStatus { margin: 12px 0 0; color: #6c8076; font-size: 11px; line-height: 1.5; }
+.upgrade-progress { height: 4px; border-radius: 4px; overflow: hidden; background: #e1e8dc; margin-top: 12px; }
+.upgrade-progress span { display: block; width: 100%; height: 100%; background: #669377; transform: scaleX(0); transform-origin: left; }
+.camera-bar button:disabled { opacity: .4; cursor: default; }
 .stage { position: relative; min-height: 0; }
 #scene { display: block; width: 100%; height: 100%; position: absolute; inset: 0; touch-action: none; }
 .stage-caption { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; color: #617875; font-size: 11px; pointer-events: none; }
@@ -65,6 +80,8 @@ select { color: #526d62; background: #fbfcf8; border: 1px solid #d7e0d3; border-
   main { display: flex; flex-direction: column; height: auto; min-height: 0; margin: 0 10px 10px; }
   .viewer { height: 76dvh; min-height: 510px; max-height: 760px; }.heading { padding: 21px 21px 0; }.camera-bar { padding: 13px 18px 0; }
   .style-bar { padding: 15px 21px 4px; gap: 10px; }.style-switch { flex: 1; }.style-switch button { flex: 1; padding: 0 9px; min-height: 44px; }
+  .tier-bar { padding: 15px 17px 4px; gap: 8px; }.tier-bar > span { display: none; }.tier-switch { flex: 1; }.tier-switch button { flex: 1; padding: 0 5px; font-size: 11px; }
+  .upgrade-buttons { grid-template-columns: 1fr 1fr; }
   .inspector { overflow: visible; padding: 24px max(22px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left)); }
   .intro { font-size: 20px; }.process { grid-template-columns: repeat(3, 1fr); gap: 15px; }.process li { flex-direction: column; gap: 7px; }.step { flex-basis: 24px; width: 24px; }
   .controls { padding-top: 20px; }.toggle-row, .light-row { min-height: 46px; }.review-note { padding-top: 22px; }

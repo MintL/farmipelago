@@ -87,6 +87,9 @@ export function resolveNorthernIslandPlacement(fromIsland, toIsland, fromLocalCe
   const fromNorthEdge = Math.min(...fromBoundary.map(cell => cell.gz));
   const toSouthEdge = Math.max(...toBoundary.map(cell => cell.gz));
   const touchingCenterZ = fromNorthEdge - toSouthEdge;
+  const farmKeys = new Set(fromLocalCells.map(cell => `${cell.gx},${cell.gz}`));
+  const approachBoundary = placement.landingX == null ? fromBoundary : fromBoundary.filter(cell =>
+    [-1, 1].every(dx => farmKeys.has(`${cell.gx - fromIsland.cx + dx},${cell.gz - fromIsland.cz}`)));
   const targetSpan = placement.bridgeSpanTiles * TILE;
   const minimumGap = placement.minimumTerrainGapTiles * TILE;
   let best = null;
@@ -96,7 +99,10 @@ export function resolveNorthernIslandPlacement(fromIsland, toIsland, fromLocalCe
     const placedToBoundary = placedCells(toBoundary, fromIsland.cx, centerZ, toIsland.id);
     const terrainGap = closestGapBetween(fromBoundary, placedToBoundary);
     if (!terrainGap || terrainGap.distance <= minimumGap) continue;
-    const bridgeGap = facingGapBetween(fromBoundary, placedToBoundary, fromIsland.cz, centerZ);
+    // A planned village's entrance stays centered on its permanent main street.
+    const landingBoundary = placement.landingX == null ? placedToBoundary : placedToBoundary.filter(cell =>
+      cell.gx === fromIsland.cx + placement.landingX && cell.gz === centerZ + toSouthEdge);
+    const bridgeGap = facingGapBetween(approachBoundary, landingBoundary, fromIsland.cz, centerZ);
     if (!bridgeGap) continue;
     const span = bridgeDeckSpan(bridgeGap);
     const score = Math.abs(span - targetSpan);
@@ -210,6 +216,7 @@ export function addBridgeBetween(
   lightSurfaceQuads,
   connectionGap = null,
   constructionStart = 'from',
+  bridgeWidth = BRIDGE_WIDTH,
 ) {
   const gap = connectionGap || closestIslandGap(terrain, fromIsland.id, toIsland.id);
   if (!gap || gap.distance / TILE <= BRIDGE_GAP_TILES) return;
@@ -258,7 +265,7 @@ export function addBridgeBetween(
   const plankCount = Math.ceil(span / BRIDGE_SEGMENT_LENGTH);
   const segmentPoints = Array.from({ length: plankCount + 1 }, (_, index) => pointAt(index / plankCount));
   const sideDirection = { x: direction.z, z: -direction.x };
-  const railOffset = BRIDGE_WIDTH * .5;
+  const railOffset = bridgeWidth * .5;
   const yawRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
   const pitchRotation = new THREE.Quaternion();
   const segmentRotation = new THREE.Quaternion();
@@ -287,7 +294,7 @@ export function addBridgeBetween(
     const along = (vehicleState.x - start.x) * direction.x + (vehicleState.z - start.z) * direction.z;
     const lateral = Math.abs((vehicleState.x - start.x) * direction.z - (vehicleState.z - start.z) * direction.x);
     if (along < -BRIDGE_OCCLUSION_END_CLEARANCE || along > span + BRIDGE_OCCLUSION_END_CLEARANCE
-      || lateral > BRIDGE_WIDTH * .5 + BRIDGE_OCCLUSION_SIDE_CLEARANCE) return false;
+      || lateral > bridgeWidth * .5 + BRIDGE_OCCLUSION_SIDE_CLEARANCE) return false;
     const deckY = bridgeYAt(THREE.MathUtils.clamp(along / span, 0, 1));
     return Math.abs(vehicleState.y - deckY) <= BRIDGE_OCCLUSION_HEIGHT_CLEARANCE;
   };
@@ -313,7 +320,7 @@ export function addBridgeBetween(
     pitchRotation.setFromAxisAngle(localXAxis, -pitch);
     segmentRotation.copy(yawRotation).multiply(pitchRotation);
     deckUp.copy(localYAxis).applyQuaternion(segmentRotation);
-    const plank = box(BRIDGE_WIDTH, BRIDGE_THICKNESS, plankLength, index % 2 ? mats.bridge : mats.bridgeDark);
+    const plank = box(bridgeWidth, BRIDGE_THICKNESS, plankLength, index % 2 ? mats.bridge : mats.bridgeDark);
     plank.position.set(
       x - deckUp.x * BRIDGE_THICKNESS * .5,
       y - deckUp.y * BRIDGE_THICKNESS * .5,
@@ -323,16 +330,16 @@ export function addBridgeBetween(
     bridge.add(plank);
     addConstructionPart(plank, (index + .5) / plankCount);
     lightSurfaceQuads.push([
-      new THREE.Vector3(-BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
-      new THREE.Vector3(BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
-      new THREE.Vector3(-BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, plankLength * .5),
-      new THREE.Vector3(BRIDGE_WIDTH * .5, BRIDGE_THICKNESS * .5 + .004, plankLength * .5),
+      new THREE.Vector3(-bridgeWidth * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
+      new THREE.Vector3(bridgeWidth * .5, BRIDGE_THICKNESS * .5 + .004, -plankLength * .5),
+      new THREE.Vector3(-bridgeWidth * .5, BRIDGE_THICKNESS * .5 + .004, plankLength * .5),
+      new THREE.Vector3(bridgeWidth * .5, BRIDGE_THICKNESS * .5 + .004, plankLength * .5),
     ].map(position => position.applyQuaternion(segmentRotation).add(plank.position)));
     bridgeBlocks.push({
       x: plank.position.x,
       y: plank.position.y,
       z: plank.position.z,
-      width: BRIDGE_WIDTH,
+      width: bridgeWidth,
       height: BRIDGE_THICKNESS,
       depth: plankLength,
       rotation: { x: segmentRotation.x, y: segmentRotation.y, z: segmentRotation.z, w: segmentRotation.w },

@@ -1,8 +1,11 @@
-import { THREE, TILE, MODEL_VOXEL, createVoxelModel, mats } from '../../core/shared.js';
+import { THREE, TILE, MODEL_VOXEL, createVoxelModel, mats, box } from '../../core/shared.js';
 import { voxelKit } from '../buildings/kit.js';
+import { treeFoliagePalette, groundCoverDesign, groundCoverMaterials } from '../vegetation/designs.js';
+import { createIslandTreeModel } from '../vegetation/tree-model.js';
 import { createHybridCottage } from '../buildings/cottage-hybrid.js';
 import { createStorehouseConcept } from '../buildings/storehouse-concept.js';
-import { settlementCells, settlementRoadAt } from './layout.js';
+import { settlementCells, settlementRoadTierAt } from './layout.js';
+import { createSettlementRoadSurface } from './roads.js';
 import {
   p, h, material, hybridModel, finishHybrid, hall, roof, frontWindow, sideWindow,
   block, cylinder, bar, ring, badge, crate, flowers, lantern, smoke, bake,
@@ -13,6 +16,8 @@ const amber = material('settlement-amber-roof', 0xc58c34);
 const paving = material('settlement-limestone', 0xc6bfa6);
 const soil = material('settlement-garden-soil', 0x665443);
 const pink = material('settlement-pink-flowers', 0xc76d88);
+const wellWater = material('settlement-well-water', 0x329fdf, .24);
+const islandGroundCoverMaterials = groundCoverMaterials();
 
 function kitModel(name, author) {
   const kit = voxelKit(name);
@@ -43,6 +48,36 @@ function composeUpgradeModel(name, parts) {
   };
 }
 
+// Animate small rigid details on their own pivots, outside the static bake.
+// Phase offsets keep neighboring buildings from moving in lockstep.
+function ambientDetail(model, position, author, { axis = 'z', speed = .85, amount = .12, phase = 0 } = {}) {
+  const pivot = new THREE.Group();
+  author(pivot); bake(pivot);
+  pivot.position.set(...position); model.group.add(pivot);
+  model.motions.push((time, working, reduced, elapsed) => {
+    const wave = Math.sin(elapsed * speed * (reduced ? .55 : 1) + phase);
+    pivot.rotation[axis] = wave * amount * (reduced ? .2 : 1.7);
+  });
+  return pivot;
+}
+
+function hangingSign(model, x, y, z, color = h.teal, phase = 0) {
+  ambientDetail(model, [x, y, z], pivot => {
+    for (const side of [-.17, .17]) bar(pivot, p.steel, [side, 0, 0], [side, -.14, 0], .015);
+    block(pivot, p.wood, 0, -.3, 0, .56, .35, .07, .01);
+    badge(pivot, 0, -.3, .045, 'wheat', color, .25);
+  }, { axis: 'x', speed: .9, amount: .16, phase });
+}
+
+function pennants(model, y, z, width, phase = 0) {
+  bar(model.structure, p.wood, [-width / 2, y, z], [width / 2, y, z], .018);
+  for (let i = 0; i < 5; i++) {
+    ambientDetail(model, [(i / 4 - .5) * width, y, z], pivot => {
+      block(pivot, i % 2 ? p.chalk : h.teal, 0, -.16, 0, .2, .32, .025, 0);
+    }, { axis: 'x', speed: 1.2, amount: .2, phase: phase + i * .7 });
+  }
+}
+
 function windowMaterial(model) {
   const glass = material('settlement-warm-window', 0xabc6c5, .35);
   glass.emissive.setHex(0xffc172); glass.emissiveIntensity = .12;
@@ -70,6 +105,7 @@ export function receivingHall() {
   }
   crate(structure, -1.7, .4, 1.45, .55, p.grain);
   lantern(model, 1.25, 1.85, 1.5);
+  hangingSign(model, -1.25, 2.15, 1.65, h.teal, .4);
   return { ...finishHybrid(model), setStockLevel(ratio) {
     const count = Math.round(THREE.MathUtils.clamp(ratio, 0, 1) * stocks.length);
     stocks.forEach((stock, index) => { stock.visible = index < count; });
@@ -91,6 +127,7 @@ export function receivingCanopy(rich = false) {
     kit.add(h.teal, -width / 2, 12 - Math.floor((z - 9) / 2), z, width, 1, 2);
   }
   kit.add(rich ? p.chalk : p.wood, -width / 2, 8, 9 + depth - 1, width, 1, 1);
+  pennants(model, 1.58, (9 + depth) * .2, width * .2 - .6, 1.2);
   if (rich) for (const x of [-10, 9]) {
     kit.add(p.chalk, x, 7, 13, 1, 2, 2);
     lantern(model, x * MODEL_VOXEL, 1.45, 3.12);
@@ -104,6 +141,9 @@ export function civicStorehouse() {
 
 export function cottage(kind, rich = false) {
   const model = createHybridCottage(kind === 'amber' ? 'blue' : kind);
+  const animateCottage = model.animate;
+  const ambientOffset = kind === 'amber' ? 3.8 : kind === 'red' ? 1.7 : 0;
+  model.animate = (time, working, reduced, elapsed = time) => animateCottage(time, working, reduced, elapsed + ambientOffset);
   const original = modelMeshes(model.group);
   const frame = new Set(original.filter(mesh => mesh.material === h.timber));
   model.upgradeFamily = `cottage-${kind}`;
@@ -162,6 +202,10 @@ export function townhouses() {
     kit.add(h.green, center - 5, 13, 8, 9, 1, 1);
     kit.add(p.stone, center - 3, 0, 6, 5, 1, 4);
     lantern(model, (center + 2.5) * .2, 1.55, 1.4);
+    ambientDetail(model, [(center + 1) * .2, 2.8, 1.25], pivot => {
+      block(pivot, h.green, .15, 0, 0, .3, .72, .07, .01);
+      for (const y of [-.24, 0, .24]) block(pivot, p.wood, .15, y, .045, .28, .04, .025, 0);
+    }, { axis: 'y', amount: .15, speed: .65, phase: center * .3 });
     flowers(structure, (center - 4.5) * .2, .4, 1.52, pink, .8);
     ring(structure, p.gold, (center - .5) * .2, 1.05, .845, .055, .015);
   }
@@ -176,7 +220,7 @@ export function well(stone = false) {
   const basin = hybridModel('village-well-basin'), { kit } = basin;
   kit.add(stone ? p.stone : p.wood, -4, 0, -4, 8, 4, 8);
   kit.cut(-2, 1, -2, 4, 4, 4);
-  kit.add(p.dark, -2, 1, -2, 4, 1, 4);
+  kit.add(p.dark, -2, 0, -2, 4, 1, 4);
   if (stone) {
     kit.add(p.chalk, -5, 4, -5, 10, 1, 10);
     kit.cut(-3, 4, -3, 6, 1, 6);
@@ -188,9 +232,41 @@ export function well(stone = false) {
     roof(roofKit, { left: -6, width: 12, back: -5, depth: 10, y: 12, step: 2, color: stone ? p.blue : h.slate });
   });
   bar(structure, p.wood, [-.85, 1.65, 0], [.85, 1.65, 0], .085);
-  bar(structure, p.dark, [0, 1.65, 0], [0, .67, 0], .025);
-  cylinder(structure, h.copper, 0, .58, 0, .18, .27, .22, 10);
-  ring(structure, p.steel, .98, 1.63, 0, .21, .025).rotation.y = Math.PI / 2;
+  // Keep moving assemblies outside the static structure's material bake.
+  const bucket = new THREE.Group(); frame.group.add(bucket);
+  // A hollow shell leaves the water visible inside, rather than capping it.
+  const bucketProfile = [[0, -.135], [.18, -.135], [.22, .135], [.198, .135], [.158, -.11], [0, -.11]];
+  bucket.add(new THREE.Mesh(new THREE.LatheGeometry(
+    bucketProfile.map(([radius, y]) => new THREE.Vector2(radius, y)), 10), h.copper));
+  ring(bucket, p.steel, 0, .135, 0, .22, .018).rotation.x = Math.PI / 2;
+  bake(bucket);
+  const water = cylinder(bucket, wellWater, 0, -.1, 0, .19, .012, .19, 10);
+  const rope = cylinder(frame.group, p.dark, 0, 0, 0, .025, 1, .025, 8);
+  const crank = new THREE.Group(); crank.position.set(.98, 1.65, 0); frame.group.add(crank);
+  ring(crank, p.steel, 0, 0, 0, .21, .025).rotation.y = Math.PI / 2;
+  bar(crank, p.steel, [0, -.21, 0], [0, .21, 0], .025);
+  bar(crank, p.steel, [0, 0, -.21], [0, 0, .21], .025);
+  bar(crank, p.wood, [0, .21, 0], [.22, .21, 0], .045);
+  bake(crank);
+  frame.motions.push((time, working, reduced, elapsed) => {
+    // Ambient time keeps the well working without a Storehouse transfer.
+    // The handle reverses with the bucket; rope length stays attached at both ends.
+    const phase = (elapsed / (reduced ? 20 : 12)) % 1;
+    const ease = THREE.MathUtils.smoothstep;
+    const descent = ease(phase, 0, .32), ascent = ease(phase, .44, .78);
+    const travel = reduced ? .84 : 2.08;
+    const lowered = (descent - ascent) * travel;
+    bucket.position.y = 1.38 - lowered;
+    // Pause down in the shaft to fill, then display the full bucket at the top.
+    const fill = ease(phase, .32, .44) * (1 - ease(phase, .9, 1));
+    water.visible = fill > .01;
+    water.position.y = -.1 + fill * .21;
+    water.scale.x = water.scale.z = (.158 + fill * .036) / .19;
+    const ropeLength = 1.65 - (bucket.position.y + .135);
+    rope.scale.y = ropeLength;
+    rope.position.y = 1.65 - ropeLength * .5;
+    crank.rotation.x = lowered / .085;
+  });
   return composeUpgradeModel('village-well', [
     { id: 'frame-and-winch', version: 'original', model: finishHybrid(frame) },
     { id: 'basin', version: stone ? 'stone' : 'timber', model: finishHybrid(basin) },
@@ -223,6 +299,7 @@ export function market(rich = false) {
       lantern(finishes, center * .2, 1.75, -.85);
     }
   }
+  pennants(model, 2.1, 1.5, 2.8, 2.4);
   if (rich) for (const x of [-2.2, 2.15]) flowers(finishes.structure, x, 0, 1.15, pink, 1.05);
   return composeUpgradeModel('village-market', [
     { id: 'structure-and-stock', version: 'original', model: finishHybrid(model) },
@@ -245,7 +322,7 @@ export function bellTower() {
   ring(bell, p.gold, 0, -.64, 0, .42, .055).rotation.x = Math.PI / 2;
   cylinder(bell, p.dark, 0, -.69, 0, .055, .21, .055, 8);
   bake(bell);
-  model.motions.push((time, working, reduced, elapsed) => { bell.rotation.z = Math.sin(elapsed * .7) * (reduced ? .012 : .065); });
+  model.motions.push((time, working, reduced, elapsed) => { bell.rotation.z = Math.sin(elapsed * .7) * (reduced ? .012 : .12); });
   badge(structure, 0, 1.7, .825, 'wheat', h.teal, .55);
   lantern(model, .65, 1.45, .94);
   return finishHybrid(model);
@@ -265,7 +342,75 @@ export function pergola() {
     kit.add(y % 2 ? h.green : h.leaf, x - 1, y, -4, 3, 2, 2);
   }
   for (const x of [-1.1, 1.1]) flowers(structure, x, 0, .85, pink, .85);
+  for (let i = 0; i < 3; i++) {
+    ambientDetail(model, [-.22 + i * .22, 2.6, .4], pivot => {
+      bar(pivot, p.dark, [0, 0, 0], [0, -.22, 0], .012);
+      cylinder(pivot, h.copper, 0, -.38 - i * .035, 0, .035, .32 + i * .07, .035, 8);
+    }, { axis: i % 2 ? 'x' : 'z', speed: 1.3 + i * .12, amount: .18, phase: i * 1.4 });
+  }
   return finishHybrid(model);
+}
+
+export function islandGroundCover(type = 'brightGrass') {
+  const group = new THREE.Group(); group.name = `settlement-${type}`;
+  const tufts = [];
+  for (const [index, [x, z, scale]] of [[-.3, -.12, .75], [.27, .1, .9], [-.05, .32, .65]].entries()) {
+    const tuft = new THREE.Group();
+    const variant = index === 2 && type !== 'mushrooms' ? 'brightGrass' : type;
+    for (const part of groundCoverDesign(variant)) {
+      const mesh = box(part.w, part.h, part.d, islandGroundCoverMaterials[part.material]);
+      mesh.position.set(part.x, part.y, part.z); mesh.rotation.set(0, part.ry, part.rz);
+      tuft.add(mesh);
+    }
+    bake(tuft); tuft.position.set(x, 0, z); tuft.scale.setScalar(scale);
+    tuft.rotation.y = index * 2.1; group.add(tuft); tufts.push(tuft);
+  }
+  const bounds = new THREE.Box3().setFromObject(group); bounds.expandByScalar(.04);
+  // Soft vegetation uses the same non-blocking behavior as island ground cover.
+  return { group, bounds, setLighting() {}, animate(time, working, reduced, elapsed = time) {
+    tufts.forEach((tuft, index) => {
+      tuft.rotation.z = type === 'mushrooms' ? 0 : Math.sin(elapsed * 1.2 + index * 1.8) * (reduced ? .008 : .035);
+    });
+  } };
+}
+
+export function groundProps(kind = 'logs') {
+  const model = hybridModel(`settlement-ground-${kind}`), { kit, structure } = model;
+  if (kind === 'logs') {
+    for (const [x, y] of [[-.18, .14], [.18, .14], [0, .4]]) {
+      const log = cylinder(structure, p.wood, x, y, 0, .13, .65, .13, 8); log.rotation.x = Math.PI / 2;
+      for (const z of [-.335, .335]) {
+        const end = cylinder(structure, p.grain, x, y, z, .095, .015, .095, 8); end.rotation.x = Math.PI / 2;
+      }
+    }
+    // Structural cells provide a matching collider underneath the log stack.
+    kit.add(h.timber, -2, 0, -2, 4, 1, 4);
+    kit.add(h.timber, -1, 1, -1, 2, 1, 2);
+  } else {
+    flowers(structure, -.18, 0, 0, kind === 'pots' ? pink : h.flower, .8);
+    cylinder(structure, h.copper, .22, .13, .14, .13, .26, .16, 8);
+    cylinder(structure, soil, .22, .265, .14, .135, .015, .135, 8);
+    kit.add(p.stone, -2, 0, -2, 4, 1, 4);
+  }
+  for (const [x, z, size] of [[-.45, .28, .12], [.35, -.35, .1], [.12, .45, .08]]) {
+    block(structure, paving, x, .035, z, size, .07, size * .8, 0);
+  }
+  return finishHybrid(model);
+}
+
+export function villageTree(silhouette = 0) {
+  const palette = treeFoliagePalette({ veryWet: 0, veryShady: 0, dry: .2, sunny: .45, wet: .4, shady: .5 });
+  const foliage = { dark: material(`settlement-tree-${palette.key}-dark`, palette.dark, 1),
+    light: material(`settlement-tree-${palette.key}-light`, palette.light, 1) };
+  const { tree: group, sway, trunkHeight, radius } = createIslandTreeModel(silhouette, 1.14, foliage);
+  group.name = 'settlement-island-tree';
+  group.userData.buildingColliders = [{ x: 0, y: 0, z: 0, width: radius * 2, height: trunkHeight, depth: radius * 2 }];
+  const bounds = new THREE.Box3().setFromObject(group); bounds.expandByScalar(.25);
+  return { group, bounds, setLighting() {}, animate(time, working, reduced, elapsed = time) {
+    const phase = silhouette * 2.4, strength = reduced ? .012 : .065;
+    sway.rotation.z = Math.sin(elapsed * 1.15 + phase) * strength;
+    sway.rotation.x = Math.cos(elapsed * .9 + phase * .73) * strength * .62;
+  } };
 }
 
 export function fence(length = 20, painted = false) {
@@ -286,20 +431,47 @@ export function bench() {
 }
 
 export function handcart() {
-  const model = hybridModel('market-handcart'), { kit, structure } = model;
-  kit.add(p.wood, -4, 2, -3, 8, 1, 6);
-  for (const x of [-4, 3]) kit.add(p.wood, x, 3, -3, 1, 3, 6);
-  for (const z of [-3, 2]) kit.add(p.wood, -4, 3, z, 8, 3, 1);
-  for (const x of [-3, 2]) kit.add(p.wood, x, 2, 3, 1, 1, 6);
-  for (const x of [-1, 1]) {
-    ring(structure, p.dark, x, .4, 0, .35, .065).rotation.y = Math.PI / 2;
-    for (let i = 0; i < 4; i++) {
-      const angle = i * Math.PI / 4;
-      bar(structure, p.wood, [x, .4 - Math.sin(angle) * .3, -Math.cos(angle) * .3],
-        [x, .4 + Math.sin(angle) * .3, Math.cos(angle) * .3], .025);
+  const model = hybridModel('market-wheelbarrow'), { kit, structure } = model;
+  // An open, stepped timber tray on a single front wheel, with two rear grips.
+  kit.add(h.tealDark, -2, 2, -2, 4, 1, 6);
+  kit.add(p.wood, -2, 3, -2, 4, 1, 6);
+  for (const x of [-3, 2]) kit.add(p.wood, x, 4, -2, 1, 2, 6);
+  for (const z of [-3, 4]) kit.add(p.wood, -3, 4, z, 6, 2, 1);
+  for (const x of [-3, 2]) kit.add(h.teal, x, 6, -3, 1, 1, 8);
+  for (const z of [-3, 4]) kit.add(h.teal, -2, 6, z, 4, 1, 1);
+  for (const side of [-1, 1]) {
+    const x = side * .44;
+    bar(structure, h.tealDark, [x, .56, .8], [x, .64, -1.15], .045);
+    bar(structure, p.wood, [x, .64, -1.15], [x, .65, -1.48], .065);
+    bar(structure, h.tealDark, [x, .55, -.32], [x, .06, -.5], .045);
+    block(structure, h.tealDark, x, .035, -.5, .16, .07, .24, .01);
+    bar(structure, h.tealDark, [x, .55, .7], [side * .16, .34, 1.1], .04);
+    for (const z of [-.28, .52]) {
+      block(structure, p.steel, side * .607, 1, z, .025, .35, .07, 0);
+      for (const y of [.9, 1.12]) cylinder(structure, p.gold, side * .625, y, z, .027, .025, .027, 6).rotation.z = Math.PI / 2;
     }
   }
-  crate(structure, 0, .6, 0, .6, p.grain);
+  const wheel = new THREE.Group(); wheel.position.set(0, .34, 1.1); structure.add(wheel);
+  const tire = cylinder(wheel, p.dark, 0, 0, 0, .34, .19, .34, 12); tire.rotation.z = Math.PI / 2;
+  for (const side of [-1, 1]) {
+    ring(wheel, p.steel, side * .105, 0, 0, .24, .025).rotation.y = Math.PI / 2;
+    for (let i = 0; i < 6; i++) {
+      const angle = i * Math.PI / 3;
+      bar(wheel, p.wood, [side * .11, 0, 0], [side * .11, Math.sin(angle) * .23, Math.cos(angle) * .23], .023);
+    }
+  }
+  bar(wheel, p.steel, [-.22, 0, 0], [.22, 0, 0], .065);
+  // A few distinct vegetables keep the hollow tray readable.
+  for (const [x, z, color] of [[-.17, -.12, h.green], [.16, .15, h.red], [-.12, .43, p.grain]]) {
+    const produce = new THREE.Mesh(new THREE.IcosahedronGeometry(.15, 1), color);
+    produce.position.set(x, .96, z); structure.add(produce);
+    bar(structure, h.green, [x, 1.07, z], [x + .035, 1.18, z], .025);
+  }
+  hangingSign(model, 0, 1.13, 1.02, h.green, 2.1);
+  ambientDetail(model, [-.44, .66, -1.16], pivot => {
+    block(pivot, p.chalk, 0, -.18, 0, .26, .36, .025, 0);
+    block(pivot, h.teal, 0, -.29, .016, .26, .05, .012, 0);
+  }, { axis: 'x', speed: 1.1, amount: .22, phase: .8 });
   return finishHybrid(model);
 }
 
@@ -331,7 +503,7 @@ export function villageFlag() {
   block(flag, p.chalk, .05, -.35, .025, .1, .65, .02, 0);
   badge(flag, .5, -.35, .03, 'wheat', h.teal, .35);
   bake(flag);
-  model.motions.push((time, working, reduced, elapsed) => { flag.rotation.y = Math.sin(elapsed * 1.4) * (reduced ? .035 : .13); });
+  model.motions.push((time, working, reduced, elapsed) => { flag.rotation.y = Math.sin(elapsed * 1.4) * (reduced ? .035 : .22); });
   return finishHybrid(model);
 }
 
@@ -343,11 +515,17 @@ export function pavingPatch(width, depth) {
   });
 }
 
-export function islandPlinth() {
+export function islandPlinth(landCells = settlementCells({ margin: 1 })) {
   const grass = [0x91a773, 0x94aa77, 0x8fa371, 0x98ab79].map((color, i) => material(`village-grass-${i}`, color));
-  const parts = [], pathParts = [];
-  const pathMat = material('village-worn-path', 0xbca581);
-  for (const { gx: x, gz: z } of settlementCells()) {
+  const parts = [];
+  const tiles = landCells.map(({ gx, gz }) => ({ gx, gz, x: gx * TILE, z: gz * TILE, topY: 0, islandId: 'gallery',
+    settlementRoadTier: Math.abs(gx) <= 1 && gz >= 8 ? 1 : settlementRoadTierAt(gx, gz),
+    normalGrassColor: grass[Math.abs(gx * 73 + gz * 137) % 4].color }));
+  const roads = createSettlementRoadSurface(tiles.filter(tile => tile.settlementRoadTier <= 5), 42);
+  const positions = [], vertexColors = [], indices = [];
+  const colorAttribute = new THREE.Float32BufferAttribute(new Float32Array(tiles.length * 25 * 12), 3);
+  for (const tile of tiles) {
+    const { gx: x, gz: z } = tile;
     const hash = Math.abs(x * 73 + z * 137);
     const depth = 5 + hash % 3;
     parts.push({ material: grass[hash % 4], at: [x * 5 - 2, -1, z * 5 - 2], size: [5, 1, 5] });
@@ -355,18 +533,32 @@ export function islandPlinth() {
     parts.push({ material: hash % 2 ? mats.stone : mats.stoneDark, at: [x * 5 - 2, -depth - 3, z * 5 - 2], size: [5, 3, 5] });
     if (Math.abs(x) < 7 && Math.abs(z) < 6) parts.push({ material: mats.stoneDark,
       at: [x * 5 - 2, Math.floor(-depth - 8 - (6 - Math.abs(x)) / 2), z * 5 - 2], size: [5, 8, 5] });
-    const lane = settlementRoadAt(x, z);
-    if (lane) pathParts.push({ material: pathMat, at: [x * 5 - 2, 0, z * 5 - 2], size: [5, 1, 5] });
+    for (let row = 0; row < 5; row++) for (let column = 0; column < 5; column++) {
+      const offset = positions.length / 3;
+      const left = tile.x - .4 * TILE + column * MODEL_VOXEL, near = tile.z - .4 * TILE + row * MODEL_VOXEL;
+      const color = roads.registerCell(tile, left, near, tile.normalGrassColor, 0, colorAttribute, offset);
+      for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        positions.push(left + dx * MODEL_VOXEL, .002 * TILE, near + dz * MODEL_VOXEL);
+        vertexColors.push(color.r, color.g, color.b);
+      }
+      indices.push(offset, offset + 2, offset + 1, offset + 1, offset + 2, offset + 3);
+    }
   }
   const group = createVoxelModel(parts, { name: 'settlement-island' });
-  const paths = createVoxelModel(pathParts, { name: 'hamlet-dirt-paths' });
-  paths.position.y = -.19 * TILE; group.add(paths);
+  const topGeometry = new THREE.BufferGeometry();
+  topGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  colorAttribute.array.set(vertexColors); colorAttribute.setUsage(THREE.DynamicDrawUsage);
+  topGeometry.setAttribute('color', colorAttribute); topGeometry.setIndex(indices); topGeometry.computeVertexNormals();
+  const paths = new THREE.Mesh(topGeometry, new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 1 }));
+  paths.name = 'settlement-road-surface'; paths.receiveShadow = true; group.add(paths);
+  group.userData.roadSurface = roads;
   const bridge = [];
-  for (let z = 43; z < 57; z += 2) {
+  const bridgeStart = (Math.max(...landCells.map(cell => cell.gz)) + .6) * 5;
+  for (let z = bridgeStart; z < bridgeStart + 24; z += 2) {
     bridge.push({ material: z % 4 === 1 ? mats.bridge : mats.bridgeDark, at: [-7, -1, z], size: [15, 1, 2] });
     for (const x of [-8, 8]) bridge.push({ material: mats.bridgeDark, at: [x, 3, z], size: [1, 1, 2] });
   }
-  for (const x of [-8, 8]) for (const z of [43, 49, 55]) bridge.push({ material: p.wood, at: [x, -1, z], size: [1, 5, 1] });
+  for (const x of [-8, 8]) for (const z of [bridgeStart, bridgeStart + 6, bridgeStart + 12, bridgeStart + 18, bridgeStart + 24]) bridge.push({ material: p.wood, at: [x, -1, z], size: [1, 5, 1] });
   group.add(createVoxelModel(bridge, { name: 'settlement-bridge-entrance' }));
   return group;
 }

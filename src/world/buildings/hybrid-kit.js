@@ -197,16 +197,17 @@ export function flowers(parent, x, y, z, color = h.flower, scale = 1) {
   return pot;
 }
 
-export function smoke(model, x, y, z) {
+export function smoke(model, x, y, z, { size = 1, count = 5, rise = .9, opacity = .22, drift = .26 } = {}) {
   const puffs = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < count; i++) {
     const mat = new THREE.MeshStandardMaterial({ color: 0xeee6d5, transparent: true, opacity: .2, depthWrite: false, roughness: 1, flatShading: true });
-    const part = mesh(model.group, new THREE.IcosahedronGeometry(.14, 1), mat); part.castShadow = false; puffs.push(part);
+    const part = mesh(model.group, new THREE.IcosahedronGeometry(.14 * size, 1), mat);
+    part.castShadow = false; part.userData.ambientParticle = true; puffs.push(part);
   }
   model.motions.push((time, working, reduced, elapsed) => puffs.forEach((part, i) => {
     const t = (elapsed * .19 + i / puffs.length) % 1;
     part.visible = !reduced;
-    part.position.set(x + t * .26, y + t * .9, z - t * .12);
-    part.scale.setScalar(.6 + t * 1.25); part.material.opacity = Math.sin(t * Math.PI) * .22;
+    part.position.set(x + t * drift, y + t * rise, z - t * drift * .46);
+    part.scale.setScalar(.6 + t * 1.25); part.material.opacity = Math.sin(t * Math.PI) * opacity;
   }));
 }

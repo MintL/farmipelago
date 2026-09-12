@@ -1,7 +1,7 @@
 # Farmipelago — Game Design Document
 
 **Status:** Playable prototype / living design document  
-**Updated from implementation:** 2026-09-11\
+**Updated from implementation:** 2026-09-12\
 **Design direction updated:** 2026-09-11
 
 ## 1. Game Concept
@@ -278,7 +278,7 @@ The current generator provides a permanent two-island opening:
 - the approved settlement tiers, with voxel-built homes, an interactive Storehouse, worn paths and warm lighting; new tiers build piece by piece on the same island
 - a fresh opening cinematic establishes both parked vehicles on Farm, reveals the visible, non-colliding Settlement approaching from the north along positive Z, follows docking and bridge construction, then returns to the drive camera; HUD and gameplay input stay suppressed until camera release
 - two metal chains extend between the facing undersides, with anchors at one-quarter and three-quarters of each island's width; bridge planks assemble from Farm toward Settlement, followed by rails and lanterns; reduced motion retains the sequence without falling pieces
-- one gently crowned wooden bridge meets the center of the Settlement's permanent south entrance, with three tiles clear between its rails; its length fits the generated Farm coast while keeping more than one tile of air between terrain footprints
+- one gently crowned wooden bridge meets the center of the Settlement's permanent south entrance, with three tiles clear between its rails; placement uses the finished village footprint and leaves exactly four terrain tiles of open space between the facing bridge landing edges
 - grass, dirt and stone terrain layers with deep pointed undersides
 - generated trees, rocks and ground cover around the retained terrain
 
@@ -774,7 +774,7 @@ as the silo, with tooltips and accessible labels. **Trade** retains its text lab
 These controls sit beneath the panel and support touch and Tab + Enter/Space.
 Transfers check a grounded vehicle, deck range, compatible product, available
 source stock and receiving capacity before every unit commits. Transfers require five-tile range and a fully connected service island; the storehouse
-accepts from its front yard. A pallet stays owned by its source until the arrival
+accepts near any side of its building. A pallet stays owned by its source until the arrival
 animation completes, when both counts change together. Cancel, switching vehicles,
 leaving range, jumping, changing equipment or entering build/cinematic mode stops
 the transfer; completed units remain transferred and the unfinished unit remains
@@ -958,7 +958,7 @@ The progression receiver is a permanent **Settlement Storehouse** on the smaller
 
 ### Current prototype
 
-The player brings Wheat, Barley, Canola or Soybeans to the front yard during Tier 1. The contextual **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with a separate **Not started**, **In progress**, **✓ Complete** status. Eggs are counted individually, Flour in litres, and the other current targets in litres. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s requirements, including available Flour pallet delivery. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement with its hidden status space preserved. Cards are read-only and cannot be selected. Each icon and crop name are vertically centered together in the card’s first row.
+The player brings Wheat, Barley, Canola or Soybeans near any side of the Storehouse during Tier 1 and taps the outlined building. The full **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with a separate **Not started**, **In progress**, **✓ Complete** status. Eggs are counted individually, Flour in litres, and the other current targets in litres. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s requirements, including available Flour pallet delivery. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement with its hidden status space preserved. Cards are read-only and cannot be selected. Each icon and crop name are vertically centered together in the card’s first row.
 
 Use the round **Deliver** icon button below the popup’s right edge, matching the silo’s transfer action. Its tooltip and accessible label identify delivery. Deliver identifies the current vehicle’s carried goods directly on every activation, independent of silo selection. Flour uses this same settlement panel and Deliver control with a flatbed, keeping all four requirements visible. Pallets animate and commit one at a time; while delivering pallets, the control becomes Cancel to stop the unfinished transfer. It is disabled for empty or unsupported cargo and completed requirements. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries stop at the requirement target without removing surplus cargo. Visible crates reflect the active tier’s delivered progress with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its Deliver button supports keyboard activation. Requirement cards are informational and do not receive keyboard focus.
 
@@ -1263,7 +1263,7 @@ The building gallery now includes a separate **Settlement** study at
 finished village backwards, with the work spread across the earlier upgrades:
 
 - **Tier 1 — Sparse hamlet:** modest Storehouse, blue and red cottages, dirt streets.
-- **Tier 2 — Busier hamlet:** timber well, handcart, pergola and bench, a short
+- **Tier 2 — Busier hamlet:** timber well, wheelbarrow, pergola and bench, a short
   fence and the first lanterns.
 - **Tier 3 — Established village:** amber cottage, covered market and its paved
   approach, richer blue cottage trim, stone well, broader Storehouse canopy,
@@ -1276,13 +1276,93 @@ finished village backwards, with the work spread across the earlier upgrades:
   step a visible finish, with homes, gardens and shared spaces established earlier.
 
 Early stages mainly add content. Later stages replace modest structures and
-furnishings with richer versions within the same fixed island footprint. Trees
-are omitted from this revision. Cottage refinements fit the existing parcels
+furnishings with richer versions within the same fixed island footprint. Two compact trees stand beyond the outer homes from Tier 1, clear of vehicle routes. Cottage refinements fit the existing parcels
 instead of adding deeper porches; fewer lamps, fences and garden beds keep the
 village open. Author the largest buildings outside the reserved vehicle routes:
 three-tile streets, bridge entrance and inward-facing market approach, a
 four-by-five tile arrival area for turning, and an eight-by-three tile delivery
 court. Keep junctions and approaches clear of props at every tier.
+
+The Tier 2 wheelbarrow has an open timber tray with teal edging, a single
+rubber front wheel with spokes, metal braces, rear support feet and wooden grips.
+A small vegetable load, swinging sign and fluttering cloth complete it. Normal
+ambient swings are stronger for readability at gameplay distance; reduced-motion
+amplitudes remain gentle.
+
+Every settlement building has ambient detail motion: cottages have shutters,
+large, dense chimney plumes and a more readable rocking chair on the red cottage; townhouses add
+balcony shutters; the receiving hall and wheelbarrow have swinging signs; the
+canopy and market have fluttering pennants; the pergola has wind chimes.
+The civic Storehouse flag, well cycle and bell tower continue their existing
+motions. Neighboring details use different phases, pause with the scene and
+move gently under reduced motion. Decorations stay within the existing parcels,
+with the streets and delivery area kept clear.
+
+Both well versions lower their hollow bucket out of sight into the shaft, pause to fill
+with visible blue water, then raise it and briefly hold it full before emptying
+for the next cycle. The crank turns and reverses in sync, with the rope remaining attached. This ambient motion runs
+in the gallery and game independently of deliveries; reduced motion uses a
+slower, shorter lift. Gallery animation pause and game pause freeze the motion.
+
+The western pergola and bench face east toward the road. Road branches remain
+grass until their destinations arrive: the well and market approaches open at
+Tier 2, and the western amber-cottage branch at Tier 3. The final street space
+stays reserved for tractor access at every tier.
+
+Settlement trees use the same shared branched trunks, voxel foliage and woodland
+palette as the generated islands, with gentle sway and matching trunk collision.
+
+Shared island ground cover now grows around settlement foundations: bright,
+dark and dry grass tufts, ferns, wildflowers and mushrooms near the trees.
+Clusters arrive with their buildings, gently sway and remain non-blocking,
+with streets, entrances and the interaction rectangle kept clear.
+
+Ground dressing ties the buildings into the island: warm worn earth around the
+Storehouse and market, sandy cottage foundations, darker damp soil near the
+well and garden beds, and mulch beneath the trees. Irregular edges blend into
+the existing terrain cells. Dirt appears with its building and upgrades with
+the shared ground reveal. Small log stacks, pots and pebbles sit beside the
+buildings, outside the streets and delivery area, in both gallery and game.
+
+Roads develop with every visual tier in both the gallery and the live village:
+Tier 1 has narrower worn dirt tracks, Tier 2 broader packed-earth roads, Tier 3
+gravel, Tier 4 stone paving, and Tier 5 dressed limestone with restrained edging.
+The terrain's existing five-by-five surface cells carry the finish, with a narrow
+seeded grass fringe and continuous junctions. Changes reveal in sections from
+the entrance along the streets during construction, using the same pause and
+reload behavior as buildings. They remain flush with the terrain and introduce
+no raised curb or obstacle. Road appearance follows the completed visual tier;
+progression requirements are unchanged. Older village layouts retain their paths.
+
+The approved island reserves at least one full terrain tile outside all tiers'
+buildings, roof overhangs and furnishings. Its core is retained, with added grass,
+soil and a matching stone underside around the perimeter. Farm buildings and
+fields keep their coordinates. Settlement placement is measured after
+the full margin is known; its entrance aligns with a broad Farm shore landing
+and leaves exactly four terrain tiles of open space from edge to edge at the
+bridge. The bridge, landing, chains and collision use those final coordinates,
+while island-relative vehicle poses follow the moved Settlement. The larger
+footprint is present at every tier, so upgrades never expand the island. Approved
+saved worlds receive this deterministic margin on load without regeneration.
+
+Within five tiles of any side of the Storehouse or canopy, a white silhouette
+outline marks the building as interactive, matching island selection. Tap/click
+the building (or press **R**) to turn its outline gold and open the full
+Settlement requirements and Deliver popup above the roof. While nearby and
+unselected, a small name-only “Settlement” callout appears above the building.
+Tapping the name opens the full popup. Both the compact callout and expanded popup use a
+cream voxel frame with two-step corners, a shaded rim and a tiny stepped
+speech-bubble arrow pointing toward the building's visible surface.
+Callouts
+follow camera movement and avoid screen edges and controls. No ground rectangle
+is shown. Close the panel, tap elsewhere or select an island
+to deselect the building. Leaving range or jumping closes the panel and cancels
+unfinished deliveries. The controlled vehicle must be grounded on Settlement
+and within .35 tile of ground height; grain, hay and pallets share the same
+five-tile range, regardless of trailer position. Outlines and interaction hide
+during construction, cinematics and blocked gameplay. Older layouts use the
+same interaction.
+
 
 Tier buttons show complete appearances without changing the camera. Next
 upgrade and Replay upgrade demonstrate construction in architectural pieces:
@@ -1299,7 +1379,7 @@ another tier or building cancels the sequence. The existing lighting, scale
 reference and camera controls support review.
 
 The gallery and live game share these models and construction parts at the
-shared MODEL_VOXEL scale. New worlds use the approved fixed footprint, no trees,
+shared MODEL_VOXEL scale. New worlds use the approved fixed footprint, two outer-edge trees,
 and reserved streets at every tier. Opening a tier frames the changing parcels,
 suppresses driving and deliveries during construction, commits the new collision
 shapes when the build completes, and returns the camera to the tractor. Only

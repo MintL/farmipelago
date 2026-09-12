@@ -1,12 +1,14 @@
 import { THREE, TILE } from '../../core/shared.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as art from './models.js';
+import { settlementCells } from './layout.js';
+import { SETTLEMENT_ROAD_STAGES } from './roads.js';
 
 export const SETTLEMENT_STAGES = [
   { tier: 1, name: 'Sparse hamlet', description: 'Two little homes and a place for the harvest.',
     changes: 'A modest Storehouse, blue and red cottages, and worn dirt paths.' },
   { tier: 2, name: 'Busier hamlet', description: 'The beginnings of a shared village life.',
-    changes: 'A timber well, market handcart and pergola with a bench establish shared spaces. A short fence and the first lanterns sit outside the streets.' },
+    changes: 'A timber well, market wheelbarrow and pergola with a bench establish shared spaces. A short fence and the first lanterns sit outside the streets.' },
   { tier: 3, name: 'Established village', description: 'Another home. A little more care everywhere.',
     changes: 'An amber cottage and a covered market arrive. The blue cottage gains painted trim; the well, canopy and fence improve, with small gardens beside the homes.' },
   { tier: 4, name: 'Prosperous village', description: 'A fuller neighborhood, with room to move.',
@@ -14,6 +16,7 @@ export const SETTLEMENT_STAGES = [
   { tier: 5, name: 'Mature settlement', description: 'A small island, made into a place to belong.',
     changes: 'A civic Storehouse replaces the modest hall and canopy. A bell tower rises beside the well, and the market gains painted counters, crests, lanterns and flowers.' },
 ];
+SETTLEMENT_STAGES.forEach((stage, index) => { stage.changes += ` Roads: ${SETTLEMENT_ROAD_STAGES[index].toLowerCase()}.`; });
 
 export const settlementTier = value => Math.max(1, Math.min(5, Math.floor(Number(value)) || 1));
 const clamp = value => THREE.MathUtils.clamp(value, 0, 1);
@@ -41,8 +44,27 @@ const sites = [
   ['market', 'market', 2, 2, 6.2, 2.4, art.handcart, -Math.PI / 2],
   ['market', 'market', 3, 4, 6.2, 2.4, () => art.market(false), -Math.PI / 2],
   ['market', 'market', 5, 5, 6.2, 2.4, () => art.market(true), -Math.PI / 2],
-  ['pergola', 'commons', 2, 5, -7.2, 6.4, art.pergola],
-  ['west-bench', 'commons', 2, 5, -7.2, 6.4, art.bench, 0, .2],
+  ['pergola', 'commons', 2, 5, -7.2, 6.4, art.pergola, Math.PI / 2],
+  ['west-bench', 'commons', 2, 5, -7.2, 6.4, art.bench, Math.PI / 2, .2],
+  ['hall-grass', 'gardens', 1, 5, -8.8, 4.1, () => art.islandGroundCover('yellowGrass')],
+  ['hall-ferns', 'gardens', 1, 5, -9, 1.2, () => art.islandGroundCover('ferns')],
+  ['blue-back-grass', 'gardens', 1, 5, -1.8, -8.4, () => art.islandGroundCover('darkGrass')],
+  ['blue-front-grass', 'gardens', 1, 5, 0, -4.4, () => art.islandGroundCover('brightGrass')],
+  ['red-back-grass', 'gardens', 1, 5, 4.6, -8.4, () => art.islandGroundCover('yellowGrass')],
+  ['red-flowers', 'gardens', 1, 5, 8, -7.1, () => art.islandGroundCover('flowers')],
+  ['tree-mushrooms', 'gardens', 1, 5, -9.4, -8.3, () => art.islandGroundCover('mushrooms')],
+  ['tree-grass', 'gardens', 1, 5, 9.6, -8.3, () => art.islandGroundCover('darkGrass')],
+  ['well-grass', 'gardens', 2, 5, 4.4, 4.6, () => art.islandGroundCover('darkGrass')],
+  ['market-grass', 'gardens', 2, 5, 8.3, 2.2, () => art.islandGroundCover('yellowGrass')],
+  ['pergola-ferns', 'gardens', 2, 5, -8.7, 6.1, () => art.islandGroundCover('ferns')],
+  ['amber-back-grass', 'gardens', 3, 5, -6.4, -8.4, () => art.islandGroundCover('darkGrass')],
+  ['amber-flowers', 'gardens', 3, 5, -8.7, -6.5, () => art.islandGroundCover('flowers')],
+  ['hall-logs', 'gardens', 1, 5, -8.8, 2.5, () => art.groundProps('logs')],
+  ['blue-pots', 'gardens', 1, 5, .2, -5.8, () => art.groundProps('pots')],
+  ['red-pots', 'gardens', 1, 5, 1.4, -7.3, () => art.groundProps('pots')],
+  ['amber-logs', 'gardens', 3, 5, -9, -5.2, () => art.groundProps('logs')],
+  ['west-tree', 'gardens', 1, 5, -9.6, -7.4, () => art.villageTree(0)],
+  ['east-tree', 'gardens', 1, 5, 9.6, -7.4, () => art.villageTree(1)],
   ['east-fence', 'gardens', 2, 2, 3.2, 8, () => art.fence(10)],
   ['east-fence', 'gardens', 3, 5, 3.2, 8, () => art.fence(10, true)],
   ['amber-garden', 'gardens', 3, 5, -6.4, -3.8, () => art.garden(12, 2)],
@@ -122,7 +144,7 @@ function constructionParts(entry) {
     materials.get(material).push(flat);
   };
   root.traverse(object => {
-    if (!object.isMesh || !object.visible || entry.retained?.has(object)) return;
+    if (!object.isMesh || !object.visible || object.userData.ambientParticle || entry.retained?.has(object)) return;
     for (let parent = object.parent; parent && parent !== root; parent = parent.parent) if (!parent.visible) return;
     if (object.material.transparent && object.material.opacity < .3) return; // Smoke, not construction.
     matrix.multiplyMatrices(inverse, object.matrixWorld);
@@ -197,7 +219,6 @@ function renderConstruction(entry, amount, incoming, reduced) {
 
 export function createSettlementDevelopment({ ground = false } = {}) {
   const group = new THREE.Group(); group.name = 'settlement-tier-study';
-  if (ground) group.add(art.islandPlinth());
   const entries = sites.map(([id, parcel, from, until, x, z, create, yaw = 0, y = 0]) => {
     const model = create(), root = new THREE.Group();
     root.name = `${id}-tier-${from}`; root.position.set(x * TILE, y * TILE, z * TILE); root.rotation.y = yaw;
@@ -206,6 +227,23 @@ export function createSettlementDevelopment({ ground = false } = {}) {
       retained: null, meshVisibility: null, previous: null };
   });
   group.updateMatrixWorld(true);
+  const contentBounds = entries.map(entry => {
+    const bounds = entry.model.bounds.clone().applyMatrix4(entry.root.matrixWorld);
+    bounds.min.divideScalar(TILE); bounds.max.divideScalar(TILE);
+    bounds.translate(new THREE.Vector3(-.1, 0, -.1));
+    return bounds;
+  });
+  const landCells = settlementCells({ margin: 1, contentBounds });
+  // Carry the central entrance out to the finished southern shore, including
+  // breathing room around all future buildings and furnishings.
+  const southEdge = Math.max(...landCells.map(cell => cell.gz));
+  const landKeys = new Set(landCells.map(cell => `${cell.gx},${cell.gz}`));
+  for (let gz = 8; gz <= southEdge; gz++) for (let gx = -1; gx <= 1; gx++) {
+    if (!landKeys.has(`${gx},${gz}`)) landCells.push({ gx, gz, dx: gx, dz: gz, dist: Math.hypot(gx, gz) });
+  }
+  const plinth = ground ? art.islandPlinth(landCells) : null;
+  if (plinth) group.add(plinth);
+  const groundRoads = plinth?.userData.roadSurface;
   const bounds = new THREE.Box3().setFromObject(group);
   // Include construction lift in the single framing envelope used by all tiers.
   bounds.max.y += .65 * TILE;
@@ -213,6 +251,7 @@ export function createSettlementDevelopment({ ground = false } = {}) {
   const belongs = (entry, value) => entry.from <= value && entry.until >= value;
   const reset = value => {
     tier = settlementTier(value); transition = null;
+    groundRoads?.setTier(tier);
     for (const entry of entries) {
       disposeParts(entry.parts); entry.parts = null;
       restoreMeshes(entry);
@@ -224,6 +263,7 @@ export function createSettlementDevelopment({ ground = false } = {}) {
   const setConstructionProgress = (amount, reduced = false) => {
     if (!transition) return;
     const t = clamp(amount), { parcels } = transition;
+    groundRoads?.setConstructionProgress(t);
     for (let index = 0; index < parcels.length; index++) {
       const { outgoing, incoming } = parcels[index];
       const local = clamp(t * parcels.length - index);
@@ -233,7 +273,7 @@ export function createSettlementDevelopment({ ground = false } = {}) {
     }
   };
   const study = {
-    group, bounds,
+    group, bounds, landCells,
     entriesAt(value = tier) { return entries.filter(entry => belongs(entry, settlementTier(value))); },
     allEntries: entries,
     get tier() { return tier; },
@@ -258,6 +298,10 @@ export function createSettlementDevelopment({ ground = false } = {}) {
       for (const entry of changes) {
         entry.root.updateWorldMatrix(true, true);
         focus.union(entry.model.bounds.clone().applyMatrix4(entry.root.matrixWorld));
+      }
+      if (groundRoads) {
+        groundRoads.beginUpgrade(target);
+        focus.union(groundRoads.bounds.clone().translate(new THREE.Vector3(.1 * TILE, 0, .1 * TILE)).applyMatrix4(group.matrixWorld));
       }
       focus.max.y += .65 * TILE;
       transition = { target, parcels };

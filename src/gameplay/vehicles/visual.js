@@ -1,3 +1,4 @@
+import { createOutlineOcclusion } from '../../world/outline-occlusion.js';
 import { createFlatbedAsset, PALLET_SLOTS } from './refined-tools.js';
 import { TRACTOR_MOUNTS } from './tractor-assets.js';
 import { createLiftLinkage } from './linkage.js';
@@ -221,7 +222,9 @@ export function createVehicle(scene, vehicle) {
     root.updateMatrixWorld(true);
   };
 
+  const outlineOcclusion = createOutlineOcclusion(root);
   return {
+    setOutlineOcclusion: outlineOcclusion.setVisible,
     assertSceneOwnership,
     updateRearArticulation,
     rearJointYaw: () => currentRearArticulation() ? rearJointYaw : 0,

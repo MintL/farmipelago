@@ -7,6 +7,7 @@ import { settlementCameraFrame } from './settlement-camera.js';
 import { createPhysics } from '../physics/index.js';
 import { createVehicle } from '../gameplay/vehicles/visual.js';
 import { createLoadoutPreview } from '../gameplay/vehicles/loadout-preview.js';
+import { createStorehouseCallout } from '../ui/storehouse-callout.js';
 import { createIslandSelectionView } from '../ui/island-selection.js';
 import { createUi } from '../ui/index.js';
 import { createBuildingManager } from '../gameplay/construction/index.js';
@@ -135,6 +136,7 @@ let visualDriveAmount = 0;
 let visualSteer = 0;
 let lastTrailerGrainTrail = -Infinity;
 let openingCinematic = null;
+let storehouseSelected = false;
 const buildRaycaster = new THREE.Raycaster();
 const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -804,6 +806,7 @@ function restoreFleet(savedVehicles, savedActiveVehicleId) {
 function initializeFarm(savedState) {
   savedState = migratePalletState(savedState);
   palletTransfers.cancel();
+  storehouseSelected = false;
   progression = createSettlementProgression(savedState?.progression);
   const attachmentComplete = savedState?.world?.connections?.[0]?.status === 'attached';
   farm = createArchipelagoRuntime(generateFarm(
@@ -1045,6 +1048,8 @@ const transferController = createTransferController({
 
  ui = createUi({
   commands: {
+  openStorehouse,
+  closeStorehouse: () => { storehouseSelected = false; },
   restart: restartGame,
   changeLoadout: loadout => {
     const vehicle = activeVehicle();
@@ -1150,9 +1155,28 @@ buildings = createBuildingManager({
   onHint: hint => ui?.setBuildHint(hint),
 });
 initializeFarm(loadResult.state);
+const storehouseCallout = createStorehouseCallout(camera, openStorehouse);
 const islandSelection = createIslandSelectionView(renderer, scene, camera, {
   available: () => farm.attachments.available(),
-  select: island => farm.attachments.select(island),
+  select: island => {
+    if (island) storehouseSelected = false;
+    farm.attachments.select(island);
+  },
+  selectObject: object => {
+    if (!object) { storehouseSelected = false; return false; }
+    if (!farm.cargoPort.canInteract(activeVehicleState()) || !farm.cargoPort.ownsHit(object)) return false;
+    storehouseSelected = true;
+    return true;
+  },
+  beforeRender: () => {
+    const visible = !ui.isGameplayBlocked() && !openingCinematic && !vehicleTransition && viewMode === 'drive'
+      && !farm.attachments.pendingState() && farm.cargoPort.canInteract(activeVehicleState());
+    if (!visible) storehouseSelected = false;
+    storehouseCallout.update(visible && !storehouseSelected && !farm.attachments.state()
+      ? farm.cargoPort.calloutView(camera) : null);
+    farm.cargoPort.setOutline(storehouseSelected, visible);
+    fleet.forEach(vehicle => vehicle.visual.setOutlineOcclusion(visible));
+  },
   state: () => farm.attachments.state(),
   act: () => {
     const state = farm.attachments.state();
@@ -1444,14 +1468,22 @@ function updateMap(dt) {
   updateBuildCamera();
 }
 
+function openStorehouse() {
+  if (ui.isGameplayBlocked() || viewMode !== 'drive' || openingCinematic || vehicleTransition || farm.attachments.pendingState()
+    || !farm.cargoPort.canInteract(activeVehicleState())) return;
+  farm.attachments.select(null);
+  storehouseSelected = true;
+}
+
 function updateStoragePopup() {
+  if (!farm.cargoPort.canInteract(activeVehicleState())) storehouseSelected = false;
   if (viewMode !== 'drive' || openingCinematic || vehicleTransition || farm.attachments.pendingState()) {
     ui.setStoragePopup(null);
     return;
   }
   const state = activeVehicleState();
   const pallet = palletTransfers.context();
-  if (pallet && pallet.id !== 'settlement') {
+  if (!storehouseSelected && pallet && pallet.id !== 'settlement') {
     siloPopupWorld.set(pallet.point.x, pallet.point.y + 1.3, pallet.point.z).project(camera);
     if (siloPopupWorld.z >= -1 && siloPopupWorld.z <= 1) {
       ui.setStoragePopup({ ...pallet, x: (siloPopupWorld.x * .5 + .5) * innerWidth,
@@ -1469,20 +1501,24 @@ function updateStoragePopup() {
     storageKind: vehicleStorageKind(),
     storageItemId: storageItemId(),
   };
-  if (pallet?.id === 'settlement' || farm.cargoPort.isNear(state.x, state.z)) {
+  if (storehouseSelected && farm.cargoPort.canInteract(state)) {
     const village = progression.state();
     if (!village.needs.length) {
       ui.setStoragePopup(null);
       return;
     }
-    const target = farm.cargoPort.unloadTarget();
-    siloPopupWorld.set(target.x, target.y + 1.3, target.z).project(camera);
+    const target = farm.cargoPort.popupTarget();
+    siloPopupWorld.copy(target).project(camera);
     if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
       ui.setStoragePopup(null);
       return;
     }
     ui.setStoragePopup({
       kind: 'cargo',
+      dialogTarget: (() => {
+        const point = farm.cargoPort.calloutView(camera).target.project(camera);
+        return { x: (point.x * .5 + .5) * innerWidth, y: (-point.y * .5 + .5) * innerHeight };
+      })(),
       id: village.id,
       palletDelivery: pallet?.id === 'settlement' ? { canDeliver: pallet.canUnload, active: pallet.active } : null,
       settlement: {
@@ -1566,7 +1602,7 @@ function update(dt) {
   }
   else updateDrive(dt);
   if (!openingCinematic) transferController.update(dt);
-  farm?.cargoPort.update(dt);
+  farm?.cargoPort.update(dt, activeVehicleState());
   syncFleetVisuals(dt);
   palletTransfers.update(dt);
   farm?.updateServices(dt);

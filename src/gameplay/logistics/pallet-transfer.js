@@ -35,8 +35,8 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
     if (!port?.point) return false;
     const vehicle = getVehicle(), state = getState();
     const bed = vehicle.loadout.tool === 'flatbed' ? vehicle.visual.rearToolPoint(0, 1.8, .5) : state;
-    return (port.id !== 'settlement' || getFarm().cargoPort.isNear(bed.x, bed.z, 5 * TILE))
-      && state.grounded && Math.abs(state.y - port.point.y) < 3 * TILE
+    if (port.id === 'settlement') return getFarm().cargoPort.canInteract(state);
+    return state.grounded && Math.abs(state.y - port.point.y) < 3 * TILE
       && Math.hypot(bed.x - port.point.x, bed.z - port.point.z) <= 5 * TILE;
   };
   const compatibleGrainVehicle = () => getVehicle().type === 'harvester' || getVehicle().loadout.tool === 'trailer';

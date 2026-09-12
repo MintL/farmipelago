@@ -5,6 +5,7 @@ import { DEFAULT_DAY_PHASE } from '../world/environment/index.js';
 import { queryUiDom } from './dom.js';
 import { cropIcon, createCropMeterRenderer, formatLitres } from './format.js';
 import { createDebugView } from './debug-view.js';
+import { positionVoxelDialog } from './voxel-dialog.js';
 
 const CATEGORIES = [
   { id: 'equipment', key: 'tool', label: 'Equipment', emptyLabel: 'No rear tool', icon: 'plough' },
@@ -913,12 +914,13 @@ export function createUi({ commands, panSurface }) {
       onCameraZoom(['Equal', 'NumpadAdd'].includes(event.code) ? 1 / 1.2 : 1.2);
       return;
     }
-    if (event.target.closest?.('#siloInventory button') && ['Space', 'Enter'].includes(event.code)) return;
+    if (event.target.closest?.('#siloInventory button, #storehouseCallout button') && ['Space', 'Enter'].includes(event.code)) return;
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
     keys.add(event.code);
     if (!buildMode && event.code === 'Space' && !event.repeat) input.jumpQueued = true;
     if (!buildMode && event.code === 'KeyQ' && !event.repeat) toggleEquipment('front');
     if (!buildMode && event.code === 'KeyE' && !event.repeat) toggleEquipment('rear');
+    if (!buildMode && event.code === 'KeyR' && !event.repeat) commands.openStorehouse();
     if (!buildMode && event.code === 'KeyF' && !event.repeat) useSecondaryAction();
     if (!buildMode && event.code === 'KeyV' && !event.repeat) cycleVehicle();
     if (!buildMode && event.code === 'BracketLeft' && !event.repeat) onCameraRotateStep(-1);
@@ -1084,6 +1086,7 @@ export function createUi({ commands, panSurface }) {
     renderConstructionPopup();
   });
   constructionUndo.addEventListener('click', () => { if (buildMode) onConstructionUndo?.(); });
+  document.querySelector('#storehouseClose').addEventListener('click', () => commands.closeStorehouse());
   previousSiloCrop.addEventListener('click', () => cycleSiloCrop(-1));
   nextSiloCrop.addEventListener('click', () => cycleSiloCrop(1));
   siloLoadButton.addEventListener('click', () => {
@@ -1424,6 +1427,8 @@ export function createUi({ commands, panSurface }) {
       if (changed) renderSiloInventory();
       else siloInventoryElement.hidden = false;
       positionStoragePopup(nextInventory.x, nextInventory.y, 104, 54);
+      if (nextInventory.kind === 'cargo') positionVoxelDialog(siloInventoryElement,
+        nextInventory.dialogTarget || { x: nextInventory.x, y: nextInventory.y });
     },
     setDebugTiers(tiers) {
       debugView.renderTiers(tiers);

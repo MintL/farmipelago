@@ -49,8 +49,11 @@ import { createDuckSystem } from './wildlife/ducks.js';
 import { chooseGrassPatches, chooseGroundCover, chooseTreeSilhouette, groundCoverDesign, groundCoverMaterials, treeDesign, treeFoliagePalette } from './vegetation/designs.js';
 import { GRASS_TILE_YIELD_LITRES, CROP_TILE_YIELD_MIN_LITRES, CROP_TILE_YIELD_MAX_LITRES, WEED_CHANCE } from './fields/config.js';
 import { createCropInstances, createFieldEffects, renderCropTile, tileAt, tileAtLevel } from './fields/rendering.js';
+import { createIslandTreeModel } from './vegetation/tree-model.js';
 import { createSettlementVisual } from './settlement/visual.js';
-import { SETTLEMENT_LAYOUT_VERSION, settlementCells } from './settlement/layout.js';
+import { createSettlementDevelopment } from './settlement/development.js';
+import { SETTLEMENT_LAYOUT_VERSION, settlementCells, settlementRoadTierAt } from './settlement/layout.js';
+import { createSettlementRoadSurface } from './settlement/roads.js';
 
 const WORKSHOP_TREE_CLEARANCE = 3.5 * TILE;
 const PROP_SPREAD = TILE * .64;
@@ -127,6 +130,7 @@ function* generateFarmSteps(
   // generation or the established prop layout for a saved seed.
   const wearNoise = createPerlin(seed ^ 0xa511e9b3);
   const wearRandom = seededRandom(seed ^ 0x63d83595);
+  let settlementRoads = null;
   const contactRandom = seededRandom(seed ^ 0xc2b2ae35);
   const propDirtRandom = seededRandom(seed ^ 0x27d4eb2f);
   const group = new THREE.Group();
@@ -644,7 +648,8 @@ function* generateFarmSteps(
     color.getHSL(hsl);
     hsl.l *= 1 + variation * THREE.MathUtils.clamp(1 - bareSoil - propDirt * 1.5, 0, 1);
     color.setHSL(hsl.h, hsl.s, THREE.MathUtils.clamp(hsl.l, 0, 1));
-    return color.lerp(PROP_DIRT_COLOR, propDirt);
+    color.lerp(PROP_DIRT_COLOR, propDirt);
+    return color;
   };
 
   const addTerrainInstances = function* () {
@@ -721,7 +726,9 @@ function* generateFarmSteps(
             const near = tile.z - TILE * .5 + row * MODEL_VOXEL;
             const far = near + MODEL_VOXEL;
             const positions = [[left, near], [right, near], [left, far], [right, far]];
-            const color = surfaceCellColor(tile, grassCorners, column, row);
+            const baseColor = surfaceCellColor(tile, grassCorners, column, row);
+            const color = settlementRoads?.registerCell(tile, (left + right) * .5, (near + far) * .5,
+              baseColor, surfaceCellVariationAt((left + right) * .5, (near + far) * .5), topColorAttribute, vertexOffset) || baseColor;
             positions.forEach(([x, z], cornerIndex) => {
               const offset = positionOffset + cornerIndex * 3;
               topPositions[offset] = x;
@@ -798,9 +805,6 @@ function* generateFarmSteps(
   };
 
   const addTree = (x, y, z, silhouette, large, profile) => {
-    const tree = new THREE.Group();
-    const sway = new THREE.Group();
-    tree.add(sway);
     const scale = (large ? 1.5 : 1.14) * (.9 + random() * .2);
     const design = treeDesign(silhouette);
     const palette = treeFoliagePalette(profile);
@@ -811,30 +815,7 @@ function* generateFarmSteps(
       });
     }
     const foliage = foliageMaterials.get(palette.key);
-    const voxel = .27 * scale;
-    const trunkHeight = design.trunkHeight * scale;
-    const trunk = box(.15 * scale, trunkHeight, .15 * scale, mats.trunk);
-    trunk.position.y = trunkHeight * 0.5;
-    sway.add(trunk);
-    const addBranch = (start, end) => {
-      const direction = new THREE.Vector3(...end).sub(new THREE.Vector3(...start));
-      const branch = box(.105 * scale, .105 * scale, direction.length(), mats.trunk);
-      branch.position.set(
-        (start[0] + end[0]) * .5,
-        (start[1] + end[1]) * .5,
-        (start[2] + end[2]) * .5,
-      );
-      branch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction.normalize());
-      sway.add(branch);
-    };
-    design.branches.forEach(([sx, sy, sz, ex, ey, ez]) => {
-      addBranch([sx * scale, sy * scale, sz * scale], [ex * scale, ey * scale, ez * scale]);
-    });
-    design.leaves.forEach(([lx, ly, lz], index) => {
-      const leaf = box(voxel, voxel, voxel, index % 3 === 0 ? foliage.light : foliage.dark);
-      leaf.position.set(lx * voxel, design.leafBaseY * scale + ly * voxel, lz * voxel);
-      sway.add(leaf);
-    });
+    const { tree, sway, trunkHeight } = createIslandTreeModel(silhouette, scale, foliage);
     tree.position.set(x, y, z);
     tree.rotation.y = random() * Math.PI * 2;
     sway.scale.x = random() < .5 ? -1 : 1;
@@ -1179,12 +1160,13 @@ function* generateFarmSteps(
   const settlementIsland = islandById.get(SETTLEMENT_ISLAND_ID);
   const farmLocalCells = localGeneration.find(entry => entry.island.id === farmIsland.id).cells;
   const settlementLocalCells = localGeneration.find(entry => entry.island.id === settlementIsland.id).cells;
+  const settlementDevelopment = developedSettlement ? createSettlementDevelopment() : null;
   const settlementPlacement = resolveNorthernIslandPlacement(
     farmIsland,
     settlementIsland,
     farmLocalCells,
-    settlementLocalCells,
-    developedSettlement ? { ...settlementIsland.placement, landingX: 0, bridgeSpanToleranceTiles: Infinity }
+    settlementDevelopment?.landCells || settlementLocalCells,
+    developedSettlement ? { ...settlementIsland.placement, landingX: 0, edgeGapTiles: 4 }
       : settlementIsland.placement,
   );
   settlementIsland.cx = settlementPlacement.cx;
@@ -1227,7 +1209,8 @@ function* generateFarmSteps(
   const plannedGap = settlementPlacement.bridgeGap;
   const bridgeGaps = developedSettlement ? [{ ...plannedGap,
     from: terrain.get(gridKey(plannedGap.from.gx, plannedGap.from.gz)),
-    to: terrain.get(gridKey(plannedGap.to.gx, plannedGap.to.gz)),
+    to: terrain.get(gridKey(plannedGap.to.gx, plannedGap.to.gz)) || { ...plannedGap.to,
+      topY: terrain.get(gridKey(settlementIsland.cx, settlementIsland.cz)).topY },
   }] : islandConnections.map(connection => facingIslandGap(
     terrain,
     islandById.get(connection.fromId),
@@ -1258,6 +1241,7 @@ function* generateFarmSteps(
     cargoSite,
     bridgeLanding: settlementBridgeLanding,
     developed: developedSettlement,
+    development: settlementDevelopment,
     initialTier: Math.min(options.savedWorld?.settlementVisualTier ?? options.getSettlementTier?.() ?? 1,
       options.getSettlementTier?.() ?? 1),
     reducedMotion,
@@ -1267,10 +1251,43 @@ function* generateFarmSteps(
   const cargoGroundTile = cargoSite
     ? terrain.get(gridKey(Math.round(cargoSite.x / TILE), Math.round(cargoSite.z / TILE)))
     : null;
+  const previousWearCount = wearLobes.length;
   settlement.pathTiles.forEach(tile => addWearPatch(tile, TILE * .82, .82));
+  // Tier-aware roads provide their own wear. Preserve the seeded random stream
+  // without leaving dirt underneath branches whose buildings have not arrived.
+  if (developedSettlement) wearLobes.length = previousWearCount;
   buildBareSoilWear(workshopSite, cargoGroundTile, bridgeGaps, islands);
 
   islandGeneration.forEach(generation => finishPreparation(decorateIsland(generation, workshopSite)));
+
+  if (developedSettlement) {
+    // Placement already accounts for this complete footprint. Add its perimeter
+    // after decoration to preserve the seeded Farm decoration sequence.
+    const cells = settlement.development.landCells.map(cell => ({ ...cell,
+      gx: cell.gx + settlementIsland.cx, gz: cell.gz + settlementIsland.cz }));
+    const added = cells.filter(cell => !terrain.has(gridKey(cell.gx, cell.gz)));
+    for (const cell of added) {
+      addTile(cell.gx, cell.gz, settlementIsland.h, settlementIsland.id, cell.dist / settlementIsland.r);
+      const tile = terrain.get(gridKey(cell.gx, cell.gz));
+      tile.environment.moisture = THREE.MathUtils.clamp(tile.environment.moisture + settlementIsland.generation.moistureBias, 0, 1);
+      tile.environment.sun = THREE.MathUtils.clamp(tile.environment.sun + settlementIsland.generation.sunlightBias, 0, 1);
+      tile.reserved = tile.noDecoration = true;
+      tile.settlementRoadTier = Math.abs(cell.gx - settlementIsland.cx) <= 1 && cell.gz - settlementIsland.cz >= 8
+        ? 1 : settlementRoadTierAt(cell.gx - settlementIsland.cx, cell.gz - settlementIsland.cz);
+      if (tile.settlementRoadTier <= 5) settlement.pathTiles.push(tile);
+    }
+    finalizeEnvironment(added, new Set());
+    for (let index = lowerBlocks.length - 1; index >= 0; index--) {
+      if (lowerBlocks[index].islandId === settlementIsland.id) lowerBlocks.splice(index, 1);
+    }
+    addLowerLayers(cells, settlementIsland.h, Math.max(...cells.map(cell => cell.dist)) + .4,
+      settlementIsland.id, settlementIsland.generation);
+    starterBridgeGap.to = terrain.get(gridKey(plannedGap.to.gx, plannedGap.to.gz));
+    reserveBridgeLandings(terrain, starterBridgeGap);
+    settlement.refreshGround();
+    settlementRoads = createSettlementRoadSurface(settlement.pathTiles, seed, settlement.development.tier,
+      { x: settlementIsland.cx * TILE, z: settlementIsland.cz * TILE });
+  }
 
   finishPreparation(addLowerLayerInstances());
 
@@ -1280,7 +1297,7 @@ function* generateFarmSteps(
   obstacles.push(...settlement.colliders);
   staticLanternPositions.push(...settlement.lanternPositions);
   staticLightSurfaceQuads.push(...settlement.lightSurfaceQuads);
-  const cargoPort = settlement.cargoPort || createSettlementStorehouse(settlement.receivingSite, settlement.storehouseVisual);
+  const cargoPort = settlement.cargoPort || createSettlementStorehouse(settlement.receivingSite, settlement.storehouseVisual, settlementIsland.id);
   group.add(cargoPort.group);
   cargoPort.lanternPositions.forEach(position => {
     staticLanternPositions.push(cargoPort.group.localToWorld(position.clone()));
@@ -1602,11 +1619,20 @@ function* generateFarmSteps(
     cargoPort,
     settlementDevelopment: settlement.development ? {
       get tier() { return settlement.development.tier; },
-      beginUpgrade(tier) { occlusion.reset(); return settlement.development.beginUpgrade(tier); },
-      setConstructionProgress: value => settlement.development.setConstructionProgress(value, reducedMotion),
+      beginUpgrade(tier) {
+        occlusion.reset();
+        const bounds = settlement.development.beginUpgrade(tier);
+        settlementRoads.beginUpgrade(tier);
+        return bounds.union(settlementRoads.bounds);
+      },
+      setConstructionProgress(value) {
+        settlement.development.setConstructionProgress(value, reducedMotion);
+        settlementRoads.setConstructionProgress(value);
+      },
       collidersFor: settlement.collidersFor,
       finishUpgrade() {
         settlement.finishUpgrade();
+        settlementRoads.finishUpgrade();
         for (let index = obstacles.length - 1; index >= 0; index--) {
           if (obstacles[index].settlementDevelopment) obstacles.splice(index, 1);
         }

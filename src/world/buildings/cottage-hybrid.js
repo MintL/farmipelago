@@ -63,7 +63,7 @@ export function createHybridCottage(kind='blue') {
       kit.add(p.chalk,x+1,3,9,1,2,1);
     }
     const chair=rockingChair(group,-.82,.4,1.55);
-    model.motions.push((time,working,reduced,elapsed)=>{chair.rotation.x=Math.sin(elapsed*.85)*(reduced?.015:.065);});
+    model.motions.push((time,working,reduced,elapsed)=>{chair.rotation.x=Math.sin(elapsed*.85)*(reduced?.02:.2);});
     flowers(structure,1.25,.4,1.65,p.chalk,.65); flowers(structure,1.45,.4,1.87,h.red,.5);
     block(structure,p.wood,.72,.68,1.56,.46,.075,.4);
     for (const x of [.56,.88]) for (const z of [1.43,1.69]) bar(structure,h.timber,[x,.4,z],[x,.65,z],.025);
@@ -74,7 +74,7 @@ export function createHybridCottage(kind='blue') {
       const cloth=new THREE.Group(); cloth.position.set(1.85,1.48,-.18+i*.6); group.add(cloth);
       block(cloth,i?h.green:p.chalk,0,-.25,0,.027,.49,.4,.006);
       for (const z of [-.14,.14]) block(structure,p.wood,1.85,1.51,cloth.position.z+z,.05,.1,.04,.005);
-      model.motions.push((time,working,reduced,elapsed)=>{cloth.rotation.z=Math.sin(elapsed*1.1+i)*(reduced?.018:.13);});
+      model.motions.push((time,working,reduced,elapsed)=>{cloth.rotation.z=Math.sin(elapsed*1.1+i)*(reduced?.018:.23);});
     }
   }
   kit.cut(0,5,-5,3,3,2); kit.add(glazing,0,5,-4,3,3,1);
@@ -83,12 +83,12 @@ export function createHybridCottage(kind='blue') {
   const chimneyTop=blue?18:16;
   kit.add(h.redDark,2,height,-4,2,chimneyTop-height,2);
   kit.add(p.chalk,1,chimneyTop,-5,4,1,4); kit.add(p.dark,2,chimneyTop+1,-4,2,1,2);
-  smoke(model,.6,(chimneyTop+2)*.2,-.6);
+  smoke(model,.6,(chimneyTop+2)*.2,-.6,{size:2.4,count:8,rise:2.4,opacity:.55,drift:.7});
   lantern(model,(doorX+doorWidth+.7)*.2,1.54,1.3);
   const shutter=new THREE.Group(); shutter.position.set(blue?.81:1.21,1.32,1.24); group.add(shutter);
   block(shutter,accent,.12,0,0,.24,.63,.075,.01);
   for (const y of [-.22,-.07,.08,.23]) block(shutter,p.wood,.12,y,.045,.21,.035,.025,.005);
   bake(shutter);
-  model.motions.push((time,working,reduced,elapsed)=>{shutter.rotation.y=-.28+Math.sin(elapsed*.7)*(reduced?.015:.075);});
-  return finishHybrid(model,[[-1.94,0,-1.25],[blue?1.44:1.97,(chimneyTop+2)*.2+1.2,blue?1.84:2.08]]);
+  model.motions.push((time,working,reduced,elapsed)=>{shutter.rotation.y=-.28+Math.sin(elapsed*.7)*(reduced?.025:.23);});
+  return finishHybrid(model,[[-1.94,0,-1.25],[blue?1.44:1.97,(chimneyTop+2)*.2+3,blue?1.84:2.08]]);
 }

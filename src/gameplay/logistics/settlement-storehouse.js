@@ -1,8 +1,10 @@
-import { THREE } from '../../core/shared.js';
+import { THREE, TILE } from '../../core/shared.js';
 import { createGameBuilding } from '../../world/buildings/game.js';
 import { worldColliders } from '../../world/buildings/kit.js';
+import { createStorehouseInteraction } from '../../world/settlement/interaction.js';
+import { createDeliveryArea } from '../../world/settlement/delivery-area.js';
 
-export function createSettlementStorehouse(site, visual = createGameBuilding('storehouse')) {
+export function createSettlementStorehouse(site, visual = createGameBuilding('storehouse'), islandId) {
   const { group } = visual;
   group.name = 'settlement-storehouse';
   group.position.set(site.x, site.y, site.z);
@@ -13,17 +15,18 @@ export function createSettlementStorehouse(site, visual = createGameBuilding('st
     y: site.y + point.y,
     z: site.z - point.x * Math.sin(yaw) + point.z * Math.cos(yaw),
   });
+  const deliveryArea = createDeliveryArea(group, () => visual.bounds, islandId);
+  const interaction = createStorehouseInteraction(group, [group], () => visual.bounds);
   let transferActive = false, receivingTime = null;
   return {
+    ...interaction,
     group,
     colliders: worldColliders(visual.colliders, site, yaw),
     occluders: [group], lanternPositions: visual.lanternPositions,
     lightSurfaceQuads: [[new THREE.Vector3(-1.4, .02, -1.4), new THREE.Vector3(1.4, .02, -1.4),
       new THREE.Vector3(-1.4, .02, 0), new THREE.Vector3(1.4, .02, 0)]],
-    isNear(x, z, range = 3.15) {
-      const dx = x - site.x, dz = z - site.z;
-      return dx * Math.sin(yaw) + dz * Math.cos(yaw) <= .2 && Math.hypot(dx, dz) <= range;
-    },
+    isNear: deliveryArea.containsXZ,
+    canInteract: deliveryArea.contains,
     unloadTarget: () => localToWorld(visual.ports.input),
     transferPort: () => localToWorld(visual.ports.input),
     setTransferState({ active }) { transferActive = active; if (!active) visual.stop(); },
@@ -36,7 +39,7 @@ export function createSettlementStorehouse(site, visual = createGameBuilding('st
       const point = localToWorld({ x: -6, y: 7, z: -8 });
       return { target: new THREE.Vector3(site.x, site.y + 1, site.z), camera: new THREE.Vector3(point.x, point.y, point.z) };
     },
-    update(dt) {
+    update(dt, vehicleState) {
       visual.update(dt, transferActive || receivingTime !== null);
       if (receivingTime === null) return { shipmentReceived: false };
       receivingTime += dt;

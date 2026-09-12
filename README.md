@@ -61,7 +61,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 
 **Oil opportunity fallback:** the reusable Oil Trader offers **4,000 L Oil once for 3,600 L Canola**. Random fallback generation is deliberately suppressed by the processor testing mix until encounter balancing resumes. No Debug inventory stock is provided.
 
-**Old Miller opportunities:** existing Old Miller islands retain their one-time trade. New Tier 2 encounters currently use the 50/50 processor testing mix; Old Miller’s normal seeded 50% setting is retained for later balancing. Connect the island normally. Bring at least **1,800 L Wheat or Barley** in a combine or Grain Trailer to within five tiles of the stall and press **Trade**. The full grain payment commits after its animation and produces **4,000 L Flour** on four pallets, once per island. The compact stall panel uses read-only crop cards and actions beneath it, matching the settlement and silo HUDs. Load and Unload use shared round icon-only buttons with tooltips and accessible labels. Surplus grain stays aboard. Return with the four-slot **Flatbed**, use **Load**, then drive to the Storehouse front yard and **Deliver** in the normal settlement requirements panel to complete the Tier 2 Flour requirement. The same control becomes Cancel during pallet delivery. Connected islands retain trade completion and remaining stock through release/reconnection and reloads.
+**Old Miller opportunities:** existing Old Miller islands retain their one-time trade. New Tier 2 encounters currently use the 50/50 processor testing mix; Old Miller’s normal seeded 50% setting is retained for later balancing. Connect the island normally. Bring at least **1,800 L Wheat or Barley** in a combine or Grain Trailer to within five tiles of the stall and press **Trade**. The full grain payment commits after its animation and produces **4,000 L Flour** on four pallets, once per island. The compact stall panel uses read-only crop cards and actions beneath it, matching the settlement and silo HUDs. Load and Unload use shared round icon-only buttons with tooltips and accessible labels. Surplus grain stays aboard. Return with the four-slot **Flatbed**, use **Load**, then drive near the Storehouse, tap the outlined building, then **Deliver** in the normal settlement requirements panel to complete the Tier 2 Flour requirement. The same control becomes Cancel during pallet delivery. Connected islands retain trade completion and remaining stock through release/reconnection and reloads.
 
 Flour and Vegetable oil cannot enter silos, Grain Trailers, combines or seed selection. Pallets load and deliver one at a time, with counts committed on arrival. Cancel, leaving range, jumping, changing vehicles/equipment or entering build/cinematic mode stops unfinished transfers without consuming their stock. Pause freezes animation. Connected Windmills provide continuous Flour production.
 
@@ -216,7 +216,7 @@ manual review; no automated gameplay tests were run.
 Open **`/buildings.html#settlement/hybrid/1`**, or choose **Settlement** in the
 existing gallery's Building picker. Five tier buttons show the completed
 appearances on the same island, with one shared framing envelope. Tier 1 starts
-with a modest Storehouse and two cottages. Tier 2 adds the timber well, handcart
+with a modest Storehouse and two cottages. Tier 2 adds the timber well, wheelbarrow
 and pergola. Tier 3 adds the amber cottage and covered market, and improves the
 blue cottage, well and canopy. Tier 4 brings adjoining red-roof homes, richer
 amber cottage details and paving. Tier 5 has three finishing upgrades: the civic
@@ -224,10 +224,79 @@ Storehouse replacement, a bell tower beside the well, and richer market details.
 
 The fixed island keeps three-tile streets and a market approach, a four-by-five
 tile arrival area for turning, and an eight-by-three tile clear delivery court.
-Buildings occupy the outside parcels; the market faces inward. There are no
-trees in this revision, with fewer lamps, fences and garden beds. Richer cottage
+Buildings occupy the outside parcels; the market faces inward. Two small trees sit beyond the outer homes, with fewer lamps, fences and garden beds. Richer cottage
 details fit their existing parcels instead of adding larger projecting porches.
 The bridge entrance has three tiles of clearance between its rails.
+
+The Tier 2 wheelbarrow has an open timber tray with teal edging, a single
+rubber front wheel with spokes, metal braces, rear support feet and wooden grips.
+A small vegetable load, swinging sign and fluttering cloth complete it. Normal
+ambient swings are stronger for readability at gameplay distance; reduced-motion
+amplitudes remain gentle.
+
+Every settlement building has ambient detail motion: cottages have shutters,
+large, dense chimney plumes and a more readable rocking chair on the red cottage; townhouses add
+balcony shutters; the receiving hall and wheelbarrow have swinging signs; the
+canopy and market have fluttering pennants; the pergola has wind chimes.
+The civic Storehouse flag, well cycle and bell tower continue their existing
+motions. Neighboring details use different phases, pause with the scene and
+move gently under reduced motion. Decorations stay within the existing parcels,
+with the streets and delivery area kept clear.
+
+Both well versions lower their hollow bucket out of sight into the shaft, pause to fill
+with visible blue water, then raise it and briefly hold it full before emptying
+for the next cycle. The crank turns and reverses in sync, with the rope remaining attached. This ambient motion runs
+in the gallery and game independently of deliveries; reduced motion uses a
+slower, shorter lift. Gallery animation pause and game pause freeze the motion.
+
+The western pergola and bench face east toward the road. Road branches remain
+grass until their destinations arrive: the well and market approaches open at
+Tier 2, and the western amber-cottage branch at Tier 3. The final street space
+stays reserved for tractor access at every tier.
+
+Settlement trees use the same shared branched trunks, voxel foliage and woodland
+palette as the generated islands, with gentle sway and matching trunk collision.
+
+Shared island ground cover now grows around settlement foundations: bright,
+dark and dry grass tufts, ferns, wildflowers and mushrooms near the trees.
+Clusters arrive with their buildings, gently sway and remain non-blocking,
+with streets, entrances and the interaction rectangle kept clear.
+
+Ground dressing ties the buildings into the island: warm worn earth around the
+Storehouse and market, sandy cottage foundations, darker damp soil near the
+well and garden beds, and mulch beneath the trees. Irregular edges blend into
+the existing terrain cells. Dirt appears with its building and upgrades with
+the shared ground reveal. Small log stacks, pots and pebbles sit beside the
+buildings, outside the streets and delivery area, in both gallery and game.
+
+Roads develop in both the gallery and game: **worn dirt tracks → broader packed
+earth → gravel → stone paving → dressed limestone**. They update in sections
+along the streets during each upgrade. Their small surface cells stay flush
+with the ground, with grass blending into the edges and no new driving obstacles.
+The approved island now includes at least one full tile of grassy breathing room
+beyond buildings, overhangs and furnishings at every tier. Existing approved
+worlds receive the margin and roads on refresh. Placement uses the finished
+settlement footprint, aligning its entrance with the Farm shore and leaving
+exactly four tiles of open space between the bridge endpoints’ terrain edges.
+The landing and its collision move to the outer shore. Island-relative vehicle
+poses follow the Settlement; Farm content keeps its coordinates.
+
+Within five tiles of any side of the Storehouse or canopy, a white silhouette
+outline marks the building as interactive, matching island selection. Tap/click
+the building (or press **R**) to turn its outline gold and open the full
+Settlement requirements and Deliver popup above the roof. While nearby and
+unselected, a small name-only “Settlement” callout appears above the building.
+Tap the name to open the full popup. Both use cream voxel frames with two-step
+corners and a tiny speech-bubble arrow pointing toward the building. Callouts
+follow camera movement and avoid screen edges and controls. No ground rectangle
+is shown. Close the panel, tap elsewhere or select an island
+to deselect the building. Leaving range or jumping closes the panel and cancels
+unfinished deliveries. The controlled vehicle must be grounded on Settlement
+and within .35 tile of ground height; grain, hay and pallets share the same
+five-tile range, regardless of trailer position. Outlines and interaction hide
+during construction, cinematics and blocked gameplay. Older layouts use the
+same interaction.
+
 
 **Next upgrade** plays the following tier; **Replay upgrade** shows the selected
 tier's changes from its predecessor. Unchanged parts stay in place: cottage
@@ -265,6 +334,15 @@ spawns, Settlement arrival, the centered bridge, Tier 1 delivery access, the Tie
 during and after an upgrade. Also check an older saved world and the standard
 driving, terrain, plough and phone-control checklist. No gameplay checks were
 automated.
+
+Manual review for build 0.425: compare all five road finishes and replays,
+including pause, cancellation and reload during a live upgrade. Check the grass
+margin around the largest buildings and drive the bridge landing and outer shore.
+Cross all four glowing-area edges with each vehicle and a flatbed, check jumping
+and transfer cancellation, and inspect the marker in daylight/night on desktop
+and a phone-sized view. Reload a connected world to check preserved content and
+bridge access. The standard driving, terrain, plough and mobile checks also
+remain manual; no gameplay verification was automated.
 
 ### Workshop design preview
 

@@ -87,7 +87,7 @@ export function createOcclusionSystem(group, additionalObjects = []) {
 function cloneFadeMaterials(object) {
   const materialClones = new Map();
   object.traverse(child => {
-    if (!child.isMesh) return;
+    if (!child.isMesh || child.userData.noOcclusion) return;
     const cloneMaterial = material => {
       if (!materialClones.has(material)) {
         const clone = material.clone();

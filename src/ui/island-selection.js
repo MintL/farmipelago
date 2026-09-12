@@ -2,7 +2,7 @@ import { THREE, TILE } from '../core/shared.js';
 import { islandActionPosition } from './island-action-position.js';
 import { createIslandOutline } from '../world/islands/selection-outline.js';
 
-export function createIslandSelectionView(renderer, scene, camera, { available, select, state, act, enabled }) {
+export function createIslandSelectionView(renderer, scene, camera, { available, select, state, act, enabled, selectObject = () => false, beforeRender = () => {} }) {
   const outlined = new Map();
   const popup = document.createElement('div');
   popup.id = 'islandAction';
@@ -104,6 +104,7 @@ export function createIslandSelectionView(renderer, scene, camera, { available, 
       let ancestor = hit.object, hidden = false;
       while (ancestor) { if (!ancestor.visible) hidden = true; ancestor = ancestor.parent; }
       if (hidden || hit.object.userData.isAttachmentGhost) continue;
+      if (selectObject(hit.object)) { select(null); return; }
       let object = hit.object;
       while (object && !roots.has(object)) object = object.parent;
       if (object) {
@@ -115,6 +116,7 @@ export function createIslandSelectionView(renderer, scene, camera, { available, 
       }
       if (hit.object.name.startsWith('terrain-')) break;
     }
+    selectObject(null);
     select(null);
   };
   window.addEventListener('pointerdown', down, true);
@@ -147,6 +149,7 @@ export function createIslandSelectionView(renderer, scene, camera, { available, 
         action.disabled = Boolean(current.disabled);
         positionPopup(current.island);
       }
+      beforeRender();
       renderer.render(scene, camera);
     },
     resize() {},

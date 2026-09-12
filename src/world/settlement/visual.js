@@ -1,10 +1,14 @@
 import { THREE, TILE, gridKey } from '../../core/shared.js';
 import { createSettlementDevelopment, settlementTier } from './development.js';
 import { createLegacySettlementVisual } from './legacy-visual.js';
-import { settlementRoadAt } from './layout.js';
+import { settlementRoadTierAt } from './layout.js';
+import { createStorehouseInteraction } from './interaction.js';
+import { createDeliveryArea } from './delivery-area.js';
 import { createStaticLanternLighting, STATIC_LANTERN_LIGHT_RADIUS } from '../bridges.js';
 
 const extraSolids = entry => {
+  if (entry.id === 'market' && entry.from === 2) return [[0, 0, 1.1, .44, .68, .68],
+    ...[-.44, .44].flatMap(x => [[x, 0, -.5, .16, .6, .24], [x, .51, -.94, .14, .22, 1.25]])];
   if (entry.id === 'blue-home' || entry.id === 'amber-home') return [[-1.55, 0, -.3, .6, .76, .6]];
   if (entry.id === 'red-home' && entry.from < 4) return [[-.82, .4, 1.55, .6, 1, .85], [.72, .4, 1.56, .46, .5, .4]];
   if (entry.id === 'hall' && entry.from === 5) return [[-1.37, .4, -.35, 1.15, 1.65, 1.8],
@@ -24,7 +28,7 @@ function colliderAt(collider, matrix, islandId) {
 export function createSettlementVisual(options) {
   if (!options.developed) return createLegacySettlementVisual(options);
   const { island, terrain, reducedMotion = false, initialTier = 1 } = options;
-  const development = createSettlementDevelopment(), { group } = development;
+  const development = options.development || createSettlementDevelopment(), { group } = development;
   group.name = 'settlement';
   const ground = terrain.get(gridKey(island.cx, island.cz));
   // Center the gallery's five-cell terrain tiles on the game's tile centers.
@@ -33,7 +37,8 @@ export function createSettlementVisual(options) {
   for (const tile of terrain.values()) {
     if (tile.islandId !== island.id) continue;
     tile.noDecoration = true; tile.reserved = true;
-    if (settlementRoadAt(tile.gx - island.cx, tile.gz - island.cz)) pathTiles.push(tile);
+    tile.settlementRoadTier = settlementRoadTierAt(tile.gx - island.cx, tile.gz - island.cz);
+    if (tile.settlementRoadTier <= 5) pathTiles.push(tile);
   }
   const owned = new Map();
   group.traverse(object => {
@@ -71,7 +76,7 @@ export function createSettlementVisual(options) {
   // Cache in the final world frame before the opening moves the visual island.
   for (let tier = 1; tier <= 5; tier++) collidersFor(tier);
   let night = 0, groundLight = null, productionTime = 1, working = false, receivingTime = null;
-  const floorQuads = [...terrain.values()].filter(tile => tile.islandId === island.id).map(tile =>
+  const floorQuads = () => [...terrain.values()].filter(tile => tile.islandId === island.id).map(tile =>
     [[-.5, -.5], [.5, -.5], [-.5, .5], [.5, .5]].map(([x, z]) =>
       new THREE.Vector3(tile.x + x * TILE, tile.topY + .035, tile.z + z * TILE).sub(group.position)));
   const rebuildLighting = () => {
@@ -86,7 +91,7 @@ export function createSettlementVisual(options) {
         lamps.push(bounds.getCenter(new THREE.Vector3()).sub(group.position));
       });
     }
-    groundLight = createStaticLanternLighting(lamps, floorQuads, STATIC_LANTERN_LIGHT_RADIUS);
+    groundLight = createStaticLanternLighting(lamps, floorQuads(), STATIC_LANTERN_LIGHT_RADIUS);
     if (groundLight.mesh) group.add(groundLight.mesh);
     groundLight.setAmount(night);
   };
@@ -99,18 +104,33 @@ export function createSettlementVisual(options) {
     return { x: anchor.position.x, y: ground.topY + (hall.from === 5 ? 1.1 : .8) * TILE,
       z: group.position.z + (2 + (hall.from === 5 ? 1.96 : 1.45)) * TILE };
   };
+  const deliveryBounds = new Map();
+  for (let tier = 1; tier <= 5; tier++) {
+    const bounds = new THREE.Box3();
+    for (const entry of development.entriesAt(tier)) {
+      if (entry.id === 'hall' || entry.id === 'canopy') {
+        bounds.union(entry.model.bounds.clone().applyMatrix4(entry.root.matrix));
+      }
+    }
+    deliveryBounds.set(tier, bounds);
+  }
+  const deliveryArea = createDeliveryArea(group, () => deliveryBounds.get(development.tier),
+    island.id, () => !development.upgrading);
+  const interactionRoots = entries => entries.filter(entry => entry.id === 'hall' || entry.id === 'canopy').map(entry => entry.root);
+  const interaction = createStorehouseInteraction(group, interactionRoots(development.allEntries),
+    () => deliveryBounds.get(development.tier), () => interactionRoots(development.entriesAt()));
   const cargoPort = {
+    ...interaction,
     group: anchor, colliders: [], occluders: [], lanternPositions: [], lightSurfaceQuads: [],
-    isNear(x, z, range = 3.15) {
-      return !development.upgrading && z >= anchor.position.z - .4 * TILE && Math.hypot(x - anchor.position.x, z - anchor.position.z) <= range;
-    },
+    isNear: deliveryArea.containsXZ,
+    canInteract: deliveryArea.contains,
     unloadTarget: input, transferPort: input,
     setTransferState({ active }) { working = active; }, pulseTransfer() {}, setCargoKind() {}, setNightAmount() {},
     setLoadRatio(ratio) { development.allEntries.filter(entry => entry.id === 'hall').forEach(entry => entry.model.setStockLevel?.(ratio)); },
     receiveShipment() { receivingTime = 0; },
     cinematicView() { return { target: anchor.position.clone().add(new THREE.Vector3(0, 1, 0)),
       camera: anchor.position.clone().add(new THREE.Vector3(-6, 7, 8)) }; },
-    update(dt) {
+    update(dt, vehicleState) {
       if (working || receivingTime !== null) productionTime += dt;
       if (receivingTime === null) return { shipmentReceived: false };
       receivingTime += dt;
@@ -120,7 +140,7 @@ export function createSettlementVisual(options) {
     dispose() {},
   };
   return {
-    group, cargoPort, development, pathTiles, collidersFor, setTier,
+    group, cargoPort, development, pathTiles, collidersFor, setTier, refreshGround: rebuildLighting,
     colliders: collidersFor(initialTier), lanternPositions: [], lightSurfaceQuads: [],
     occluders: development.allEntries.map(entry => entry.root),
     setNightAmount(amount) {

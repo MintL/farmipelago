@@ -33,7 +33,7 @@ export function createTransferController({
 
   const transferIsInRange = (transfer, vehicle) => {
     const state = physics.vehicleState(vehicle.id);
-    if (transfer.kind === 'cargo') return getFarm().cargoPort.isNear(state.x, state.z);
+    if (transfer.kind === 'cargo') return getFarm().cargoPort.canInteract(state);
     if (transfer.kind === 'barn-load-milk') {
       const barn = getBuildings()?.cattleBarn(transfer.barnId);
       return Boolean(barn?.pen && Math.hypot(state.x - barn.site.x, state.z - barn.site.z) <= 4.2);
@@ -248,7 +248,7 @@ export function createTransferController({
       const state = getActiveVehicleState();
       const farm = getFarm();
       const progression = getProgression();
-      if (!farm.cargoPort.isNear(state.x, state.z)) return;
+      if (!farm.cargoPort.canInteract(state)) return;
       const village = progression.state();
       const baleId = vehicle.equipmentState.carriedBaleId;
       if (baleId) {

@@ -90,6 +90,22 @@ export function resolveNorthernIslandPlacement(fromIsland, toIsland, fromLocalCe
   const farmKeys = new Set(fromLocalCells.map(cell => `${cell.gx},${cell.gz}`));
   const approachBoundary = placement.landingX == null ? fromBoundary : fromBoundary.filter(cell =>
     [-1, 1].every(dx => farmKeys.has(`${cell.gx - fromIsland.cx + dx},${cell.gz - fromIsland.cz}`)));
+  if (placement.edgeGapTiles != null) {
+    // Align the finished village entrance with a broad Farm shore tile. The
+    // center spacing includes both half-tiles plus the requested open gap.
+    const from = [...approachBoundary].filter(cell => cell.gz < fromIsland.cz)
+      .sort((a, b) => a.gz - b.gz || Math.abs(a.gx - fromIsland.cx) - Math.abs(b.gx - fromIsland.cx))[0];
+    if (!from) throw new Error('The Farm requires a clear northern bridge landing');
+    const cx = from.gx - (placement.landingX ?? 0);
+    const cz = from.gz - toSouthEdge - placement.edgeGapTiles - 1;
+    const to = placedCells(toBoundary, cx, cz, toIsland.id).find(cell =>
+      cell.gx === from.gx && cell.gz === cz + toSouthEdge);
+    if (!to) throw new Error('The Settlement requires an outer-shore entrance');
+    const bridgeGap = { from, to, distance: tileEdgeDistance(from, to), centerDistance: tileCenterDistance(from, to) };
+    const terrainGap = closestGapBetween(fromBoundary, placedCells(toBoundary, cx, cz, toIsland.id));
+    if (terrainGap.distance <= TILE) throw new Error('Finished starter islands must remain separated');
+    return { cx, cz, bridgeGap, terrainGap, span: bridgeDeckSpan(bridgeGap), score: 0 };
+  }
   const targetSpan = placement.bridgeSpanTiles * TILE;
   const minimumGap = placement.minimumTerrainGapTiles * TILE;
   let best = null;

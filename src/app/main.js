@@ -460,7 +460,7 @@ function updateSettlementCamera(dt) {
       driveCameraTarget.copy(cinematic.savedTarget);
       camera.updateProjectionMatrix();
       camera.lookAt(driveCameraTarget);
-      setCameraFogScale(driveCameraDistanceScale(camera.fov));
+      setCameraFogScale(driveCameraDistanceScale(camera.fov) * cameraZoom.drive);
       openingCinematic = null;
       ui.setCinematicActive(false);
       renderRequested = true;
@@ -470,7 +470,9 @@ function updateSettlementCamera(dt) {
   camera.updateProjectionMatrix();
   camera.lookAt(cinematic.target);
   driveCameraTarget.copy(cinematic.target);
-  setCameraFogScale(driveCameraDistanceScale(camera.fov));
+  // Portrait framing pulls back independently of FOV; follow that distance
+  // throughout the reveal and return so the village stays clear of heavy fog.
+  setCameraFogScale(camera.position.distanceTo(cinematic.target) / baseDriveCameraOffset.length());
 }
 
 function beforeIslandDetach(island) {
@@ -1679,4 +1681,11 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', writeSave);
 
+// Keep startup covered until the initialized world has rendered successfully.
+await new Promise(resolve => requestAnimationFrame(resolve));
+islandSelection.render();
+document.querySelector('#loadingScreen').hidden = true;
+document.querySelector('#hud').inert = false;
+delete document.body.dataset.loading;
+last = animationLast = performance.now();
 requestAnimationFrame(animate);

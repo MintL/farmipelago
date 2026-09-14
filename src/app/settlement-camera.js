@@ -1,7 +1,7 @@
 import { THREE } from '../core/shared.js';
 
-// Fit the changing parcels with room for construction lift, including portrait
-// screens. Recompute from the current aspect ratio when the viewport changes.
+// The bounds already include construction lift. Fit them with a small edge
+// margin, including portrait screens, and refit when the viewport changes.
 export function settlementCameraFrame(bounds, aspect) {
   const target = bounds.getCenter(new THREE.Vector3());
   const direction = new THREE.Vector3(.7, 1.1, 1.4).normalize();
@@ -13,7 +13,7 @@ export function settlementCameraFrame(bounds, aspect) {
   for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) {
     for (const z of [bounds.min.z, bounds.max.z]) {
       const corner = new THREE.Vector3(x, y, z).sub(target);
-      distance = Math.max(distance, corner.dot(direction) + 1.15 * Math.max(
+      distance = Math.max(distance, corner.dot(direction) + 1.02 * Math.max(
         Math.abs(corner.dot(right)) / horizontal, Math.abs(corner.dot(up)) / vertical));
     }
   }

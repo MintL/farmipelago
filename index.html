@@ -7,9 +7,13 @@
   <title>Farmipelago</title>
   <link rel="stylesheet" href="./src/styles/game.css" />
 </head>
-<body data-input-mode="keyboard" data-view-mode="drive">
-  <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.491</span><span id="fpsValue">-- FPS</span></div>
+<body data-input-mode="keyboard" data-view-mode="drive" data-loading="true">
+  <div id="loadingScreen" role="status" aria-live="polite">
+    <strong>Farmipelago</strong>
+    <p id="loadingMessage">Loading your farm…</p>
+  </div>
+  <div id="hud" inert>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.494</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
       </div>
@@ -322,6 +326,6 @@
     <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M4 12h9a6 6 0 0 1 6 6" /></symbol>
   </svg>
 
-  <script type="module" src="./src/app/main.js"></script>
+  <script type="module" src="./src/app/startup.js"></script>
 </body>
 </html>

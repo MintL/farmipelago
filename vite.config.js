@@ -6,6 +6,8 @@ export default defineConfig({
   base: './',
   server: {
     allowedHosts: ['barge-decaf-swore.ngrok-free.dev'],
+    // Phone sessions should fetch matching markup, styles and modules after edits.
+    headers: { 'Cache-Control': 'no-store' },
   },
   plugins: [{
     name: 'serve-portable-island-debugger',

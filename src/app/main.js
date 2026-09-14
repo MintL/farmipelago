@@ -1,3 +1,4 @@
+import { projectBuildingPopup } from '../ui/building-popup.js';
 import { migratePalletState } from '../persistence/pallet-migration.js';
 import { createPalletTransfers } from '../gameplay/logistics/pallet-transfer.js';
 import { goodDefinition, storageAcceptsGood } from '../gameplay/catalog/goods.js';
@@ -137,12 +138,11 @@ let visualSteer = 0;
 let lastTrailerGrainTrail = -Infinity;
 let openingCinematic = null;
 let storehouseSelected = false;
+let storagePopupVisual = null;
 const buildRaycaster = new THREE.Raycaster();
 const buildPointer = new THREE.Vector2();
 const buildPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const buildWorldPoint = new THREE.Vector3();
-const siloPopupWorld = new THREE.Vector3();
-const constructionPopupWorld = new THREE.Vector3();
 function activeVehicle() {
   return fleet[activeVehicleIndex];
 }
@@ -676,15 +676,8 @@ function updateConstructionPopup() {
     ui?.setConstructionPopup({ ...state, hidden: true });
     return;
   }
-  constructionPopupWorld.set(state.x, state.y + state.popupHeight, state.z).project(camera);
-  const hidden = constructionPopupWorld.z < -1 || constructionPopupWorld.z > 1
-    || Math.abs(constructionPopupWorld.x) > 1 || Math.abs(constructionPopupWorld.y) > 1;
-  ui?.setConstructionPopup({
-    ...state,
-    hidden,
-    x: (constructionPopupWorld.x * .5 + .5) * innerWidth,
-    y: (-constructionPopupWorld.y * .5 + .5) * innerHeight,
-  });
+  const anchor = projectBuildingPopup(state.popupView(camera), camera);
+  ui?.setConstructionPopup({ ...state, anchor, hidden: !anchor });
 }
 
 function resetActiveVehicle() {
@@ -1048,8 +1041,9 @@ const transferController = createTransferController({
 
  ui = createUi({
   commands: {
-  openStorehouse,
+  openStorehouse: openNearbyBuilding,
   closeStorehouse: () => { storehouseSelected = false; },
+  closeBuildingPopup: () => { transferController.cancel(); palletTransfers.cancel(); },
   restart: restartGame,
   changeLoadout: loadout => {
     const vehicle = activeVehicle();
@@ -1159,11 +1153,15 @@ const storehouseCallout = createStorehouseCallout(camera, openStorehouse);
 const islandSelection = createIslandSelectionView(renderer, scene, camera, {
   available: () => farm.attachments.available(),
   select: island => {
-    if (island) storehouseSelected = false;
+    if (island) { storehouseSelected = false; ui.collapseStoragePopup(); }
     farm.attachments.select(island);
   },
   selectObject: object => {
-    if (!object) { storehouseSelected = false; return false; }
+    if (!object) { storehouseSelected = false; ui.collapseStoragePopup(); return false; }
+    if (storagePopupVisual?.ownsHit(object)) {
+      storehouseSelected = false;
+      return ui.openStoragePopup();
+    }
     if (!farm.cargoPort.canInteract(activeVehicleState()) || !farm.cargoPort.ownsHit(object)) return false;
     storehouseSelected = true;
     return true;
@@ -1175,7 +1173,10 @@ const islandSelection = createIslandSelectionView(renderer, scene, camera, {
     storehouseCallout.update(visible && !storehouseSelected && !farm.attachments.state()
       ? farm.cargoPort.calloutView(camera) : null);
     farm.cargoPort.setOutline(storehouseSelected, visible);
-    fleet.forEach(vehicle => vehicle.visual.setOutlineOcclusion(visible));
+    const storageVisible = !ui.isGameplayBlocked() && !openingCinematic && !vehicleTransition
+      && viewMode === 'drive' && !farm.attachments.pendingState() && !farm.attachments.state();
+    storagePopupVisual?.setOutline(ui.isStoragePopupOpen(), storageVisible);
+    fleet.forEach(vehicle => vehicle.visual.setOutlineOcclusion(visible || Boolean(storagePopupVisual && storageVisible)));
   },
   state: () => farm.attachments.state(),
   act: () => {
@@ -1468,6 +1469,16 @@ function updateMap(dt) {
   updateBuildCamera();
 }
 
+function openNearbyBuilding() {
+  if (storagePopupVisual && !ui.isGameplayBlocked() && viewMode === 'drive'
+    && !openingCinematic && !vehicleTransition && !farm.attachments.pendingState()) {
+    farm.attachments.select(null);
+    ui.openStoragePopup();
+    return;
+  }
+  openStorehouse();
+}
+
 function openStorehouse() {
   if (ui.isGameplayBlocked() || viewMode !== 'drive' || openingCinematic || vehicleTransition || farm.attachments.pendingState()
     || !farm.cargoPort.canInteract(activeVehicleState())) return;
@@ -1475,23 +1486,28 @@ function openStorehouse() {
   storehouseSelected = true;
 }
 
+function presentStoragePopup(inventory, visual = null) {
+  if (storagePopupVisual !== visual) storagePopupVisual?.setOutline(false, false);
+  storagePopupVisual = visual;
+  ui.setStoragePopup(inventory);
+}
+
 function updateStoragePopup() {
   if (!farm.cargoPort.canInteract(activeVehicleState())) storehouseSelected = false;
   if (viewMode !== 'drive' || openingCinematic || vehicleTransition || farm.attachments.pendingState()) {
-    ui.setStoragePopup(null);
+    presentStoragePopup(null);
     return;
   }
+  if (farm.attachments.state()) { presentStoragePopup(null); return; }
   const state = activeVehicleState();
   const pallet = palletTransfers.context();
   if (!storehouseSelected && pallet && pallet.id !== 'settlement') {
-    siloPopupWorld.set(pallet.point.x, pallet.point.y + 1.3, pallet.point.z).project(camera);
-    if (siloPopupWorld.z >= -1 && siloPopupWorld.z <= 1) {
-      ui.setStoragePopup({ ...pallet, x: (siloPopupWorld.x * .5 + .5) * innerWidth,
-        y: (-siloPopupWorld.y * .5 + .5) * innerHeight });
+    const anchor = projectBuildingPopup(pallet.popupView?.(camera), camera);
+    if (anchor) {
+      presentStoragePopup({ ...pallet, anchor }, pallet.visual);
       return;
     }
   }
-  if (farm.attachments.state()) { ui.setStoragePopup(null); return; }
   const machine = {
     type: activeVehicle().type,
     capacity: activeVehicle().storage.capacity,
@@ -1504,25 +1520,16 @@ function updateStoragePopup() {
   if (storehouseSelected && farm.cargoPort.canInteract(state)) {
     const village = progression.state();
     if (!village.needs.length) {
-      ui.setStoragePopup(null);
+      presentStoragePopup(null);
       return;
     }
-    const target = farm.cargoPort.popupTarget();
-    siloPopupWorld.copy(target).project(camera);
-    if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
-      ui.setStoragePopup(null);
-      return;
-    }
-    ui.setStoragePopup({
+    presentStoragePopup({
       kind: 'cargo',
-      dialogTarget: (() => {
-        const point = farm.cargoPort.calloutView(camera).target.project(camera);
-        return { x: (point.x * .5 + .5) * innerWidth, y: (-point.y * .5 + .5) * innerHeight };
-      })(),
       id: village.id,
       palletDelivery: pallet?.id === 'settlement' ? { canDeliver: pallet.canUnload, active: pallet.active } : null,
       settlement: {
         tier: village.tier,
+        icon: farm.settlementDevelopment ? `storehouse-tier-${farm.settlementDevelopment.tier}` : 'storehouse-legacy',
         complete: village.complete,
         completedCount: village.completedCount,
         requiredCompletions: village.requiredCompletions,
@@ -1543,45 +1550,39 @@ function updateStoragePopup() {
         && farm.hasBale(activeVehicle().equipmentState.carriedBaleId) && !transferController.isActive()
         && !pallet?.active && village.needs.some(need => need.itemId === 'hay-bale' && need.accepting
           && need.target - need.amount >= HAY_BALE_LITRES) },
-      x: (siloPopupWorld.x * .5 + .5) * innerWidth,
-      y: (-siloPopupWorld.y * .5 + .5) * innerHeight,
     });
     return;
   }
   const barn = buildings?.cattleBarnAt(state.x, state.z);
   if (barn) {
     const summary = buildings.cattleBarnSummary(barn.id);
-    siloPopupWorld.set(barn.site.x, barn.site.y + 5.4, barn.site.z).project(camera);
-    if (siloPopupWorld.z >= -1 && siloPopupWorld.z <= 1 && Math.abs(siloPopupWorld.x) <= 1 && Math.abs(siloPopupWorld.y) <= 1) {
-      ui.setStoragePopup({
-        kind: 'cattle-barn', id: barn.id, ...summary, machine,
+    const anchor = projectBuildingPopup(barn.visual.popupView(camera), camera);
+    if (anchor) {
+      presentStoragePopup({
+        kind: 'cattle-barn', id: barn.id, ...summary, machine, anchor,
         canFeed: machine.carriedBale && barn.hayLitres + HAY_BALE_LITRES <= summary.hayCapacity,
         canLoadMilk: machine.storageKind === 'liquid' && (!machine.storageItemId || machine.storageItemId === 'milk')
           && storageAmount() < machine.capacity && summary.milkLitres > 0,
-        x: (siloPopupWorld.x * .5 + .5) * innerWidth,
-        y: (-siloPopupWorld.y * .5 + .5) * innerHeight,
-      });
+      }, barn.visual);
       return;
     }
   }
   const silo = buildings?.siloAt(state.x, state.z);
   if (!silo) {
-    ui.setStoragePopup(null);
+    presentStoragePopup(null);
     return;
   }
-  siloPopupWorld.set(silo.site.x, silo.site.y + 6.2, silo.site.z).project(camera);
-  if (siloPopupWorld.z < -1 || siloPopupWorld.z > 1 || Math.abs(siloPopupWorld.x) > 1 || Math.abs(siloPopupWorld.y) > 1) {
-    ui.setStoragePopup(null);
+  const anchor = projectBuildingPopup(silo.visual.popupView(camera), camera);
+  if (!anchor) {
+    presentStoragePopup(null);
     return;
   }
-  ui.setStoragePopup({
-    kind: 'silo',
+  presentStoragePopup({
+    kind: 'silo', anchor,
     id: silo.id,
     contents: silo.contents,
     machine,
-    x: (siloPopupWorld.x * .5 + .5) * innerWidth,
-    y: (-siloPopupWorld.y * .5 + .5) * innerHeight,
-  });
+  }, silo.visual);
 }
 
 function update(dt) {

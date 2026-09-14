@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Storehouse icon render</title>
+<style>html, body { margin: 0; background: transparent; overflow: hidden; } canvas { display: block; }</style>
+<script type="module">
+  import { THREE } from '../src/core/shared.js';
+  import { createStorehouseTierModel } from '../src/world/settlement/development.js';
+  import { createGameBuilding } from '../src/world/buildings/game.js';
+
+  // Render the live tier's hall + canopy (or retained legacy model) once.
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(512, 512);
+  renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.append(renderer.domElement);
+  const scene = new THREE.Scene();
+  const tier = new URLSearchParams(location.search).get('tier') || '1';
+  const building = new URLSearchParams(location.search).get('building');
+  const model = building ? createGameBuilding(building) : tier === 'legacy' ? createGameBuilding('storehouse') : createStorehouseTierModel(tier);
+  if (tier === 'legacy') model.group.rotation.y = Math.PI;
+  model.bounds = new THREE.Box3().setFromObject(model.group);
+  model.setStockLevel?.(.5);
+  scene.add(model.group);
+  scene.add(new THREE.HemisphereLight(0xe5f2ff, 0x867853, 2.5));
+  const sun = new THREE.DirectionalLight(0xffedcf, 3.5);
+  sun.position.set(-6, 11, 7);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: .1, far: 40 });
+  sun.shadow.normalBias = .025;
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xc7e9ff, 1.5);
+  fill.position.set(7, 6, -5);
+  scene.add(fill);
+  const center = model.bounds.getCenter(new THREE.Vector3());
+  const camera = new THREE.OrthographicCamera(-4, 4, 4, -4, .1, 100);
+  camera.position.copy(center).add(new THREE.Vector3(7, 5, 9));
+  camera.lookAt(center);
+  camera.updateMatrixWorld();
+  const projected = new THREE.Box3();
+  for (const x of [model.bounds.min.x, model.bounds.max.x]) {
+    for (const y of [model.bounds.min.y, model.bounds.max.y]) {
+      for (const z of [model.bounds.min.z, model.bounds.max.z]) {
+        projected.expandByPoint(new THREE.Vector3(x, y, z).applyMatrix4(camera.matrixWorldInverse));
+      }
+    }
+  }
+  const half = Math.max(projected.max.x - projected.min.x, projected.max.y - projected.min.y) * .54;
+  let cx = (projected.min.x + projected.max.x) / 2, cy = (projected.min.y + projected.max.y) / 2;
+  Object.assign(camera, { left: cx - half, right: cx + half, top: cy + half, bottom: cy - half });
+  camera.updateProjectionMatrix();
+  // Measure the rendered silhouette, including instanced and transparent parts.
+  // Center the visible model while retaining its approved scale.
+  const target = new THREE.WebGLRenderTarget(512, 512);
+  renderer.setRenderTarget(target);
+  renderer.render(scene, camera);
+  const pixels = new Uint8Array(512 * 512 * 4);
+  renderer.readRenderTargetPixels(target, 0, 0, 512, 512, pixels);
+  let left = 512, right = -1, bottom = 512, top = -1;
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+    if (pixels[(y * 512 + x) * 4 + 3] <= 20) continue;
+    left = Math.min(left, x); right = Math.max(right, x);
+    bottom = Math.min(bottom, y); top = Math.max(top, y);
+  }
+  if (right < left) throw new Error('Building icon render is empty');
+  cx += ((left + right) / 2 - 255.5) * half / 256;
+  cy += ((bottom + top) / 2 - 255.5) * half / 256;
+  Object.assign(camera, { left: cx - half, right: cx + half, top: cy + half, bottom: cy - half });
+  camera.updateProjectionMatrix();
+  renderer.setRenderTarget(null);
+  target.dispose();
+  renderer.render(scene, camera);
+</script>
+</html>

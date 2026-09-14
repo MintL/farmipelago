@@ -381,3 +381,24 @@ Fast-forward performs additional 1/60-second steps inside a bounded render-frame
 budget and displays the effective rate instead of enlarging timesteps. Reset
 releases old physics, islands, drawing buffers and route resources. Connect/Release
 use the production attachment APIs to inspect expanding topology manually.
+
+### Building popup anchors
+
+`src/world/buildings/popup-anchor.js` provides `createBuildingPopupAnchor()`.
+Supply a model root, its local bounds callback, and optionally its active mesh
+roots. `popupView(camera)` returns projected-extreme world points from visible
+mesh parts (including instance transforms) and a visible surface hit. It caches
+geometry bounds and excludes outline helpers. This avoids empty space in the
+full collision/animation envelope when placing roof labels. Never pass a
+world-space AABB as local bounds. Shared game buildings expose
+this method directly, and Settlement supplies the active tier's hall/canopy
+roots. Service ports forward the same method; transfer ports remain independent.
+
+`src/ui/building-popup.js` projects the view and positions each DOM popup with
+safe-area and visible-control avoidance. It measures the frame and attached
+buttons together, prefers above the model, and updates the existing speech
+frame target. Construction actions reuse placement without a surrounding frame.
+Anchor data is transient presentation state, never serialized or used for
+collision, range checks or deliveries.
+
+Expanded building inventories dock below the top HUD controls without arrows or connectors. Collapsed names and construction actions use model-based placement. `building-stock-card.js` supplies shared product cards. Header PNGs come from the game model factories. Collapsed state is transient UI state and resets when the building context changes; closing cancels active transfers through the existing controllers.

@@ -31,7 +31,7 @@
 }
 .dialogTitle { margin: 3px 0 0; font-size: 22px; font-weight: 690; letter-spacing: -.035em; }
 .iconButton {
-  width: 42px; height: 42px;
+  width: 38px; height: 38px;
   display: grid; place-items: center;
   flex: 0 0 auto;
   padding: 0;
@@ -83,13 +83,13 @@
 .optionPresentation { position: relative; min-height: 0; overflow: hidden; }
 .loadoutBay[data-category="vehicles"] .optionPresentation { min-height: 145px; }
 .previewCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.optionGrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 112px; gap: 0; padding: 5px 0 7px; }
+.optionGrid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 101px; gap: 0; padding: 5px 0 7px; }
 #equipmentOptions, #frontToolOptions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 #vehicleOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #vehicleIdentity { position: absolute; inset: 0; z-index: 1; display: flex; align-items: flex-end; justify-content: center; padding: 10px; text-align: center; }
 #vehicleIdentity strong { font: 700 12px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .025em; text-transform: uppercase; }
 #vehicleIdentity small { display: block; margin-top: 3px; color: #405b34; font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-.loadoutOption { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 6px 4px; border: 1px solid transparent; border-radius: 6px; background: linear-gradient(to bottom, transparent 45%, rgba(242, 234, 214, .76) 75%, rgba(242, 234, 214, .94)); color: var(--ink); text-align: center; text-shadow: none; }
+.loadoutOption { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 5px 4px; border: 1px solid transparent; border-radius: 6px; background: linear-gradient(to bottom, transparent 45%, rgba(242, 234, 214, .76) 75%, rgba(242, 234, 214, .94)); color: var(--ink); text-align: center; text-shadow: none; }
 .loadoutOption:hover { background: rgba(48, 55, 43, .045); }
 .loadoutOption:focus-visible { outline: 0; }
 .loadoutOption[aria-pressed="true"] { border-color: var(--accent); background: rgba(155, 202, 103, .12); }
@@ -109,8 +109,8 @@
 #loadoutSummary { min-width: 0; margin-right: auto; color: var(--muted); font-size: 11px; line-height: 1.35; }
 #loadoutSummary strong { display: block; color: var(--accent-strong); font-size: 12px; }
 .button {
-  min-height: 44px;
-  padding: 0 17px;
+  min-height: 40px;
+  padding: 0 15px;
   border: 1px solid var(--line);
   border-radius: 11px;
   background: var(--glass-soft);
@@ -179,11 +179,11 @@
 }
 .pauseAction {
   width: 100%;
-  min-height: 64px;
+  min-height: 58px;
   display: flex;
   align-items: center;
   gap: 13px;
-  padding: 10px 14px;
+  padding: 9px 13px;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -229,12 +229,12 @@
 .debugSectionLabel { color: var(--ink); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .debugUnlock {
   width: 100%;
-  min-height: 48px;
+  min-height: 43px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(255, 252, 239, .45);

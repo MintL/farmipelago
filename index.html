@@ -9,7 +9,7 @@
 </head>
 <body data-input-mode="keyboard" data-view-mode="drive">
   <div id="hud">
-    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.448</span><span id="fpsValue">-- FPS</span></div>
+    <div id="performanceBadge" aria-hidden="true"><span id="buildVersion">0.491</span><span id="fpsValue">-- FPS</span></div>
     <header id="topBar">
       <div id="topLeftGroup">
       </div>
@@ -21,21 +21,35 @@
         <div id="fieldControls">
           <div id="buildingControl">
             <button id="buildingToggle" type="button" aria-label="Open building menu" aria-pressed="false" title="Buildings">
-              <svg class="icon" aria-hidden="true"><use href="#icon-silo"></use></svg>
+              <svg class="icon" aria-hidden="true"><use href="#icon-hud-building"></use></svg>
             </button>
           </div>
         </div>
         <button id="menuToggle" type="button" aria-label="Open pause menu" title="Menu">
-          <svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+          <svg class="icon" aria-hidden="true"><use href="#icon-hud-menu"></use></svg>
         </button>
       </div>
     </header>
     <div id="viewHint"></div>
     <aside id="siloInventory" hidden aria-live="polite">
+      <button id="buildingPopupName" type="button" hidden></button>
+      <div id="buildingPopupHeader" class="settlementHeader" hidden>
+        <span class="settlementBuildingIcon"><img id="buildingPopupIcon" width="68" height="68" alt=""></span>
+        <div class="settlementHeading">
+          <strong id="buildingPopupTitle" class="villageTitle"></strong>
+          <div id="buildingPopupSubtitle" class="settlementRule"></div>
+        </div>
+        <button id="buildingPopupClose" class="buildingPopupClose" type="button" aria-label="Close building" title="Close building"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button>
+      </div>
       <div id="villageNeeds" hidden>
-        <button id="storehouseClose" type="button" aria-label="Close Settlement" title="Close Settlement"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button>
-        <strong class="villageTitle">Settlement · Tier 1</strong>
-        <div class="settlementRule"></div>
+        <div class="settlementHeader">
+          <span class="settlementBuildingIcon"><img src="./icons/storehouse-tier-1.png" width="68" height="68" alt=""></span>
+          <div class="settlementHeading">
+            <strong class="villageTitle">Settlement · Tier 1</strong>
+            <div class="settlementRule"></div>
+          </div>
+          <button id="storehouseClose" type="button" aria-label="Close Settlement" title="Close Settlement"><svg class="icon" aria-hidden="true"><use href="#icon-close"></use></svg></button>
+        </div>
         <div class="settlementProgress" role="status" aria-live="polite" hidden></div>
         <div id="villageNeedsGrid" role="group" aria-label="Settlement requirements"></div>
         <div class="settlementNext" hidden>
@@ -44,14 +58,13 @@
         </div>
       </div>
       <div id="palletStock" hidden>
-        <strong id="palletStockTitle"></strong>
+        <strong id="palletStockTitle" hidden></strong>
         <div id="palletOffer" hidden>
           <div class="settlementRule">Supply either crop</div>
           <div id="palletInputs"></div>
           <div class="palletReward"><span class="palletRewardLabel">Receive</span><div id="palletOutputs"></div></div>
         </div>
         <div id="palletStockAmount"></div>
-        <small id="palletCapacity" hidden></small>
         <small id="palletStockHint"></small>
         <div class="palletActions">
           <button id="palletTrade" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#icon-silo-unload"></use></svg><span>Trade</span></button>
@@ -65,7 +78,7 @@
         <button id="siloUnload" type="button" aria-label="Unload combine into silo" title="Unload combine into silo"><svg class="icon" aria-hidden="true"><use id="siloUnloadIconUse" href="#icon-silo-unload"></use></svg></button>
       </div>
       <button id="previousSiloCrop" type="button" aria-label="Previous stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button>
-      <div class="siloInventoryCrop"><svg id="siloCropIcon" class="icon" role="img" aria-label="Corn"><use id="siloCropIconUse" href="#icon-corn"></use></svg><strong id="siloCropValue">0</strong></div>
+      <div class="siloInventoryCrop buildingStockCard"><span class="settlementRequirementIcon"><svg id="siloCropIcon" class="icon" role="img" aria-label="Corn"><use id="siloCropIconUse" href="#icon-corn"></use></svg></span><div class="settlementRequirementDetails"><strong id="siloCropName">Corn</strong><span id="siloCropValue">0</span></div></div>
       <button id="nextSiloCrop" type="button" aria-label="Next stored crop"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button>
       <div id="barnStorageRows" hidden></div>
     </aside>
@@ -103,19 +116,19 @@
     </div>
 
     <button id="cycleVehicle" class="actionButton" type="button" aria-label="Cycle vehicle" title="Cycle vehicle">
-      <svg class="icon" aria-hidden="true"><use href="#icon-cycle-vehicle"></use></svg>
+      <svg class="icon" aria-hidden="true"><use href="#icon-hud-cycle"></use></svg>
     </button>
 
     <div id="actionCluster">
       <div id="inventoryMeter" hidden></div>
       <div id="equipmentActions">
         <button id="frontToolToggle" class="actionButton equipmentAction" type="button" aria-label="Lower front tool" aria-pressed="false" title="Lower front tool">
-          <svg class="icon" aria-hidden="true"><use href="#icon-front-action"></use></svg>
+          <svg class="icon" aria-hidden="true"><use href="#icon-hud-front"></use></svg>
           <span class="toolCopy"><span class="toolName">Front</span><span class="toolState" id="frontToolState">Raised</span></span>
           <span class="keycap" aria-hidden="true">Q</span>
         </button>
         <button id="rearToolToggle" class="actionButton equipmentAction" type="button" aria-label="Lower rear tool" aria-pressed="false" title="Lower rear tool">
-          <svg class="icon" aria-hidden="true"><use href="#icon-rear-action"></use></svg>
+          <svg class="icon" aria-hidden="true"><use href="#icon-hud-rear"></use></svg>
           <span class="toolCopy"><span class="toolName">Rear</span><span class="toolState" id="rearToolState">Raised</span></span>
           <span class="keycap" aria-hidden="true">E</span>
         </button>
@@ -127,7 +140,7 @@
         </button>
       </div>
       <button id="jump" class="actionButton" type="button" aria-label="Jump" title="Jump">
-        <svg class="icon" aria-hidden="true"><use href="#icon-jump"></use></svg>
+        <svg class="icon" aria-hidden="true"><use href="#icon-hud-jump"></use></svg>
       </button>
     </div>
 
@@ -248,6 +261,12 @@
 
   <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
     <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14" /></symbol>
+    <symbol id="icon-hud-menu" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M4 4h16v3H4Zm0 6.5h16v3H4ZM4 17h16v3H4Z"/></symbol>
+    <symbol id="icon-hud-jump" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="m12 2 9 9-2.5 2.5-4.75-4.75V22h-3.5V8.75L5.5 13.5 3 11Z"/></symbol>
+    <symbol id="icon-hud-building" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M3 22v-3h2V9c0-4 3-7 7-7s7 3 7 7v10h2v3Zm5-3h2v-7h4v7h2V10H8Zm0-11h8c-.4-2-1.8-3-4-3S8.4 6 8 8Z"/></symbol>
+    <symbol id="icon-hud-cycle" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M19 2v3.1A9 9 0 0 0 3 10h3a6 6 0 0 1 10.6-3H13v3h9V2ZM5 22v-3.1A9 9 0 0 0 21 14h-3a6 6 0 0 1-10.6 3H11v-3H2v8Z"/></symbol>
+    <symbol id="icon-hud-front" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M9 4h9l2 7v4H8V9H5l-2 4v4h5v2H1v-7l3-6h5Zm3 2v5h5l-1.4-5Z"/><path fill="currentColor" stroke="none" d="M13 17a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm8 0a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z"/></symbol>
+    <symbol id="icon-hud-rear" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M5 4h9l2 7v4H3V8h2Zm3 2v5h5l-1.4-5ZM17 10h4l2 4v5h-6v-2h4v-3l-1-2h-3Z"/><path fill="currentColor" stroke="none" d="M10 17a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm7 0a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z"/></symbol>
     <symbol id="icon-close" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" /></symbol>
     <symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" /></symbol>
     <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>

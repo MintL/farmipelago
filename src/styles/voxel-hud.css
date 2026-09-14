@@ -1,0 +1,243 @@
+/* Shared with the Storehouse speech frame. Only the face is clipped, keeping
+   focus rings, transfer actions, speech tails and touch targets unobstructed. */
+:root {
+  --voxel-face: #faf3e3;
+  --voxel-highlight: #fffdf5;
+  --voxel-shade: #b19a76;
+  --voxel-rim: drop-shadow(0 4px 4px #18261c26);
+  --voxel-round-shadow: drop-shadow(-1px -1px 0 var(--voxel-highlight))
+    drop-shadow(2px 2px 0 var(--voxel-shade)) var(--voxel-rim);
+  --voxel-corners: polygon(4px 0, calc(100% - 4px) 0,
+    calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px),
+    calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%,
+    4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px), 0 4px, 4px 4px);
+  --voxel-round: polygon(32% 0, 68% 0, 68% 8%, 84% 8%,
+    84% 20%, 92% 20%, 92% 32%, 100% 32%,
+    100% 68%, 92% 68%, 92% 80%, 84% 80%, 84% 92%, 68% 92%,
+    68% 100%, 32% 100%, 32% 92%, 16% 92%, 16% 80%, 8% 80%,
+    8% 68%, 0 68%, 0 32%, 8% 32%, 8% 20%, 16% 20%, 16% 8%, 32% 8%);
+}
+
+#hud :is(#storehouseCallout, #siloInventory, #islandAction, #buildingToggle,
+  #menuToggle, #zoomControls, #inventoryMeter, #buildPalette, #viewHint,
+  #desktopHints, #seedCropToast, #performanceBadge, #repaintPen,
+  #demolitionWarning, .actionButton, #constructionPopup button,
+  #siloActions button, #palletStock button, #pauseDialog, #barnDialog):not(.hudFramed) {
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  filter: var(--voxel-rim);
+}
+
+#hud :is(#storehouseCallout, #siloInventory, #islandAction, #buildingToggle,
+  #menuToggle, #zoomControls, #inventoryMeter, #buildPalette, #viewHint,
+  #desktopHints, #seedCropToast, #performanceBadge, #repaintPen,
+  #demolitionWarning, .actionButton, #constructionPopup button,
+  #siloActions button, #palletStock button, #pauseDialog, #barnDialog):not(.hudFramed)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--voxel-face);
+  box-shadow: inset 1px 1px 0 var(--voxel-highlight), inset -2px -2px 0 var(--voxel-shade);
+  clip-path: var(--voxel-corners);
+}
+
+/* Static flex/grid children need their own containing block for the face. */
+#hud :is(#buildingToggle, #menuToggle, #zoomControls, #unloadButton,
+  #demolitionWarning, #constructionPopup button, #siloActions button,
+  #palletStock button, #pauseDialog) { position: relative; }
+body[data-input-mode="keyboard"] #hud .equipmentAction { position: relative; }
+#hud #zoomControls { overflow: visible; }
+
+/* Set the face rather than painting over its stepped silhouette. Reset on
+   nested controls so an active panel never changes unrelated button faces. */
+#hud :is(.actionButton, #buildingToggle, #siloActions button, #palletStock button) {
+  --voxel-face: #faf3e3;
+  --voxel-active-face: #e6dcc4;
+}
+#hud :is(.equipmentAction, #buildingToggle)[aria-pressed="true"] { --voxel-face: #c4d3ab; }
+#hud :is(.actionButton, #buildingToggle, #menuToggle, #constructionPopup button,
+  #siloActions button, #palletStock button):active:not(:disabled) { --voxel-face: var(--voxel-active-face, #e6dcc4); }
+#hud :is(.equipmentAction, #buildingToggle)[aria-pressed="true"]:active { --voxel-face: #afc393; }
+#hud .equipmentAction[aria-pressed="true"]::after { top: 20%; right: 20%; border-radius: 0; box-shadow: none; }
+#hud #performanceBadge { color: var(--muted); }
+#hud #fpsValue { border-color: var(--line); }
+
+#hud :is(.cropMeterTrack, .cropMeterTrack span, .keycap, #desktopHints kbd,
+  .buildingOption, .buildingOption em, .villageNeedCard, .button, .iconButton,
+  .debugUnlock, .debugTimeControl, .debugGrowthControl, .loadoutOption,
+  #siloInventory button, #islandAction button, #storehouseCallout button) { border-radius: 0; }
+#hud .cropMeterTrack span { background: #799653; }
+#hud #islandActionLeader::after { border-radius: 0; }
+
+/* The touch stick keeps its circular travel math inside a stepped footprint. */
+#hud #stickBase:not(.hudFramed) {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  filter: var(--voxel-rim);
+}
+#hud #stickBase:not(.hudFramed)::before {
+  inset: 12px;
+  width: auto;
+  height: auto;
+  transform: none;
+  background: #e6dcc4;
+  clip-path: var(--voxel-round);
+}
+#hud #stickBase::after { content: none; }
+#hud #stickKnob:not(.hudFramed) {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  filter: var(--voxel-rim);
+}
+#hud #stickKnob:not(.hudFramed)::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: #647654;
+  clip-path: var(--voxel-round);
+}
+
+/* Circular icon controls have three broad steps; labeled buttons keep straight sides. */
+#hud :is(.actionButton, #buildingToggle, #menuToggle, #constructionUndo,
+  #siloActions button, #palletStock button:not(#palletTrade))::before {
+  clip-path: var(--voxel-round);
+}
+body[data-input-mode="keyboard"] #hud .equipmentAction[aria-pressed="true"]::after {
+  top: 5px;
+  right: 7px;
+}
+
+/* Match the popup's light rim and two-pixel warm shade around circular steps. */
+#hud :is(.actionButton, #buildingToggle, #menuToggle, #constructionUndo,
+  #siloActions button, #palletStock button:not(#palletTrade), #stickBase, #stickKnob):not(.hudFramed) {
+  filter: var(--voxel-round-shadow);
+}
+#hud :is(.actionButton, #buildingToggle, #menuToggle, #constructionUndo,
+  #siloActions button, #palletStock button:not(#palletTrade), #stickBase, #stickKnob)::before {
+  box-shadow: none;
+}
+body[data-input-mode="keyboard"] #hud .equipmentAction:not(.hudFramed) { filter: var(--voxel-rim); }
+body[data-input-mode="keyboard"] #hud .equipmentAction::before {
+  clip-path: var(--voxel-corners);
+  box-shadow: inset 1px 1px 0 var(--voxel-highlight), inset -2px -2px 0 var(--voxel-shade);
+}
+
+@media (max-width: 380px) {
+  #hud #stickBase::before { inset: 10px; }
+  #hud #stickKnob::before { inset: 2px; }
+}
+
+/* Gameplay artwork lives behind the content, with one shared frame contour.
+   These tokens are scoped so the workshop and pause/construction UI keep their skin. */
+#hud .hudFramed {
+  --hud-face-top: #fff7e5;
+  --hud-face-bottom: #f1e5cb;
+  --hud-highlight: #fffdf1;
+  --hud-shade: #cbb48c;
+  --hud-depth: #90704f;
+  --hud-outline: #b19973;
+  --hud-teal: #418a76;
+  --hud-teal-light: #70ae90;
+  --hud-teal-dark: #2a5e52;
+  --hud-ink: #483c28;
+  --hud-frame-inset: 0px;
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--hud-ink);
+}
+#hud .hudFramed::before { content: none; }
+#hud .hudFramed > svg.hudFrame {
+  position: absolute;
+  z-index: -1;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: none;
+  stroke-width: 0;
+  stroke-linejoin: miter;
+}
+.hudFrameArt { filter: drop-shadow(0 3px 2px #2b281d38); }
+.hudFrameFace, .hudFrameDetails { transition: transform .1s ease-out; }
+.hudFaceTop { stop-color: var(--hud-face-top); }
+.hudFaceBottom { stop-color: var(--hud-face-bottom); }
+.hudFrameDepth { fill: var(--hud-depth); stroke: var(--hud-depth); stroke-width: 1px; }
+.hudFrameOutline { fill: var(--hud-shade); stroke: var(--hud-outline); stroke-width: .7px; }
+.hudFrameLight { fill: var(--hud-highlight); }
+.hudFrameShade { fill: var(--hud-shade); }
+.hudLeafStem { fill: none; stroke: var(--hud-teal-dark); stroke-width: 2px; }
+.hudLeafDark { fill: var(--hud-teal-dark); }
+.hudLeafLight { fill: var(--hud-teal); }
+.hudTabDepth { fill: var(--hud-teal-dark); }
+.hudTabFace { fill: var(--hud-teal); }
+.hudTabLight { fill: var(--hud-teal-light); }
+.hudTabNotch { fill: var(--hud-teal-dark); }
+.hudFramePins { fill: #92734d; stroke: #cbb48c; stroke-width: .5px; }
+.hudStickDirections { fill: #a29370; stroke: #fffaf0; stroke-width: .5px; }
+
+#hud button.hudFramed { cursor: pointer; }
+#hud button.hudFramed:active:not(:disabled) { transform: none; }
+#hud button.hudFramed:active:not(:disabled) > .hudFrame :is(.hudFrameFace, .hudFrameDetails),
+#hud #zoomControls:has(button:active) > .hudFrame :is(.hudFrameFace, .hudFrameDetails),
+#hud #storehouseCallout:has(button:active) > .hudFrame :is(.hudFrameFace, .hudFrameDetails) { transform: translateY(2px); }
+#hud button.hudFramed:focus-visible { outline: 2px solid #266b59; outline-offset: 5px; }
+#hud button.hudFramed:disabled { cursor: default; }
+#hud :is(.equipmentAction, #buildingToggle).hudFramed[aria-pressed="true"] {
+  --hud-face-top: #e0ebc9;
+  --hud-face-bottom: #bdcfa4;
+  --hud-highlight: #f0f6df;
+  --hud-shade: #8da37b;
+}
+#hud .equipmentAction.hudFramed[aria-pressed="true"]::after {
+  background: #477454; width: 4px; height: 4px;
+}
+#hud .hudFramed > .icon,
+#hud #islandAction button svg { color: var(--hud-ink); stroke-width: 2.5; stroke-linecap: square; stroke-linejoin: round; }
+#hud #zoomControls button { color: var(--hud-ink); font-weight: 800; background: none; }
+#hud #zoomControls button + button { border-color: #c9bc9f; }
+#hud #storehouseCallout button { color: var(--hud-ink); font-weight: 800; }
+#hud #storehouseCallout button:active { transform: none; }
+#hud #performanceBadge { padding: 5px 10px; letter-spacing: .035em; }
+#hud #inventoryMeter .cropMeterHeading strong { overflow-wrap: anywhere; min-width: 0; }
+#hud :is(#siloInventory, #inventoryMeter, #seedCropToast) .icon { flex-shrink: 0; }
+#hud .hudFramed .cropMeterTrack { background: #d8c9a9; box-shadow: inset 0 1px 2px #92734d30; }
+#hud .hudFramed .cropMeterTrack span { background: #59917a; }
+#hud #siloInventory .villageNeedCard { border-color: #c9b999; background: #fffbef60; }
+#hud #siloInventory .villageNeedCard:is([data-complete="true"], [data-optional="true"]) { border-color: #8da97a; background: #e0ebd7; }
+#hud #islandActionLeader { background: #fffaec; }
+
+#hud #stickBase.hudFramed { --hud-frame-inset: 12px; }
+#hud #stickKnob.hudFramed {
+  --hud-frame-inset: 4px;
+  --hud-face-top: #559c86;
+  --hud-face-bottom: #397963;
+  --hud-highlight: #76b79a;
+  --hud-shade: #326e5c;
+  --hud-depth: #254f43;
+  --hud-outline: #3b7965;
+}
+#hud #stickBase.hudFramed::before, #hud #stickKnob.hudFramed::before { content: none; }
+#hud #stickBase.hudFramed { transform: none; }
+#hud #stickBase.active.hudFramed .hudStickDirections { fill: #5f7d61; }
+
+@media (max-width: 380px) {
+  #hud #stickBase.hudFramed { --hud-frame-inset: 10px; }
+  #hud #stickKnob.hudFramed { --hud-frame-inset: 2px; }
+}

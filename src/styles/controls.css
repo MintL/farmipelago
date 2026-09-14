@@ -70,13 +70,13 @@
   position: absolute;
   left: var(--safe-left);
   bottom: calc(var(--safe-bottom) + 148px);
-  width: 48px;
-  height: 48px;
+  width: 43px;
+  height: 43px;
   border-radius: 50%;
   transition: border-color .16s, background .16s, transform .1s;
 }
-#cycleVehicle .icon { width: 27px; height: 27px; stroke-width: 1.65; }
-#jump { position: absolute; right: 0; bottom: 0; width: 76px; height: 76px; border-radius: 50%; }
+#cycleVehicle .icon { width: 23px; height: 23px; stroke-width: 1.65; }
+#jump { position: absolute; right: 0; bottom: 0; width: 68px; height: 68px; border-radius: 50%; }
 #jump .icon { width: 30px; height: 30px; }
 #equipmentActions {
   position: absolute;
@@ -86,13 +86,14 @@
 .equipmentAction {
   pointer-events: auto;
   position: absolute;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   transition: border-color .16s, background .16s, transform .1s;
 }
-#frontToolToggle { left: 108.7px; bottom: 69.3px; }
-#rearToolToggle { left: 87px; bottom: 17px; }
+/* Keep the actions on a 68px radius around Jump, at 45-degree intervals. */
+#frontToolToggle { right: 63.1px; bottom: 63.1px; }
+#rearToolToggle { right: 83px; bottom: 15px; }
 .equipmentAction[aria-pressed="true"] { border-color: var(--accent-strong); background: rgba(181, 195, 153, .8); }
 .equipmentAction[aria-pressed="true"]::after {
   content: "";
@@ -106,8 +107,8 @@
 .equipmentAction .icon { width: 20px; height: 20px; }
 #seedCycleControl {
   position: absolute;
-  right: 17px;
-  bottom: 91px;
+  right: 15px;
+  bottom: 83px;
 }
 #seedCropToast {
   position: absolute;
@@ -135,8 +136,8 @@
 #seedCropToast .cropToastName { transform: translateY(1px); }
 #unloadButton {
   position: static;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   color: var(--accent-strong);
   transition: opacity .16s, border-color .16s, background .16s, transform .1s;
@@ -196,9 +197,9 @@ body[data-input-mode="keyboard"] #equipmentActions {
 body[data-input-mode="keyboard"] .equipmentAction {
   position: static;
   width: auto;
-  min-width: 148px;
-  height: 54px;
-  padding: 0 10px 0 14px;
+  min-width: 133px;
+  height: 49px;
+  padding: 0 9px 0 13px;
   grid-template-columns: 24px 1fr auto;
   gap: 10px;
   border-radius: 15px;
@@ -206,7 +207,7 @@ body[data-input-mode="keyboard"] .equipmentAction {
 }
 body[data-input-mode="keyboard"] .equipmentAction .icon { width: 22px; height: 22px; }
 body[data-input-mode="keyboard"] #seedCycleControl { position: static; }
-body[data-input-mode="keyboard"] #unloadButton { width: 54px; height: 54px; }
+body[data-input-mode="keyboard"] #unloadButton { width: 49px; height: 49px; }
 body[data-input-mode="keyboard"] #inventoryMeter {
   bottom: calc(100% + 10px);
   width: 190px;
@@ -219,7 +220,7 @@ body[data-input-mode="keyboard"] .keycap { display: block; }
 #zoomControls {
   pointer-events: auto;
   display: flex;
-  height: 48px;
+  height: 43px;
   overflow: hidden;
   flex-shrink: 0;
   border: 1px solid var(--line);
@@ -227,7 +228,7 @@ body[data-input-mode="keyboard"] .keycap { display: block; }
   background: var(--glass);
 }
 #zoomControls button {
-  width: 44px;
+  width: 40px;
   height: 100%;
   padding: 0;
   border: 0;

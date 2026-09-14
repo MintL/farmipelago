@@ -47,9 +47,9 @@ export function createBuildingManager({
 
   const definitions = {
     ...Object.fromEntries(['windmill', 'oil-press'].map(type => [type, { radius: 3.5, footprintSpan: 3,
-      height: type === 'windmill' ? 7.2 : 3.6, popupHeight: 3.2, createVisual: () => createPlacedProcessorVisual(type) }])),
-    silo: { radius: SILO_RADIUS, footprintSpan: 2, height: SILO_HEIGHT, popupHeight: 6.2, createVisual: createSilo },
-    'cattle-barn': { radius: CATTLE_BARN_RADIUS, footprintSpan: 4, footprint: { minX: -3, maxX: 3, minZ: -4, maxZ: 1 }, height: CATTLE_BARN_HEIGHT, popupHeight: 5.4, createVisual: createCattleBarnVisual },
+      height: type === 'windmill' ? 7.2 : 3.6, createVisual: () => createPlacedProcessorVisual(type) }])),
+    silo: { radius: SILO_RADIUS, footprintSpan: 2, height: SILO_HEIGHT, createVisual: createSilo },
+    'cattle-barn': { radius: CATTLE_BARN_RADIUS, footprintSpan: 4, footprint: { minX: -3, maxX: 3, minZ: -4, maxZ: 1 }, height: CATTLE_BARN_HEIGHT, createVisual: createCattleBarnVisual },
   };
 
   const addBuilding = (type, savedId) => {
@@ -823,7 +823,7 @@ export function createBuildingManager({
         x: selected.site.x,
         y: selected.site.y,
         z: selected.site.z,
-        popupHeight: definitions[selected.type].popupHeight,
+        popupView: selected.visual.popupView,
         primaryAction,
         primaryLabel: primaryAction === 'draw-pen' ? 'Draw pen' : 'Confirm',
         canConfirm: phase === 'pen-draft'

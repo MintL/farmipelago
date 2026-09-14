@@ -80,24 +80,25 @@ export function createPalletTransfers({ scene, getVehicle, getState, getFarm, ge
       if (processor) {
         const stockItems = [
           ...processor.inputs.map(input => displayItem(input.itemId, quantity(port.service.inputStock[input.itemId]))),
-          { id: processor.outputItemId, name: goodDefinition(processor.outputItemId).name, icon: goodDefinition(processor.outputItemId).icon,
+          { id: processor.outputItemId, role: 'output', name: goodDefinition(processor.outputItemId).name, icon: goodDefinition(processor.outputItemId).icon,
             unit: 'litres', amount: quantity(port.service.stock[processor.outputItemId]), target: processor.capacity },
         ];
         // HUD values are whole litres rounded down; a partial pallet never looks loadable.
         stockItems.forEach(item => { item.amount = Math.floor(item.amount); });
-        return { kind: 'pallet', serviceKind: 'processor', id: port.id, label: port.label, point: port.point, stockItems, inputs: [], outputs: [],
+        return { kind: 'pallet', serviceKind: 'processor', id: port.id, label: port.label, point: port.point, buildingType: port.service?.definitionId, popupView: port.popupView, stockItems, inputs: [], outputs: [],
+          visual: port.visual,
           stockLabel: stockItems.map(item => `${item.name}: ${item.amount.toLocaleString()} L`).join(' · '),
           showTrade: false, tradeComplete: false, canTrade: false,
           showLoad: port.role === 'output', showUnload: port.role === 'input', unloadLabel: `Unload ${processor.inputLabel?.toLowerCase() || 'grain'}`,
           canLoad: !active && allowed(port, 'load', itemFor(port, 'load')), canUnload: !active && canSupply(port),
           active: Boolean(active), hint: active ? 'Transferring…' : processorStatus(port.service, processor),
-          capacityLabel: `${processor.inputLabel || 'Grain'} ${Math.floor(stockTotal(port.service.inputStock)).toLocaleString()} / ${processor.inputCapacity.toLocaleString()} L`,
         };
       }
       const complete = offer && port.service.completedTrades >= offer.tradeLimit;
       const stockLabel = port.id === 'settlement' ? port.requirements.map(need => `${need.name}: ${goodDisplayAmount(need.id, need.amount).amount.toLocaleString()} / ${goodDisplayAmount(need.id, need.target).amount.toLocaleString()} ${goodDisplayAmount(need.id, need.amount).unit === 'litres' ? 'L' : 'pallets'}`).join(' · ')
         : port.accepts.map(id => `${goodDefinition(id)?.name || id}: ${goodDisplayAmount(id, count(port.stock[id])).amount.toLocaleString()} ${goodDisplayAmount(id, 0).unit === 'litres' ? 'L' : 'pallets'}`).join(' · ');
-      return { kind: 'pallet', id: port.id, label: port.label, point: port.point, stockLabel,
+      return { kind: 'pallet', id: port.id, label: port.label, point: port.point, buildingType: port.service?.definitionId, popupView: port.popupView, stockLabel,
+        visual: port.visual,
         inputs: offer && !complete ? offer.inputs.map(input => displayItem(input.itemId, input.amount)) : [],
         outputs: offer && !complete ? Object.entries(offer.outputs).map(([id, amount]) => displayItem(id, amount)) : [],
         stockItems: offer && !complete ? [] : port.requirements

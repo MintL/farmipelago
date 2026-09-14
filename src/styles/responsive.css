@@ -30,7 +30,7 @@
   #barnDialog .dialogHeader { min-height: 40px; padding: 2px 4px; }
   #barnDialog .dialogTitle { font-size: 21px; }
   #loadoutBays { padding: 0 8px; }
-  .optionGrid { grid-auto-rows: 96px; }
+  .optionGrid { grid-auto-rows: 86px; }
   .loadoutBay[data-category="vehicles"] .optionPresentation { min-height: 132px; }
   .bayLabel { margin: 8px 0 0 5px; font-size: 10px; }
   .optionName { font-size: 10px; }
@@ -50,13 +50,17 @@
 @media (max-width: 380px) {
   #topBar, #topLeftGroup, #topActions, #fieldControls { gap: 6px; }
   #topLeftGroup { width: 136px; }
-  #buildingToggle, #menuToggle { width: 42px; min-height: 42px; height: 42px; border-radius: 13px; }
-  #zoomControls { height: 42px; border-radius: 13px; }
+  #buildingToggle, #menuToggle { width: 38px; min-height: 38px; height: 38px; border-radius: 13px; }
+  #zoomControls { height: 38px; border-radius: 13px; }
   #inventoryMeter, body[data-input-mode="keyboard"] #inventoryMeter { width: 136px; padding: 8px 9px; }
-  #performanceBadge { top: calc(var(--safe-top) + 48px); }
   #stickZone { width: 108px; height: 108px; --stick-travel: 30px; }
   #stickKnob { width: 48px; height: 48px; margin: -24px; }
   #cycleVehicle { bottom: calc(var(--safe-bottom) + 120px); }
+}
+
+/* Phones use pinch zoom, including the short viewport in landscape. */
+@media (max-width: 680px), (pointer: coarse) and (max-height: 500px) {
+  #zoomControls { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

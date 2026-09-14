@@ -1,4 +1,6 @@
 import { THREE, TILE } from '../../core/shared.js';
+import { createBuildingPopupAnchor } from './popup-anchor.js';
+import { createIslandOutline } from '../islands/selection-outline.js';
 import { createGrainMillConcept } from './grain-mill-concept.js';
 import { createStorehouseConcept } from './storehouse-concept.js';
 import { createHybridOilPress } from './oil-press-hybrid.js';
@@ -91,8 +93,18 @@ export function createGameBuilding(id) {
   const reduced = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
   let productionTime = definition.startTime || 0, ambientTime = 0, working = false;
   const draw = () => model.animate(productionTime, working, reduced, ambientTime);
+  let interactionOutline;
   const visual = {
     group, bounds, colliders, obstacles: colliders, ports, lanternPositions,
+    popupView: createBuildingPopupAnchor(group, () => bounds, () => [model.group]),
+    ownsHit(object) {
+      for (let part = object; part; part = part.parent) if (part === model.group) return true;
+      return false;
+    },
+    setOutline(selected, visible) {
+      if (visible) interactionOutline ??= createIslandOutline({ group: model.group }, { groundOverlay: true });
+      interactionOutline?.update(selected, visible);
+    },
     update(dt = 0, producing = false, elapsed = ambientTime + dt) {
       working = Boolean(producing && dt > 0);
       if (working) productionTime += dt;

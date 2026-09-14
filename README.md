@@ -2,16 +2,18 @@
 
 A phone-first Three.js prototype for driving and farming across generated floating islands, with persistent fields, vehicles, buildings, and crop logistics.
 
+Opening a full building inventory reuses the vehicle’s front/rear action buttons for Load and Unload (or Feed, Deliver, Trade and Cancel). Their icons, labels and Q/E shortcuts follow the building actions. Closing the popup or leaving range restores the current vehicle’s tools and seed control; Jump remains available.
+
 ## Included
 
-- modern phone-first HUD with safe-area support, a fixed touch joystick, input-aware desktop hints, a shared machine-inventory meter, a discreet build/FPS readout below the pause button, and a screenshot mode that hides every HUD layer until a tap, H, or Escape restores it
-- camera zoom for close-up detail or a broad overview: pinch over the world on phones, use the + / − buttons, scroll the mouse wheel, or press + / −; available in driving and construction, with independent zoom levels
+- compact phone-first gameplay HUD with cream SVG voxel frames, continuous beveled popup arrows, warm shaded edges, teal tabs and small leaf clusters; bold action icons and a cream joystick with a teal thumb pad retain the existing controls, safe-area support and input-aware desktop hints. Machine inventory and the discreet build/FPS readout share the artwork. Workshop, pause menu and construction panels keep their existing styling; screenshot mode hides every HUD layer until a tap, H, or Escape restores it
+- camera zoom for close-up detail or a broad overview: pinch over the world on phones, where the zoom buttons are hidden; on larger screens, use the + / − buttons, scroll the mouse wheel, or press + / −. Zoom is available in driving and construction, with independent zoom levels. The version/FPS frame sits at the top left within the safe area.
 - smooth high-angle follow camera that keeps the controlled vehicle framed, with four camera-relative 90° orientations selected by a two-finger horizontal swipe over the world or the `[` / `]` desktop fallback and joined by a fast eased quarter-turn
 - persistent uniform-speed 10-minute day/night cycle with extended clear-blue daytime, shorter bright dawn/dusk, a time-varying flat-color backdrop, sun/moon-driven global lighting, a darker readable blue night, animated celestial shadows, precomputed local surface lighting from static lanterns, dynamic vehicle headlights, and a Debug time-of-day scrubber
 - the new starter bridge joins the village’s central street with three tiles clear between its rails; its length fits the generated Farm shore, with matching deck collision and more than one tile of terrain separation
 - continuous southwest travel presentation through a clear, saturated, square-tile-rendered green/blue/brown planetary map with palette-preserving distance sampling and broad quantized plateau levels far below the Farmipelago, a dense field of smaller northeast-moving distant voxel clouds, a much smaller population of faster near clouds at island-edge and underside height, and terrain-aware dust and loose leaves that skim northeast from dry open ground and vegetation; the distant surface uses a broad two-triangle plane beneath a fixed 3×3 horizon-biased footprint of stepped plateau tops, exposed dirt walls, and dense one-draw tiny trees, allowing only the extreme band to become texture-only while the base-plane edge remains beyond the extended camera frustum; all cues use fixed deterministic presentation resources, and reduced motion keeps calmer steady directional travel
 - the Farm Island contains the starter field, south-coast lake, and the teal Fieldworks workshop with stepped sawtooth skylights, lifting gantry and detailed service equipment built on the five-small-voxels-per-terrain-tile grid; new games start both vehicles on reserved Farm ground while Settlement approaches from the north; the village has tiered homes, an interactive Storehouse, open streets and warm lighting, with no player farming or construction
-- permanent Settlement Storehouse on solid settlement ground, with a stepped voxel roof, open receiving bay and warm lantern. Tier 1 requests Wheat, Barley, Canola and Soybeans, all unlocked from the start with unlimited seeds. The compact 240-pixel-wide popup uses a two-column card grid, keeping quantities visible alongside permanent Complete states. Its round Deliver icon sits below the right edge, matching the silo transfer button. Cards are read-only; Deliver automatically recognizes the carried crop. Each requirement permanently completes at 3,600 L. A prominent Complete any 3 of 4 rule explains the optional route; a short Unlocks: Hay farming & equipment line previews direct capabilities. Completing any three immediately opens Tier 2 and retains Tier 1 progress in the save. Deliveries stop at the target and leave surplus cargo in the vehicle. Tier 2 grants grass seed and existing hay equipment; Hay requires four 3,600 L bales (14,400 L), carried one at a time on the bale fork and delivered with the normal Deliver icon; Flour takes 4,000 L, delivered as four 1,000 L pallets. All settlement delivery requirements are enabled without Unavailable labels; Vegetable oil takes four 1,000 L pallets through the Oil Press route; Eggs still await production
+- permanent Settlement Storehouse on solid settlement ground, with a stepped voxel roof, open receiving bay and warm lantern. Tier 1 requests Wheat, Barley, Canola and Soybeans, all unlocked from the start with unlimited seeds. The compact popup uses a two-column card grid up to 340 pixels wide: unchanged small icons sit on gray backgrounds beside names above quantities, with a progress bar underneath; status remains available in each card’s accessible label. The heading uses a larger transparent render matching the Storehouse’s current visual tier, including its canopy, without a divider. Its round Deliver icon sits below the right edge, matching the silo transfer button. Cards are read-only; Deliver automatically recognizes the carried crop. Each requirement permanently completes at 3,600 L. A prominent Complete any 3 of 4 rule explains the optional route; a short Unlocks: Hay farming & equipment line previews direct capabilities. Completing any three immediately opens Tier 2 and retains Tier 1 progress in the save. Deliveries stop at the target and leave surplus cargo in the vehicle. Tier 2 grants grass seed and existing hay equipment; Hay requires four 3,600 L bales (14,400 L), carried one at a time on the bale fork and delivered with the normal Deliver icon; Flour takes 4,000 L, delivered as four 1,000 L pallets. All settlement delivery requirements are enabled without Unavailable labels; Vegetable oil takes four 1,000 L pallets through the Oil Press route; Eggs still await production
 - generated props, bridges, the Settlement Storehouse, and completed player-placed buildings fade when they block the camera's view of the active vehicle; bridges do not fade merely because the vehicle is driving across them
 - a large irregular lake along the Farm Island's south coast with an east-flowing river and waterfall; the fall stays fixed to its terrain outlet while ten connected voxel-water segments, three foam streams, and a fixed pool of 24 solid spray voxels curve and trail northeast through the air, with calmer steady motion under reduced motion; landing in water throws shaded 3D voxel droplets with a day/night water palette
 - three small mallard-style ducks swim in the starting lake for 3–5 active minutes, fly away as a staggered flock, spend one active minute off-screen, then fly back along a sweeping curve, slow into the water and splash-land with a visible burst of the shared jump-water particles; takeoff curves gradually upward as they accelerate; pause and hidden tabs freeze their clocks, and reload starts them swimming again
@@ -53,7 +55,7 @@ A phone-first Three.js prototype for driving and farming across generated floati
 - confirming a silo or finishing a barn and pen automatically returns to play mode; Draw pen keeps construction mode open for pasture editing. Any other unconfirmed drafts are discarded when construction mode closes
 - the first Demolish tap shows an inline warning listing what will be lost before the second tap confirms removal
 
-**Processor islands (Step 10 review):** for testing, new Tier 2 encounters use a seeded **50% Windmill / 50% Oil Press** mix; existing islands are unchanged. Connect normally, bring Wheat or Barley in a combine/Grain Trailer, and use the round **Unload** icon near the building. The Windmill stores 8,000 L of grain total and continuously converts it 1:1 into Flour at **1,000 L per minute**, using Wheat first and then Barley. It holds up to 8,000 L Flour. Return with a flatbed and use **Load**: only full 1,000 L pallets transfer; partial Flour remains stored. The HUD shows grain, Flour and Processing / Needs grain / Storage full. Grain transfers commit on arrival; use Cancel to stop the unfinished transfer. Processing continues while driving away or building, freezes during pause/hidden tabs and release, and resumes after reconnection or reload without offline production. Fractional stocks and surplus grain are preserved.
+**Processor islands (Step 10 review):** for testing, new Tier 2 encounters use a seeded **50% Windmill / 50% Oil Press** mix; existing islands are unchanged. Connect normally, bring Wheat or Barley in a combine/Grain Trailer, and open the building popup and use **Unload** in the vehicle action area. The Windmill stores 8,000 L of grain total and continuously converts it 1:1 into Flour at **1,000 L per minute**, using Wheat first and then Barley. It holds up to 8,000 L Flour. Return with a flatbed and use **Load**: only full 1,000 L pallets transfer; partial Flour remains stored. The HUD shows grain, Flour and Processing / Needs grain / Storage full. Grain transfers commit on arrival; use Cancel to stop the unfinished transfer. Processing continues while driving away or building, freezes during pause/hidden tabs and release, and resumes after reconnection or reload without offline production. Fractional stocks and surplus grain are preserved.
 
 **Oil Press:** bring Canola in the combine or Grain Trailer and Unload. It consumes **1,000 L Canola/minute → 500 L Vegetable oil/minute**, continuously, with separate **8,000 L** input/output capacities. Load complete **1,000 L pallets** onto the Flatbed and use the shared Storehouse **Deliver** action. Oil displays in litres. Its Tier 2 target is now **4,000 L**, aligned to four pallets; surplus stays aboard. Completed legacy requirements stay complete, and partial old Oil progress rounds upward to pallet credit. Fractional processor stocks survive reload/release/reconnection without offline production.
 
@@ -287,7 +289,8 @@ the building (or press **R**) to turn its outline gold and open the full
 Settlement requirements and Deliver popup above the roof. While nearby and
 unselected, a small name-only “Settlement” callout appears above the building.
 Tap the name to open the full popup. Both use cream voxel frames with two-step
-corners and a tiny speech-bubble arrow pointing toward the building. Callouts
+corners and a tiny blunt speech-bubble arrow pointing toward the building. The
+face, arrow, bevel and underside share one SVG contour. Callouts
 follow camera movement and avoid screen edges and controls. No ground rectangle
 is shown. Close the panel, tap elsewhere or select an island
 to deselect the building. Leaving range or jumping closes the panel and cancels
@@ -409,3 +412,40 @@ Build 0.385: new encounters gently curve along the shore, with their complete sa
 Build 0.396: island selection range increased from 12 to 15 tiles. Outlines start hidden and appear only in range; selected islands have a golden outline. Manual checks: enter/leave range with a new island, select/deselect, switch vehicles and check the boundary and colors on desktop and phone-sized views.
 
 Step 10 manual review remains required: desktop and phone controls/HUD, initial spawn and regeneration, bridges/plateaus/plough regression checks; Oil/Windmill timing and capacity, animated supply/collection/cancellation, settlement target/surplus, Quick building placement/draft/confirmation/demolition, and exact stocks across pause, reload, release and reconnection (including reload while drifting or reconnecting). No automated gameplay tests were run.
+
+### Storehouse header icon
+
+`public/icons/storehouse-tier-1.png` through `storehouse-tier-5.png` are
+transparent 512 × 512 renders selected by the completed village appearance.
+Tiers 1–2 share the timber canopy; Tiers 3–4 share the upgraded canopy; Tier 5
+uses the civic Storehouse. Older layouts use `storehouse-legacy.png`.
+With Vite running, open `/tools/render-storehouse-icon.html?tier=1` (1–5 or
+`legacy`) to reproduce the fixed camera and lighting. Capture its 512 × 512
+canvas on a transparent background. The renderer uses the live settlement’s
+model selection; gameplay loads only the saved PNGs.
+
+Building inventories now share Settlement's compact cream frame, 68-pixel
+render of their actual model, two-line header, inset close button and gray-backed
+product icons with names above quantities. Cattle counts and finite storage
+capacities have progress bars; unlimited silo storage and trade offers show
+quantities without an invented capacity. Existing product/action icons remain.
+Expanded panels stay below the top HUD controls with no arrows or connecting
+lines. Close cancels an active transfer and collapses non-settlement inventories
+to a building-anchored name button; tap it to reopen, or leave range to reset.
+Nearby inventory buildings start with this name button and a white highlight.
+Tap the model or its name, or press **R**, to open the full panel and turn the
+highlight gold. This applies to Settlement, Grain Silo, Cattle Barn, Windmill,
+Oil Press, Old Miller and Oil Trader. Tapping away collapses the panel.
+The shared renderer accepts `?building=silo`, `cattle-barn`, `windmill`,
+`oil-press`, `old-miller`, or `oil-trader` to rebuild their header PNGs.
+Construction actions keep their compact individual controls and model anchors.
+
+Build 0.469 manual review: rotate and zoom near each building on desktop and
+phone-sized views; check roof clearance, arrows, screen edges, transfer buttons,
+construction actions and close/reopen behavior. Check icons after upgrades and
+reloads, including older saved layouts. The standard driving, touch, collision,
+regeneration and plough checks remain manual; no gameplay automation was run.
+
+Build 0.476: expanded Settlement requirements stay centered below the top HUD controls, without an arrow or connector. Building overlap is allowed to keep the driving area visible. The name callout and other building popups retain their anchors. Manual check: phone/desktop framing, camera movement, close/reopen and delivery controls.
+
+Build 0.481 manual review: inspect each building panel in portrait and desktop views, cycle silo crops, check input/output and trade quantities, close/reopen with touch and keyboard, and confirm transfers cancel without losing uncommitted cargo. Standard driving, collision, regeneration and plough checks remain manual.

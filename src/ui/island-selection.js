@@ -1,6 +1,7 @@
 import { THREE, TILE } from '../core/shared.js';
 import { islandActionPosition } from './island-action-position.js';
 import { createIslandOutline } from '../world/islands/selection-outline.js';
+import { createHudFrame, hudVisualBounds, hudViewport, HUD_FRAME_OUTSET } from './hud-frame.js';
 
 export function createIslandSelectionView(renderer, scene, camera, { available, select, state, act, enabled, selectObject = () => false, beforeRender = () => {} }) {
   const outlined = new Map();
@@ -15,6 +16,7 @@ export function createIslandSelectionView(renderer, scene, camera, { available, 
     <span id="islandActionHint"></span>`;
   const hud = document.querySelector('#hud');
   hud.append(popup);
+  createHudFrame(popup);
   const leader = document.createElement('div');
   leader.id = 'islandActionLeader';
   leader.setAttribute('aria-hidden', 'true');
@@ -60,11 +62,14 @@ export function createIslandSelectionView(renderer, scene, camera, { available, 
       top: Math.min(...corners.map(p => p.y)), bottom: Math.max(...corners.map(p => p.y)) };
     const anchor = { x: rect.left + (projected.x + 1) * rect.width / 2,
       y: rect.top + (1 - projected.y) * rect.height / 2 };
-    const obstacles = [...hud.querySelectorAll('#topBar, #stickZone, #cycleVehicle, #actionCluster button, #siloInventory, #desktopHints')]
+    const obstacles = [...hud.querySelectorAll('#topBar, #performanceBadge, #stickZone, #cycleVehicle, #actionCluster button, #inventoryMeter, #siloInventory, #desktopHints')]
       .filter(element => element.getClientRects().length && !element.closest('[hidden]'))
-      .map(element => element.getBoundingClientRect());
+      .map(hudVisualBounds);
     const size = { width: popup.offsetWidth, height: popup.offsetHeight };
-    const position = islandActionPosition(anchor, size, { width: innerWidth, height: innerHeight }, obstacles, islandBounds);
+    const margin = HUD_FRAME_OUTSET;
+    const position = islandActionPosition(anchor, { width: size.width + margin * 2, height: size.height + margin * 2 }, hudViewport(), obstacles, islandBounds);
+    position.x += margin;
+    position.y += margin;
     popup.style.left = `${position.x}px`;
     popup.style.top = `${position.y}px`;
     const start = { x: Math.max(position.x + 12, Math.min(anchor.x, position.x + size.width - 12)),

@@ -771,7 +771,7 @@ crop cards. Trade input alternatives are read-only cards, with the output below;
 completed trades show remaining stock and a green **Trade complete** status.
 **Load**, **Unload/Deliver** and **Cancel** use the same round icon-only controls
 as the silo, with tooltips and accessible labels. **Trade** retains its text label.
-These controls sit beneath the panel and support touch and Tab + Enter/Space.
+These actions reuse the vehicle’s front/rear buttons while the full popup is open and support touch, Q/E and Tab + Enter/Space.
 Transfers check a grounded vehicle, deck range, compatible product, available
 source stock and receiving capacity before every unit commits. Transfers require five-tile range and a fully connected service island; the storehouse
 accepts near any side of its building. A pallet stays owned by its source until the arrival
@@ -808,8 +808,7 @@ production; reconnection resumes it. Driving away and build mode do not interrup
 processing. Pause/hidden tabs freeze it; reload retains exact fractional stocks
 without offline production.
 
-Windmill and cattle barn popups are capped at 180 pixels wide, retaining their
-stock rows and controls. The compact Windmill HUD follows the cattle barn’s stock-row presentation and uses the
+Windmill and cattle barn popups use the shared Settlement style, capped at 340 pixels and fitted to phone safe areas, with rendered model headers and product cards. The compact Windmill HUD follows the cattle barn’s stock-row presentation and uses the
 shared round, icon-only Load, Unload and Cancel actions with accessible labels.
 It displays each grain stock, their shared capacity, Flour litres/capacity and
 Processing, Needs grain or Storage full. Display quantities round down to whole
@@ -839,7 +838,7 @@ Canola unloads from the combine or Grain Trailer. A Flatbed collects only whole
 **1,000 L Oil pallets**, represented as golden containers; fractional Oil remains
 in the processor. All Oil quantities display in litres, including the shared
 settlement requirements popup and Deliver control. Processor/cattle HUDs retain
-the 180-pixel cap and round accessible Load/Unload/Cancel controls.
+the shared 340-pixel cap and round accessible Load/Unload/Cancel controls.
 
 The Tier 2 Oil target changes from the provisional **3,600 L to 4,000 L**, allowing
 four complete pallets to fulfill it without discarding surplus. Existing completed
@@ -958,13 +957,13 @@ The progression receiver is a permanent **Settlement Storehouse** on the smaller
 
 ### Current prototype
 
-The player brings Wheat, Barley, Canola or Soybeans near any side of the Storehouse during Tier 1 and taps the outlined building. The full **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with a separate **Not started**, **In progress**, **✓ Complete** status. Eggs are counted individually, Flour in litres, and the other current targets in litres. Completed cards have a muted green background rather than a filling reserve meter. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s requirements, including available Flour pallet delivery. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement with its hidden status space preserved. Cards are read-only and cannot be selected. Each icon and crop name are vertically centered together in the card’s first row.
+The player brings Wheat, Barley, Canola or Soybeans near any side of the Storehouse during Tier 1 and taps the outlined building. The full **Settlement** popup shows the active tier and its four requirement cards in a two-column grid. Each keeps its icon, name and delivered/target quantity visible, with **Not started**, **In progress** and **Complete** conveyed through the progress bar and each card’s accessible label rather than a separate visible status row. Eggs are counted individually, Flour in litres, and the other current targets in litres. Each card shows its unchanged small icon on a gray background beside the name above the quantity, with a full-width progress bar underneath. There is no status row or divider below the bar. The bar represents permanent delivered progress and never drains; completed cards retain a muted green background. The regular-weight “Complete any 3 of 4” rule remains visible after completion. There is no separate completed-count or optional-crop summary. Completing Tier 1 immediately replaces its cards with Tier 2’s requirements, including available Flour pallet delivery. The UI retains its completed-tier treatment for a tier without a defined successor: a completion message, and a green struck-through remaining requirement without reserving extra status space. Cards are read-only and cannot be selected. Each icon is vertically centered beside the name and quantity. A larger transparent render matching the Storehouse’s completed visual tier (including its canopy) sits to the left of the popup heading without a divider; the existing close symbol sits in an inset cream square at the upper right.
 
-Use the round **Deliver** icon button below the popup’s right edge, matching the silo’s transfer action. Its tooltip and accessible label identify delivery. Deliver identifies the current vehicle’s carried goods directly on every activation, independent of silo selection. Flour uses this same settlement panel and Deliver control with a flatbed, keeping all four requirements visible. Pallets animate and commit one at a time; while delivering pallets, the control becomes Cancel to stop the unfinished transfer. It is disabled for empty or unsupported cargo and completed requirements. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries stop at the requirement target without removing surplus cargo. Visible crates reflect the active tier’s delivered progress with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its Deliver button supports keyboard activation. Requirement cards are informational and do not receive keyboard focus.
+Use the existing rear vehicle action button, which shows the **Deliver** icon while the full popup is open, matching the silo’s transfer action. Its tooltip and accessible label identify delivery. Deliver identifies the current vehicle’s carried goods directly on every activation, independent of silo selection. Flour uses this same settlement panel and Deliver control with a flatbed, keeping all four requirements visible. Pallets animate and commit one at a time; while delivering pallets, the control becomes Cancel to stop the unfinished transfer. It is disabled for empty or unsupported cargo and completed requirements. Rapid 10 L transfers, inventory conservation, cargo effects and range checks remain in place, and deliveries stop at the requirement target without removing surplus cargo. Visible crates reflect the active tier’s delivered progress with bounded visual density. The popup is clamped to phone safe areas above driving controls, and its Deliver button supports keyboard activation. Requirement cards are informational and do not receive keyboard focus.
 
 ### Next-development preview
 
-A compact **Unlocks: Hay farming & equipment** line below the cards summarizes the direct guaranteed capabilities from Section 4 of `Settlement_Progression_Proposal.md`. The content is maintained in progression data. It excludes island archetypes, future delivery requirements, tier headings and availability copy. The line is shown during Tier 1; opening Tier 2 grants these capabilities and hides the preview until another tier is defined. The popup is capped at 240 pixels wide. Safe-area fitting and avoidance of driving controls include the delivery button beneath it.
+A compact **Unlocks: Hay farming & equipment** line below the cards summarizes the direct guaranteed capabilities from Section 4 of `Settlement_Progression_Proposal.md`. The content is maintained in progression data. It excludes island archetypes, future delivery requirements, tier headings and availability copy. The line is shown during Tier 1; opening Tier 2 grants these capabilities and hides the preview until another tier is defined. The popup is capped at 340 pixels wide and shrinks to fit phone safe areas. Expanded Settlement requirements stay centered in the upper screen below the top HUD controls, even when they cover the building, to leave the vehicle visible below. This expanded panel has no speech arrow or connecting line and does not move with the camera; its existing interaction range and dismissal rules remain. The name-only Settlement callout retains its building anchor. The delivery action stays in the vehicle action area, separate from the upper popup.
 
 There should be no hidden population threshold or decaying settlement-progress meter.
 
@@ -980,7 +979,7 @@ Current controls include:
 
 - dynamic camera-relative virtual joystick in the lower-left drive zone
 - two-finger horizontal swipe over the world to rotate the drive camera in 90° steps
-- pinch over the world or use the + / − buttons to zoom in driving and construction views
+- pinch over the world to zoom in driving and construction views; zoom buttons are hidden on phone-sized viewports, including touch phones in landscape
 - jump button
 - contextual primary tool action
 - secondary action such as cycling seed
@@ -1032,13 +1031,53 @@ Current implementation follows these principles through:
 
 - phone safe-area support
 - a dynamic touch joystick rather than a large permanent control frame
-- round action buttons
+- compact voxel-framed action buttons
 - compact crop icons and inventory readouts
 - contextual silo, cattle-barn and cargo popups
 - a contextual village crop grid
 - live 3D vehicle/equipment previews in the workshop
 - temporary labels for actions such as seed cycling
 - input-aware desktop control hints
+
+The gameplay HUD uses reusable SVG artwork behind its existing HTML controls:
+opaque cream faces, bright upper-left bevels, warm tan lower-right edges, a
+shallow brown underside and soft cast shadows. Small teal tabs sit beneath zoom,
+building and primary action controls; compact shaded leaf clusters decorate
+selected outer edges. Bolder dark-brown action icons retain distinct front/rear
+tool symbols, while crop icons keep their colors and desktop controls keep their
+labels. The joystick has a cream stepped base, four subtle direction markers
+and a shaded teal thumb pad. Its existing travel, dead zone and touch area are
+preserved, as are the compact button sizes. Touch action buttons follow a
+tight 68-pixel radius around Jump at 45-degree intervals.
+
+The version/FPS frame sits at the top left, aligned to the safe-area insets.
+Zoom buttons remain available on larger screens; phones use pinch zoom.
+
+Icon controls retain their coarse step size, with varied step runs and shorter
+cardinal flats forming a more circular outline. The outermost step is omitted
+at the top, right, bottom and left without rescaling the remaining steps or
+changing the touch targets; labeled panels retain their
+two-step corners. Settlement's name-only callout and expanded requirements
+popup each use a single contour for the face and short blunt speech tail, so
+their bevels and depth continue across the join. The tail projects up to ten
+pixels toward the building, with an eight-pixel tip and a broad root clamped
+clear of the corners. Geometry updates on resizing or changed tail placement;
+camera movement reuses the existing SVG elements. Popup fitting includes
+decorations, shadows and the transfer controls below the panel. Settlement,
+silo, barn, processor and trader popups share model-local bounds transformed
+once into world space and projected with the current camera. Their placement
+envelope is separate from the visible surface targeted by the arrow. Clear
+space above the building is preferred; obstructed views use nearby alternatives
+within safe areas. Name callouts keep their short speech arrows without connecting lines. Placement searches above and below obstructing controls as well as around the building, favoring positions clear of both. Construction actions use the same placement with their
+existing individual button styling. No fixed per-building popup heights remain.
+The settlement header uses the current completed visual tier's hall and canopy
+render; legacy layouts retain an icon of their own Storehouse.
+
+Active tools retain green faces, disabled controls remain muted, and keyboard
+focus rings remain visible. A press depresses the artwork slightly, with reduced
+motion respected. Artwork does not receive pointer events or accessibility
+focus. Workshop, pause menu and construction panels retain their existing opaque
+voxel styling. This visual pass does not change gameplay or saved state.
 
 Large decorative panels should be avoided where possible.
 
@@ -1599,3 +1638,32 @@ When considering a new feature, ask:
 **Does the result remain visible and understandable in the physical world?**
 
 Features that consistently fail these tests probably do not belong in the core game.
+
+### Shared building inventory presentation (0.481)
+
+Settlement, Grain Silo, Cattle Barn, Windmill, Oil Press, Old Miller and Oil Trader
+inventories use the same compact cream frame, larger rendered building icon,
+header hierarchy, inset close button and product cards. Product icons retain
+their artwork on gray backgrounds; names sit above exact quantities. Bars show
+settlement delivery progress, herd capacity, or a defined stock capacity only.
+Unlimited silo storage and trading offers do not invent capacity targets.
+Processor working status appears beneath the building name. The separate
+shared-input capacity label is omitted; product cards retain their quantities.
+
+Nearby inventory buildings first show a white silhouette highlight and an
+anchored name button. Tapping the building or its name (or pressing R) opens
+the full inventory and turns the highlight gold. This applies to Settlement,
+Grain Silo, Cattle Barn, Windmill, Oil Press, Old Miller and Oil Trader.
+Expanded inventories stay in the upper screen below the top HUD controls,
+without speech arrows or connecting lines. Closing a non-settlement inventory
+cancels its active transfer and leaves an anchored name button for reopening.
+Leaving its context clears that collapsed state. These names keep a short speech
+arrow only. Range, product compatibility, production and persistence are unchanged.
+Construction actions retain their existing individual-button presentation.
+
+While a full building inventory is open, its Load and Unload actions reuse the
+existing front/rear vehicle buttons, updating their icons, accessible labels,
+disabled states and Q/E shortcuts. Feed, Deliver, Trade and Cancel use those same
+slots where applicable. Transfer buttons no longer appear beneath the popup.
+The seed control hides during inspection; Jump stays available. Closing the
+popup or leaving its context restores the current vehicle’s tool and seed controls.

@@ -78,6 +78,22 @@ const sites = [
   ['lamp-market', 'lighting', 4, 5, 8.4, .2, art.pathLamp],
 ];
 
+// Icon renders use the same tier selection and factories as the live village.
+export function createStorehouseTierModel(value) {
+  const tier = settlementTier(value), group = new THREE.Group();
+  for (const [id, , from, until, , , create, yaw = 0, y = 0] of sites) {
+    if (!['hall', 'canopy'].includes(id) || tier < from || tier > until) continue;
+    const model = create();
+    model.setStockLevel?.(.5);
+    const root = new THREE.Group();
+    root.rotation.y = yaw;
+    root.position.y = y * TILE;
+    root.add(model.group);
+    group.add(root);
+  }
+  return { group, bounds: new THREE.Box3().setFromObject(group) };
+}
+
 function disposeParts(parts) {
   for (const part of parts || []) {
     part.group.removeFromParent();

@@ -70,6 +70,7 @@ export function islandServicePorts(records, visualFor = service => serviceVisual
       const definition = ISLAND_SERVICES[service.definitionId];
       const visual = visualFor(service);
       const base = { id: `${record.id}:${service.id}`, label: definition.name, definition, service,
+        popupView: visual?.popupView, visual,
         setTransferState: state => {
           if (!visual) return;
           visual.transferring = Boolean(state.active);
